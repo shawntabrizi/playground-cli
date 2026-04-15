@@ -1,0 +1,26 @@
+{
+    "name": "playground-cli",
+    "description": "CLI for Polkadot Playground",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "packageManager": "pnpm@10.32.1",
+    "bin": {
+        "dot": "./src/index.ts"
+    },
+    "scripts": {
+        "format": "biome format --write .",
+        "format:check": "biome format .",
+        "cli:install": "bun build --compile src/index.ts --outfile ~/.polkadot/bin/dot"
+    },
+    "dependencies": {
+        "commander": "^12.0.0"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^1.9.4",
+        "typescript": "^5.9.3"
+    },
+    "pnpm": {
+        "onlyBuiltDependencies": ["@biomejs/biome"]
+    }
+}
