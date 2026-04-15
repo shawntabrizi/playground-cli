@@ -6,6 +6,7 @@ on:
 
 permissions:
     contents: write
+    pull-requests: write
 
 jobs:
     release:
@@ -32,14 +33,14 @@ jobs:
                   bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile dot-darwin-arm64
 
             - name: Delete previous dev release
-              run: gh release delete "${{ github.head_ref }}" --cleanup-tag -y 2>/dev/null || true
+              run: gh release delete "dev/${{ github.head_ref }}" --cleanup-tag -y 2>/dev/null || true
               env:
                   GH_TOKEN: ${{ github.token }}
 
             - name: Create dev release
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: ${{ github.head_ref }}
+                  tag_name: dev/${{ github.head_ref }}
                   name: "Dev: ${{ github.head_ref }}"
                   prerelease: true
                   make_latest: false
@@ -52,5 +53,26 @@ jobs:
                       Dev build from `${{ github.head_ref }}`.
 
                       ```
-                      VERSION=${{ github.head_ref }} curl -fsSL https://raw.githubusercontent.com/paritytech/playground-cli/main/install.sh | bash
+                      curl -fsSL https://raw.githubusercontent.com/paritytech/playground-cli/main/install.sh | VERSION=dev/${{ github.head_ref }} bash
                       ```
+
+            - name: Comment install command on PR
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  PR: ${{ github.event.pull_request.number }}
+                  BRANCH: ${{ github.head_ref }}
+              run: |
+                  MARKER="<!-- dev-release -->"
+                  BODY="${MARKER}
+                  **Dev build ready** — try this branch:
+                  \`\`\`
+                  curl -fsSL https://raw.githubusercontent.com/paritytech/playground-cli/main/install.sh | VERSION=dev/${BRANCH} bash
+                  \`\`\`"
+
+                  # Find existing comment by marker, update or create
+                  COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR}/comments --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+                  if [ -n "$COMMENT_ID" ]; then
+                    gh api repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -X PATCH -f body="$BODY"
+                  else
+                    gh pr comment "$PR" --body "$BODY"
+                  fi

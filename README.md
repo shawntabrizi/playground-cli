@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/paritytech/playground-cli/main/inst
 To install a specific version:
 
 ```bash
-VERSION=v0.2.0 curl -fsSL https://raw.githubusercontent.com/paritytech/playground-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/playground-cli/main/install.sh | VERSION=v0.2.0 bash
 ```
 
 ## Contributing
@@ -36,7 +36,7 @@ pnpm cli:install
 Every PR automatically publishes a dev release tagged with the branch name. Others can try it with:
 
 ```bash
-VERSION=my-branch curl -fsSL https://raw.githubusercontent.com/paritytech/playground-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/playground-cli/main/install.sh | VERSION=dev/my-branch bash
 ```
 
 ### Releasing
