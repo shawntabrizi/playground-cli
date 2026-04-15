@@ -26,6 +26,11 @@ fi
 [ -z "$TAG" ] && echo "Could not determine latest release" && exit 1
 
 # 3) Install binary
+spin() { while true; do for c in '|' '/' '-' '\'; do printf "\r%s %s" "$1" "$c"; sleep 0.1; done; done; }
+spin "Installing dot ($OS/$ARCH) $TAG" &
+SPIN_PID=$!
+trap "kill $SPIN_PID 2>/dev/null" EXIT
+
 mkdir -p "$INSTALL_DIR/bin" "$HOME/.local/bin"
 curl -fsSL "https://github.com/$REPO/releases/download/$TAG/$ASSET" -o "$INSTALL_DIR/bin/$BIN"
 chmod +x "$INSTALL_DIR/bin/$BIN"
@@ -35,7 +40,8 @@ if [ "$OS" = "darwin" ]; then
 fi
 ln -sf "$INSTALL_DIR/bin/$BIN" "$HOME/.local/bin/$BIN"
 
-echo "Installed $BIN ($OS/$ARCH) from $TAG -> $INSTALL_DIR/bin/$BIN"
+kill $SPIN_PID 2>/dev/null; wait $SPIN_PID 2>/dev/null || true; trap - EXIT
+printf "\rInstalled dot (%s/%s) %s   \n" "$OS" "$ARCH" "$TAG"
 
 # 4) Add to PATH
 append_once() {
