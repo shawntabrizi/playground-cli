@@ -9,7 +9,7 @@
         "dot": "./src/index.ts"
     },
     "scripts": {
-        "postinstall": "bash node_modules/@polkadot-apps/terminal/scripts/patch-wasm.sh",
+        "postinstall": "bash scripts/patch-wasm.sh",
         "format": "biome format --write .",
         "format:check": "biome format .",
         "build": "bun build --compile src/index.ts --outfile ./dist/dot",
