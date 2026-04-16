@@ -1,0 +1,166 @@
+import { Command } from "commander";
+import {
+    chmodSync,
+    closeSync,
+    fsyncSync,
+    openSync,
+    renameSync,
+    unlinkSync,
+    writeFileSync,
+    writeSync,
+} from "node:fs";
+import { execSync } from "node:child_process";
+import { arch, platform } from "node:os";
+import { resolve } from "node:path";
+import pkg from "../../package.json" with { type: "json" };
+
+const REPO = "paritytech/playground-cli";
+
+export function resolveInstallDir(env: NodeJS.ProcessEnv = process.env): string {
+    const home = env.HOME;
+    if (!home) {
+        throw new Error(
+            "HOME is not set — cannot determine install location. Run with HOME=<your home directory>.",
+        );
+    }
+    return resolve(home, ".polkadot", "bin");
+}
+
+type Os = "darwin" | "linux";
+type Cpu = "arm64" | "x64";
+
+export function detectAsset(os: Os = platform() as Os, cpu: Cpu = arch() as Cpu): string {
+    const normalisedOs: Os = os === "darwin" ? "darwin" : "linux";
+    const normalisedCpu: Cpu = cpu === "arm64" ? "arm64" : "x64";
+    return `dot-${normalisedOs}-${normalisedCpu}`;
+}
+
+export async function fetchLatestTag(fetchImpl: typeof fetch = fetch): Promise<string> {
+    const res = await fetchImpl(`https://api.github.com/repos/${REPO}/releases/latest`, {
+        headers: { Accept: "application/vnd.github.v3+json" },
+    });
+    if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
+    const data = (await res.json()) as { tag_name?: string };
+    if (!data.tag_name) throw new Error("Could not determine latest release");
+    return data.tag_name;
+}
+
+async function downloadBinary(
+    tag: string,
+    asset: string,
+    fetchImpl: typeof fetch = fetch,
+): Promise<Buffer> {
+    const url = `https://github.com/${REPO}/releases/download/${tag}/${asset}`;
+    const res = await fetchImpl(url);
+    if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+    return Buffer.from(await res.arrayBuffer());
+}
+
+/**
+ * Atomically install `bytes` to `dest`.
+ *
+ * Writes to a sibling `${dest}.new` file, fsyncs, then renames into place.
+ * This is safe to run even when `dest` is the currently executing binary —
+ * the running process keeps its open file descriptor on the old inode while
+ * new invocations see the new one. Falls back to direct write if the atomic
+ * path fails (e.g. different filesystems, read-only parent).
+ */
+export function atomicInstall(dest: string, bytes: Buffer, mode = 0o755): void {
+    const staging = `${dest}.new`;
+    try {
+        const fd = openSync(staging, "w", mode);
+        try {
+            writeSync(fd, bytes);
+            fsyncSync(fd);
+        } finally {
+            closeSync(fd);
+        }
+        chmodSync(staging, mode);
+        renameSync(staging, dest);
+    } catch (err) {
+        // Clean up a half-written staging file before falling through.
+        try {
+            unlinkSync(staging);
+        } catch {
+            // ignore — may not exist
+        }
+        // Fall back to direct overwrite (previous behaviour). Still better
+        // than leaving the user with no installed binary.
+        writeFileSync(dest, bytes);
+        chmodSync(dest, mode);
+        // Re-throw is not what we want here — the direct write succeeded.
+        // But propagate the original error detail in a warning.
+        console.warn(
+            `Atomic install failed, wrote directly: ${err instanceof Error ? err.message : String(err)}`,
+        );
+    }
+}
+
+export const updateCommand = new Command("update")
+    .description("Update dot to the latest version")
+    .action(async () => {
+        let installDir: string;
+        try {
+            installDir = resolveInstallDir();
+        } catch (err) {
+            console.error(err instanceof Error ? err.message : "Could not resolve install dir");
+            process.exit(1);
+        }
+
+        const current = `v${pkg.version}`;
+        process.stdout.write("Checking for updates... ");
+
+        let tag: string;
+        try {
+            tag = await fetchLatestTag();
+        } catch (err) {
+            console.log("failed");
+            console.error(
+                `Could not reach GitHub: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            process.exit(1);
+        }
+
+        if (tag === current) {
+            console.log(`already on latest (${current})`);
+            return;
+        }
+
+        console.log(`${current} → ${tag}`);
+        process.stdout.write("Downloading... ");
+
+        const asset = detectAsset();
+        let binary: Buffer;
+        try {
+            binary = await downloadBinary(tag, asset);
+        } catch (err) {
+            console.log("failed");
+            console.error(err instanceof Error ? err.message : "Download failed");
+            process.exit(1);
+        }
+
+        const dest = resolve(installDir, "dot");
+        try {
+            atomicInstall(dest, binary);
+
+            if (platform() === "darwin") {
+                // Re-sign so Gatekeeper doesn't quarantine the fresh binary.
+                // Both calls are best-effort — an unsigned binary still runs.
+                try {
+                    execSync(`codesign --sign - --force "${dest}"`, { stdio: "ignore" });
+                } catch {}
+                try {
+                    execSync(`xattr -c "${dest}"`, { stdio: "ignore" });
+                } catch {}
+            }
+        } catch (err) {
+            console.log("failed");
+            console.error(
+                `Could not write to ${dest}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            process.exit(1);
+        }
+
+        console.log("done");
+        console.log(`Updated dot to ${tag}`);
+    });

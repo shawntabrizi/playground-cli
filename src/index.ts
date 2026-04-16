@@ -6,6 +6,7 @@ import { initCommand } from "./commands/init/index.js";
 import { modCommand } from "./commands/mod.js";
 import { buildCommand } from "./commands/build.js";
 import { deployCommand } from "./commands/deploy.js";
+import { updateCommand } from "./commands/update.js";
 
 const program = new Command()
     .name("dot")
@@ -16,5 +17,6 @@ program.addCommand(initCommand);
 program.addCommand(modCommand);
 program.addCommand(buildCommand);
 program.addCommand(deployCommand);
+program.addCommand(updateCommand);
 
 program.parse();

@@ -14,13 +14,18 @@ export const initCommand = new Command("init")
         let existingAddress: string | null = null;
 
         if (!opts.yes) {
-            const result = await connect();
-            if (result.kind === "existing") {
-                existingAddress = result.address;
-            } else {
-                login = result.login;
-                console.log("  Scan with the Polkadot mobile app to log in:\n");
-                console.log(result.qrCode);
+            try {
+                const result = await connect();
+                if (result.kind === "existing") {
+                    existingAddress = result.address;
+                } else {
+                    login = result.login;
+                    console.log("  Scan with the Polkadot mobile app to log in:\n");
+                    console.log(result.qrCode);
+                }
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : "Login service unavailable";
+                console.log(`  Login skipped: ${msg}\n`);
             }
         }
 
