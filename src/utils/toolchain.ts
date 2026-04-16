@@ -17,14 +17,17 @@ function run(cmd: string, opts?: { shell?: string }): Promise<string> {
 function runPiped(cmd: string, onData?: (line: string) => void): Promise<void> {
     return new Promise((resolve, reject) => {
         const child = spawn(cmd, { stdio: "pipe", shell: "/bin/bash" });
+        const output: string[] = [];
         const forward = (chunk: Buffer) => {
-            const lines = chunk.toString().split("\n").filter(Boolean);
-            for (const line of lines) onData?.(line);
+            for (const line of chunk.toString().split("\n").filter(Boolean)) {
+                output.push(line);
+                onData?.(line);
+            }
         };
         child.stdout?.on("data", forward);
         child.stderr?.on("data", forward);
         child.on("close", (code: number) =>
-            code === 0 ? resolve() : reject(new Error(`exit ${code}`)),
+            code === 0 ? resolve() : reject(new Error(output.join("\n") || `exit ${code}`)),
         );
     });
 }

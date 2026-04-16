@@ -64,15 +64,16 @@ export function DependencyList({ onDone }: { onDone: () => void }) {
                         setSteps((prev) =>
                             prev.map((s, j) => (j === i ? { ...s, status: "ok" } : s)),
                         );
-                    } catch {
+                        setOutput([]);
+                    } catch (err) {
                         ok = false;
+                        const msg = err instanceof Error ? err.message : String(err);
                         setSteps((prev) =>
                             prev.map((s, j) =>
-                                j === i ? { ...s, status: "failed", message: step.manualHint } : s,
+                                j === i ? { ...s, status: "failed", message: msg } : s,
                             ),
                         );
                     }
-                    setOutput([]);
                 }
             }
 
@@ -130,10 +131,19 @@ export function DependencyList({ onDone }: { onDone: () => void }) {
                             <Text bold>All dependencies installed</Text>
                         </Text>
                     ) : (
-                        <Text>
-                            <Text color="red">✖</Text>{" "}
-                            <Text bold>Some dependencies failed to install</Text>
-                        </Text>
+                        <Box flexDirection="column">
+                            {steps
+                                .filter((s) => s.status === "failed")
+                                .map((s) => (
+                                    <Box key={s.name} flexDirection="column">
+                                        <Text>
+                                            <Text color="red">✖</Text>{" "}
+                                            <Text bold>{s.name}</Text>
+                                        </Text>
+                                        {s.message && <Text>{s.message}</Text>}
+                                    </Box>
+                                ))}
+                        </Box>
                     )}
                 </Box>
             )}
