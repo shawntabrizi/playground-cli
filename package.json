@@ -9,6 +9,7 @@
         "dot": "./src/index.ts"
     },
     "scripts": {
+        "postinstall": "bash node_modules/@polkadot-apps/terminal/scripts/patch-wasm.sh",
         "format": "biome format --write .",
         "format:check": "biome format .",
         "build": "bun build --compile src/index.ts --outfile ./dist/dot",
@@ -20,6 +21,7 @@
         "@polkadot-apps/chain-client": "latest",
         "@polkadot-apps/contracts": "latest",
         "@polkadot-apps/keys": "latest",
+        "@polkadot-apps/terminal": "latest",
         "@polkadot-apps/tx": "latest",
         "@polkadot-apps/utils": "latest",
         "commander": "^12.0.0",
