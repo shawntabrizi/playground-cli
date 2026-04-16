@@ -15,6 +15,13 @@
         "cli:install": "bun build --compile src/index.ts --outfile ~/.polkadot/bin/dot"
     },
     "dependencies": {
+        "@polkadot-apps/address": "latest",
+        "@polkadot-apps/bulletin": "latest",
+        "@polkadot-apps/chain-client": "latest",
+        "@polkadot-apps/contracts": "latest",
+        "@polkadot-apps/keys": "latest",
+        "@polkadot-apps/tx": "latest",
+        "@polkadot-apps/utils": "latest",
         "commander": "^12.0.0",
         "ink": "^5.2.1",
         "react": "^18.3.1",
