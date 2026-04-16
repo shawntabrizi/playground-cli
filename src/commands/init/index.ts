@@ -24,16 +24,14 @@ export const initCommand = new Command("init")
             }
         }
 
-        await new Promise<void>((resolve) => {
-            const app = render(
-                React.createElement(InitScreen, {
-                    login,
-                    existingAddress,
-                    onDone: resolve,
-                }),
-            );
-            app.waitUntilExit().then(resolve);
-        });
+        const app = render(
+            React.createElement(InitScreen, {
+                login,
+                existingAddress,
+                onDone: () => app.unmount(),
+            }),
+        );
+        await app.waitUntilExit();
 
         console.log();
         process.exit(process.exitCode ?? 0);

@@ -11,6 +11,7 @@ interface StepState {
     name: string;
     status: Status;
     message?: string;
+    hint?: string;
 }
 
 function StatusIcon({ status }: { status: Status }) {
@@ -31,7 +32,11 @@ function StatusIcon({ status }: { status: Status }) {
 
 export function DependencyList({ onDone }: { onDone: () => void }) {
     const [steps, setSteps] = useState<StepState[]>([
-        ...TOOL_STEPS.map((s) => ({ name: s.name, status: "pending" as Status })),
+        ...TOOL_STEPS.map((s) => ({
+            name: s.name,
+            status: "pending" as Status,
+            hint: s.manualHint,
+        })),
         { name: "Authenticated", status: "pending" as Status },
     ]);
     const [output, setOutput] = useState<string[]>([]);
@@ -140,6 +145,7 @@ export function DependencyList({ onDone }: { onDone: () => void }) {
                                             <Text color="red">✖</Text> <Text bold>{s.name}</Text>
                                         </Text>
                                         {s.message && <Text>{s.message}</Text>}
+                                        {s.hint && <Text dimColor>Manual install: {s.hint}</Text>}
                                     </Box>
                                 ))}
                         </Box>

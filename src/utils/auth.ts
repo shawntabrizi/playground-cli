@@ -60,16 +60,25 @@ export async function connect(): Promise<ConnectResult> {
     // Start authenticate — this triggers the pairing flow and QR emission
     const authPromise = adapter.sso.authenticate();
 
-    // Wait for the QR payload
-    const qrCode = await new Promise<string>((resolve) => {
-        let done = false;
-        adapter.sso.pairingStatus.subscribe(async (status: PairingStatus) => {
-            if (status.step === "pairing" && !done) {
-                done = true;
-                resolve(await renderQrCode(status.payload));
-            }
-        });
-    });
+    // Wait for the QR payload (with timeout)
+    const qrCode = await Promise.race([
+        new Promise<string>((resolve) => {
+            let done = false;
+            const unsub = adapter.sso.pairingStatus.subscribe(async (status: PairingStatus) => {
+                if (status.step === "pairing" && !done) {
+                    done = true;
+                    unsub();
+                    resolve(await renderQrCode(status.payload));
+                }
+            });
+        }),
+        new Promise<never>((_, reject) =>
+            setTimeout(
+                () => reject(new Error("Timed out waiting for login service — check your network")),
+                30_000,
+            ),
+        ),
+    ]);
 
     return { kind: "qr", qrCode, login: { adapter, authPromise } };
 }

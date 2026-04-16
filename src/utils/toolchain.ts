@@ -1,12 +1,12 @@
 import { exec, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { homedir, platform } from "node:os";
+import { arch, homedir, platform } from "node:os";
 
 /** Async exec — resolves with stdout, rejects on non-zero exit. */
 function run(cmd: string, opts?: { shell?: string }): Promise<string> {
     return new Promise((resolve, reject) => {
-        exec(cmd, { shell: opts?.shell ?? "/bin/bash" }, (err, stdout) => {
+        exec(cmd, { shell: opts?.shell ?? "bash" }, (err, stdout) => {
             if (err) reject(err);
             else resolve(stdout);
         });
@@ -16,7 +16,7 @@ function run(cmd: string, opts?: { shell?: string }): Promise<string> {
 /** Async exec with output piped to a callback. */
 function runPiped(cmd: string, onData?: (line: string) => void): Promise<void> {
     return new Promise((resolve, reject) => {
-        const child = spawn(cmd, { stdio: "pipe", shell: "/bin/bash" });
+        const child = spawn(cmd, { stdio: "pipe", shell: "bash" });
         const output: string[] = [];
         const forward = (chunk: Buffer) => {
             for (const line of chunk.toString().split("\n").filter(Boolean)) {
@@ -33,6 +33,9 @@ function runPiped(cmd: string, onData?: (line: string) => void): Promise<void> {
 }
 
 async function commandExists(cmd: string): Promise<boolean> {
+    if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) {
+        throw new Error(`Invalid command name: ${cmd}`);
+    }
     try {
         await run(`command -v ${cmd}`);
         return true;
@@ -122,14 +125,11 @@ export const TOOL_STEPS: ToolStep[] = [
             if (!(await commandExists("ipfs"))) {
                 if (platform() === "darwin" && (await commandExists("brew"))) {
                     await runPiped("brew install ipfs", onData);
-                } else if (platform() === "darwin") {
-                    await runPiped(
-                        "curl -fsSL https://dist.ipfs.tech/kubo/v0.33.2/kubo_v0.33.2_darwin-arm64.tar.gz | tar xz && cd kubo && sudo bash install.sh && cd .. && rm -rf kubo",
-                        onData,
-                    );
                 } else {
+                    const os = platform() === "darwin" ? "darwin" : "linux";
+                    const cpu = arch() === "arm64" ? "arm64" : "amd64";
                     await runPiped(
-                        "curl -fsSL https://dist.ipfs.tech/kubo/v0.33.2/kubo_v0.33.2_linux-amd64.tar.gz | tar xz && cd kubo && sudo bash install.sh && cd .. && rm -rf kubo",
+                        `curl -fsSL https://dist.ipfs.tech/kubo/v0.33.2/kubo_v0.33.2_${os}-${cpu}.tar.gz | tar xz && cd kubo && sudo bash install.sh && cd .. && rm -rf kubo`,
                         onData,
                     );
                 }
