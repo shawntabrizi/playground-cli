@@ -38,9 +38,6 @@ importers:
       ink:
         specifier: ^5.2.1
         version: 5.2.1(@types/react@18.3.28)(react-devtools-core@file:stubs/react-devtools-core)(react@18.3.1)
-      polkadot-api:
-        specifier: latest
-        version: 2.0.1(esbuild@0.25.12)(rxjs@7.8.2)
       react:
         specifier: ^18.3.1
         version: 18.3.1
