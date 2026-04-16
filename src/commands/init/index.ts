@@ -5,11 +5,17 @@ import { DependencyList } from "./DependencyList.js";
 
 export const initCommand = new Command("init")
     .description("Install prerequisites and login via mobile QR")
-    .action(async () => {
+    .option("-y, --yes", "Skip interactive prompts")
+    .action(async (opts) => {
         console.log();
 
         await new Promise<void>((resolve) => {
-            const app = render(React.createElement(DependencyList, { onDone: resolve }));
+            const app = render(
+                React.createElement(DependencyList, {
+                    skipAuth: opts.yes ?? false,
+                    onDone: resolve,
+                }),
+            );
             app.waitUntilExit().then(resolve);
         });
 

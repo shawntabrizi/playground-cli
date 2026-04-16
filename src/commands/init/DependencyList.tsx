@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import { Spinner, Done, Failed, Warning } from "../../utils/ui/index.js";
-import { TOOL_STEPS, commandExists, isGhAuthenticated } from "../../utils/toolchain.js";
+import { TOOL_STEPS, isGhAuthenticated } from "../../utils/toolchain.js";
 
 type Status = "pending" | "checking" | "installing" | "ok" | "failed" | "warning";
 
@@ -27,10 +27,17 @@ function StatusIcon({ status }: { status: Status }) {
     }
 }
 
-export function DependencyList({ onDone }: { onDone: () => void }) {
+export function DependencyList({
+    skipAuth,
+    onDone,
+}: {
+    skipAuth: boolean;
+    onDone: () => void;
+}) {
+    const showAuth = !skipAuth;
     const [steps, setSteps] = useState<StepState[]>([
         ...TOOL_STEPS.map((s) => ({ name: s.name, status: "pending" as Status })),
-        { name: "GitHub CLI", status: "pending" as Status },
+        ...(showAuth ? [{ name: "Authenticated", status: "pending" as Status }] : []),
     ]);
     const [complete, setComplete] = useState(false);
     const [allOk, setAllOk] = useState(true);
@@ -45,14 +52,14 @@ export function DependencyList({ onDone }: { onDone: () => void }) {
                     prev.map((s, j) => (j === i ? { ...s, status: "checking" } : s)),
                 );
 
-                if (step.check()) {
+                if (await step.check()) {
                     setSteps((prev) => prev.map((s, j) => (j === i ? { ...s, status: "ok" } : s)));
                 } else {
                     setSteps((prev) =>
                         prev.map((s, j) => (j === i ? { ...s, status: "installing" } : s)),
                     );
                     try {
-                        step.install();
+                        await step.install();
                         setSteps((prev) =>
                             prev.map((s, j) => (j === i ? { ...s, status: "ok" } : s)),
                         );
@@ -67,26 +74,22 @@ export function DependencyList({ onDone }: { onDone: () => void }) {
                 }
             }
 
-            // GitHub CLI (advisory — not auto-installed)
-            const ghIdx = TOOL_STEPS.length;
-            if (!commandExists("gh")) {
-                setSteps((prev) =>
-                    prev.map((s, j) =>
-                        j === ghIdx
-                            ? { ...s, status: "warning", message: "https://cli.github.com" }
-                            : s,
-                    ),
-                );
-            } else if (!isGhAuthenticated()) {
-                setSteps((prev) =>
-                    prev.map((s, j) =>
-                        j === ghIdx
-                            ? { ...s, status: "warning", message: "Run: gh auth login" }
-                            : s,
-                    ),
-                );
-            } else {
-                setSteps((prev) => prev.map((s, j) => (j === ghIdx ? { ...s, status: "ok" } : s)));
+            // gh auth (only if not skipped via -y)
+            if (showAuth) {
+                const authIdx = TOOL_STEPS.length;
+                if (await isGhAuthenticated()) {
+                    setSteps((prev) =>
+                        prev.map((s, j) => (j === authIdx ? { ...s, status: "ok" } : s)),
+                    );
+                } else {
+                    setSteps((prev) =>
+                        prev.map((s, j) =>
+                            j === authIdx
+                                ? { ...s, status: "warning", message: "Run: gh auth login" }
+                                : s,
+                        ),
+                    );
+                }
             }
 
             setAllOk(ok);
