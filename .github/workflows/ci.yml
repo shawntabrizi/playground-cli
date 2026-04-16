@@ -9,7 +9,7 @@ on:
 jobs:
     format:
         name: Format
-        runs-on: ubuntu-latest
+        runs-on: parity-default
         steps:
             - uses: actions/checkout@v4
             - uses: pnpm/action-setup@v4
