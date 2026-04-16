@@ -29,17 +29,10 @@ function StatusIcon({ status }: { status: Status }) {
     }
 }
 
-export function DependencyList({
-    skipAuth,
-    onDone,
-}: {
-    skipAuth: boolean;
-    onDone: () => void;
-}) {
-    const showAuth = !skipAuth;
+export function DependencyList({ onDone }: { onDone: () => void }) {
     const [steps, setSteps] = useState<StepState[]>([
         ...TOOL_STEPS.map((s) => ({ name: s.name, status: "pending" as Status })),
-        ...(showAuth ? [{ name: "Authenticated", status: "pending" as Status }] : []),
+        { name: "Authenticated", status: "pending" as Status },
     ]);
     const [output, setOutput] = useState<string[]>([]);
     const [complete, setComplete] = useState(false);
@@ -83,22 +76,20 @@ export function DependencyList({
                 }
             }
 
-            // gh auth (only if not skipped via -y)
-            if (showAuth) {
-                const authIdx = TOOL_STEPS.length;
-                if (await isGhAuthenticated()) {
-                    setSteps((prev) =>
-                        prev.map((s, j) => (j === authIdx ? { ...s, status: "ok" } : s)),
-                    );
-                } else {
-                    setSteps((prev) =>
-                        prev.map((s, j) =>
-                            j === authIdx
-                                ? { ...s, status: "warning", message: "Run: gh auth login" }
-                                : s,
-                        ),
-                    );
-                }
+            // gh auth check (advisory — not auto-login)
+            const authIdx = TOOL_STEPS.length;
+            if (await isGhAuthenticated()) {
+                setSteps((prev) =>
+                    prev.map((s, j) => (j === authIdx ? { ...s, status: "ok" } : s)),
+                );
+            } else {
+                setSteps((prev) =>
+                    prev.map((s, j) =>
+                        j === authIdx
+                            ? { ...s, status: "warning", message: "Run: gh auth login" }
+                            : s,
+                    ),
+                );
             }
 
             setAllOk(ok);
@@ -122,11 +113,11 @@ export function DependencyList({
                     {step.message && <Text dimColor>{step.message}</Text>}
                 </Box>
             ))}
-            {output.length > 0 && (
-                <Box flexDirection="column" marginTop={1} paddingLeft={2}>
-                    {output.map((line, i) => (
+            {!complete && (
+                <Box flexDirection="column" marginTop={1} paddingLeft={2} height={OUTPUT_LINES}>
+                    {Array.from({ length: OUTPUT_LINES }, (_, i) => (
                         <Text key={i} dimColor>
-                            {line}
+                            {output[i] ?? " "}
                         </Text>
                     ))}
                 </Box>
