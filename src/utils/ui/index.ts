@@ -1,1 +1,1 @@
-export { Spinner, Done, Failed, Warning } from "./components/spinner.js";
+export { Spinner, Done, Failed, Warning } from "./components/loading.js";
