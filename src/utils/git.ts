@@ -1,0 +1,82 @@
+/**
+ * Git and GitHub CLI utilities.
+ */
+
+import { execFile, exec } from "node:child_process";
+import { rmSync } from "node:fs";
+import { resolve } from "node:path";
+
+type Log = (line: string) => void;
+
+/** Run a command, streaming stdout+stderr to a log callback. */
+function spawn(cmd: string, args: string[], options?: { cwd?: string; log?: Log }): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const proc = execFile(cmd, args, { cwd: options?.cwd });
+        const forward = (data: Buffer | string) => {
+            for (const line of String(data).split("\n").filter(Boolean)) {
+                options?.log?.(line);
+            }
+        };
+        proc.stdout?.on("data", forward);
+        proc.stderr?.on("data", forward);
+        proc.on("close", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`${cmd} failed (exit ${code})`));
+        });
+    });
+}
+
+/** Check if the GitHub CLI is authenticated. */
+export function isGhAuthenticated(): boolean {
+    try {
+        require("node:child_process").execSync("gh auth status", { stdio: "pipe" });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/** Fork a repo on GitHub and clone it locally (SSH). Streams git output to log. */
+export async function forkAndClone(
+    repo: string,
+    targetDir: string,
+    options?: { branch?: string; log?: Log },
+): Promise<void> {
+    const args = ["repo", "fork", repo, "--clone", "--fork-name", targetDir];
+    if (options?.branch) args.push("--", "--branch", options.branch);
+    await spawn("gh", args, { log: options?.log });
+}
+
+/** Clone a repo with fresh git history. Streams git output to log. */
+export async function cloneRepo(
+    repo: string,
+    targetDir: string,
+    options?: { branch?: string; log?: Log },
+): Promise<void> {
+    const args = ["clone"];
+    if (options?.branch) args.push("--branch", options.branch);
+    args.push(repo, targetDir);
+    await spawn("git", args, { log: options?.log });
+    rmSync(resolve(targetDir, ".git"), { recursive: true, force: true });
+    options?.log?.("Initializing fresh git history...");
+    await spawn("git", ["init"], { cwd: targetDir, log: options?.log });
+}
+
+/** Run a shell command, streaming output to log. */
+export async function runCommand(cmd: string, options: { cwd?: string; log?: Log }): Promise<void> {
+    const { cwd, log } = options;
+    return new Promise((resolve, reject) => {
+        const proc = exec(cmd, { cwd });
+        const forward = (data: Buffer | string) => {
+            for (const line of String(data).split("\n").filter(Boolean)) {
+                log?.(line);
+            }
+        };
+        proc.stdout?.on("data", forward);
+        proc.stderr?.on("data", forward);
+        proc.on("close", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`Command failed (exit ${code})`));
+        });
+    });
+}
