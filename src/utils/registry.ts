@@ -3,7 +3,7 @@
  */
 
 import { ContractManager } from "@polkadot-apps/contracts";
-import type { ResolvedSigner } from "./resolve-signer.js";
+import type { ResolvedSigner } from "./signer.js";
 
 import cdmJson from "../../cdm.json";
 
