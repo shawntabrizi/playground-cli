@@ -39,8 +39,8 @@ importers:
         specifier: latest
         version: 0.4.0
       bulletin-deploy:
-        specifier: 0.6.9-rc.6
-        version: 0.6.9-rc.6(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
+        specifier: 0.6.9
+        version: 0.6.9(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -1602,8 +1602,8 @@ packages:
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
 
-  bulletin-deploy@0.6.9-rc.6:
-    resolution: {integrity: sha512-oErhG1uMmdlqFR5Zt4NYJ7BIoscbVwri+u8w4wVWHe4rqgLSd6lXgZ9dwSRAXPcCVsYI88Wt2FB3r9OeVtEiag==}
+  bulletin-deploy@0.6.9:
+    resolution: {integrity: sha512-LspXpFy4q7wnKr8X7+wO6nRzMK0lyVz/8rjZ6QcTAbf8xyJa8qW6bpdXw4g70IXJGUV0HBnDHpTmpQvnUOQVuw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -5013,7 +5013,7 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bulletin-deploy@0.6.9-rc.6(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3):
+  bulletin-deploy@0.6.9(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3):
     dependencies:
       '@dotdm/cdm': 0.5.4(@polkadot-api/ink-contracts@0.6.1)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
       '@ipld/car': 5.4.3
