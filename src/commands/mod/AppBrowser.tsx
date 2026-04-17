@@ -141,11 +141,11 @@ export function AppBrowser({ registry, onSelect }: Props) {
                 const sel = idx === cursor;
                 const num = sel
                     ? `>${String(idx + 1).padStart(COL.num - 1)}`
-                    : String(idx + 1).padStart(COL.num);
+                    : ` ${String(idx + 1).padStart(COL.num - 1)}`;
                 return (
                     <Box key={idx}>
                         <Text bold={sel} color={sel ? "cyan" : undefined}>
-                            {num} │ {pad(app.domain, COL.domain)}│{" "}
+                            {num}│ {pad(app.domain, COL.domain)}│{" "}
                             {pad(app.name ?? (app.name === null ? "…" : "—"), COL.name)}│{" "}
                             {pad(app.description ?? "", descW)}
                         </Text>

@@ -2,8 +2,8 @@
  * Reusable step runner — displays a list of sequential steps with
  * spinner → ✔/✖/! transitions and a fixed-height log box for output.
  *
- * If a step throws an error whose `.name` is "warning", it's shown
- * with a yellow ! instead of a red ✖ and execution continues.
+ * Errors are passed to onDone for the parent to display below the UI.
+ * Warnings (isWarning = true) show inline and don't stop execution.
  */
 
 import { useState, useEffect } from "react";
@@ -40,10 +40,15 @@ function StatusIcon({ status }: { status: StepStatus }) {
     }
 }
 
+export interface StepRunnerResult {
+    ok: boolean;
+    error?: string;
+}
+
 interface Props {
     title: string;
     steps: Step[];
-    onDone: (ok: boolean) => void;
+    onDone: (result: StepRunnerResult) => void;
 }
 
 export function StepRunner({ title, steps, onDone }: Props) {
@@ -56,7 +61,7 @@ export function StepRunner({ title, steps, onDone }: Props) {
         let cancelled = false;
 
         (async () => {
-            let allOk = true;
+            let error: string | undefined;
 
             for (let i = 0; i < steps.length; i++) {
                 if (cancelled) break;
@@ -81,20 +86,17 @@ export function StepRunner({ title, steps, onDone }: Props) {
                                 j === i ? { ...s, status: "warning", message: msg } : s,
                             ),
                         );
-                        // Warnings don't stop execution
                     } else {
-                        allOk = false;
+                        error = msg;
                         setStates((prev) =>
-                            prev.map((s, j) =>
-                                j === i ? { ...s, status: "failed", message: msg } : s,
-                            ),
+                            prev.map((s, j) => (j === i ? { ...s, status: "failed" } : s)),
                         );
                         break;
                     }
                 }
             }
 
-            if (!cancelled) onDone(allOk);
+            if (!cancelled) onDone({ ok: !error, error });
         })();
 
         return () => {
@@ -113,8 +115,10 @@ export function StepRunner({ title, steps, onDone }: Props) {
             {states.map((step) => (
                 <Box key={step.name} gap={1}>
                     <StatusIcon status={step.status} />
-                    <Text>{step.name}</Text>
-                    {step.message && <Text dimColor> — {step.message.split("\n")[0]}</Text>}
+                    <Text>
+                        {step.name}
+                        {step.message ? <Text dimColor> — {step.message}</Text> : ""}
+                    </Text>
                 </Box>
             ))}
 

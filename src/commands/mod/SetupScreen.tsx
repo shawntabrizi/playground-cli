@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { Box, Text } from "ink";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getGateway, fetchJson } from "@polkadot-apps/bulletin";
-import { StepRunner, type Step } from "../../utils/ui/index.js";
+import { StepRunner, type Step, type StepRunnerResult } from "../../utils/ui/index.js";
 import { isGhAuthenticated, forkAndClone, cloneRepo, runCommand } from "../../utils/git.js";
 
 interface AppMetadata {
@@ -78,12 +79,26 @@ export function SetupScreen({
         },
     ];
 
+    const [error, setError] = useState<string | null>(null);
+
     return (
         <Box flexDirection="column">
-            <StepRunner title={`Modding ${domain}`} steps={steps} onDone={onDone} />
+            <StepRunner
+                title={`Modding ${domain}`}
+                steps={steps}
+                onDone={(result) => {
+                    if (result.error) setError(result.error);
+                    onDone(result.ok);
+                }}
+            />
             <Box marginTop={1} paddingLeft={2}>
                 <Text dimColor>→ {targetDir}</Text>
             </Box>
+            {error && (
+                <Box flexDirection="column" marginTop={1} paddingLeft={2}>
+                    <Text color="red">{error}</Text>
+                </Box>
+            )}
         </Box>
     );
 }

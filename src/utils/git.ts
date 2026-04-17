@@ -12,16 +12,23 @@ type Log = (line: string) => void;
 function spawn(cmd: string, args: string[], options?: { cwd?: string; log?: Log }): Promise<void> {
     return new Promise((resolve, reject) => {
         const proc = execFile(cmd, args, { cwd: options?.cwd });
+        const stderr: string[] = [];
         const forward = (data: Buffer | string) => {
             for (const line of String(data).split("\n").filter(Boolean)) {
                 options?.log?.(line);
             }
         };
         proc.stdout?.on("data", forward);
-        proc.stderr?.on("data", forward);
+        proc.stderr?.on("data", (data: Buffer | string) => {
+            forward(data);
+            stderr.push(String(data));
+        });
         proc.on("close", (code) => {
             if (code === 0) resolve();
-            else reject(new Error(`${cmd} failed (exit ${code})`));
+            else {
+                const detail = stderr.join("").trim().split("\n").pop() ?? "";
+                reject(new Error(detail || `${cmd} failed (exit ${code})`));
+            }
         });
     });
 }
