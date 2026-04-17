@@ -26,9 +26,14 @@ interface StepState {
 const LOG_LINES = 5;
 
 function StatusIcon({ status }: { status: StepStatus }) {
+    // ✔ and ✖ render wide (2 cols). Pad spinner and · to match.
     switch (status) {
         case "running":
-            return <Spinner />;
+            return (
+                <Text>
+                    <Spinner />{" "}
+                </Text>
+            );
         case "ok":
             return <Done />;
         case "failed":
@@ -36,7 +41,7 @@ function StatusIcon({ status }: { status: StepStatus }) {
         case "warning":
             return <Warning />;
         default:
-            return <Text dimColor>·</Text>;
+            return <Text dimColor>· </Text>;
     }
 }
 

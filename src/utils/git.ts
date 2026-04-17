@@ -8,13 +8,24 @@ import { resolve } from "node:path";
 
 type Log = (line: string) => void;
 
+// Strip ANSI escape codes, cursor movements, and carriage returns so child
+// process output (including Ink programs like cdm) doesn't corrupt our UI.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ANSI stripping
+const ANSI_RE = /\x1B(?:\[[0-9;]*[A-Za-z]|\].*?\x07|[^[])/g;
+function sanitize(s: string): string {
+    return s.replace(ANSI_RE, "").replace(/\r/g, "");
+}
+
+/** Env vars that tell child processes to skip interactive/color output. */
+const PLAIN_ENV = { ...process.env, TERM: "dumb", NO_COLOR: "1", CI: "1" };
+
 /** Run a command, streaming stdout+stderr to a log callback. */
 function spawn(cmd: string, args: string[], options?: { cwd?: string; log?: Log }): Promise<void> {
     return new Promise((resolve, reject) => {
-        const proc = execFile(cmd, args, { cwd: options?.cwd });
+        const proc = execFile(cmd, args, { cwd: options?.cwd, env: PLAIN_ENV });
         const stderr: string[] = [];
         const forward = (data: Buffer | string) => {
-            for (const line of String(data).split("\n").filter(Boolean)) {
+            for (const line of sanitize(String(data)).split("\n").filter(Boolean)) {
                 options?.log?.(line);
             }
         };
@@ -73,9 +84,9 @@ export async function cloneRepo(
 export async function runCommand(cmd: string, options: { cwd?: string; log?: Log }): Promise<void> {
     const { cwd, log } = options;
     return new Promise((resolve, reject) => {
-        const proc = exec(cmd, { cwd });
+        const proc = exec(cmd, { cwd, env: PLAIN_ENV });
         const forward = (data: Buffer | string) => {
-            for (const line of String(data).split("\n").filter(Boolean)) {
+            for (const line of sanitize(String(data)).split("\n").filter(Boolean)) {
                 log?.(line);
             }
         };
