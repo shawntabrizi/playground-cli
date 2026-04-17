@@ -26,5 +26,7 @@ export function Failed() {
 }
 
 export function Warning() {
-    return <Text color="yellow">!</Text>;
+    // ✔ & ✖ render with a space to the right
+    // Add space manually here
+    return <Text color="yellow">! </Text>;
 }
