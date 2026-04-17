@@ -19,19 +19,16 @@ import {
 } from "@polkadot-apps/terminal";
 import { createTxSigner } from "./session-signer-patch.js";
 import type { PolkadotSigner } from "polkadot-api";
-
-const DEFAULT_METADATA_URL =
-    "https://gist.githubusercontent.com/ReinhardHatko/1967dd3f4afe78683cc0ba14d6ec8744/raw/c1625eb7ed7671b7e09a3fa2a25998dde33c70b8/metadata.json";
-const DEFAULT_PEOPLE_ENDPOINTS = ["wss://paseo-people-next-rpc.polkadot.io"];
+import { DAPP_ID, TERMINAL_METADATA_URL, getChainConfig } from "../config.js";
 
 /** How long we wait for the statement store to publish the pairing QR. */
 const QR_TIMEOUT_MS = 60_000;
 
 function createAdapter(): TerminalAdapter {
     return createTerminalAdapter({
-        appId: "dot-cli",
-        metadataUrl: DEFAULT_METADATA_URL,
-        endpoints: DEFAULT_PEOPLE_ENDPOINTS,
+        appId: DAPP_ID,
+        metadataUrl: TERMINAL_METADATA_URL,
+        endpoints: getChainConfig().peopleEndpoints,
     });
 }
 
