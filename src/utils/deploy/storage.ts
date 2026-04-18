@@ -89,6 +89,13 @@ export async function runStorageDeploy(options: StorageDeployOptions): Promise<D
  * We silence the direct prints because the TUI renders its own view derived
  * from the parsed events. If there is no `onLogEvent` sink we still parse
  * but emit nothing, so pool/DotNS log noise doesn't leak into the Ink render.
+ *
+ * `DOT_DEPLOY_VERBOSE=1`: in addition to parsing, write every bulletin-deploy
+ * log line to stderr prefixed with a `[+<seconds>s]` timestamp. This is the
+ * diagnostic path for OOM / freeze reports — you get the exact last line
+ * bulletin-deploy managed to print before the process froze, plus timing for
+ * every chunk state transition (`broadcasting` → `included` → `finalized`).
+ * Combine with `DOT_MEMORY_TRACE=1` to correlate log events with RSS growth.
  */
 function interceptConsoleLog(
     onEvent: ((event: DeployLogEvent) => void) | undefined,
@@ -97,9 +104,15 @@ function interceptConsoleLog(
     const originalLog = console.log;
     const originalWarn = console.warn;
     const originalError = console.error;
+    const verbose = process.env.DOT_DEPLOY_VERBOSE === "1";
+    const started = Date.now();
 
     const feed = (parts: unknown[]) => {
         const combined = parts.map((p) => (typeof p === "string" ? p : String(p))).join(" ");
+        if (verbose) {
+            const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+            process.stderr.write(`[+${elapsed}s] ${combined}\n`);
+        }
         for (const line of combined.split("\n")) {
             const event = parser.feed(line);
             if (event && onEvent) onEvent(event);
@@ -110,9 +123,12 @@ function interceptConsoleLog(
     console.warn = (...args: unknown[]) => feed(args);
     // bulletin-deploy only prints errors on the sad path; keep them visible on
     // stderr so diagnostics don't disappear if something unexpected happens.
+    // In verbose mode `feed()` already wrote to stderr — skip the double-print.
     console.error = (...args: unknown[]) => {
         feed(args);
-        originalError.apply(console, args as Parameters<typeof console.error>);
+        if (!verbose) {
+            originalError.apply(console, args as Parameters<typeof console.error>);
+        }
     };
 
     return () => {

@@ -15,6 +15,7 @@
 
 import type { DeployOptions } from "bulletin-deploy";
 import type { ResolvedSigner } from "../signer.js";
+import type { DeployPlan } from "./availability.js";
 
 export type SignerMode = "dev" | "phone";
 
@@ -53,6 +54,49 @@ export interface ResolveOptions {
     userSigner: ResolvedSigner | null;
     /** Whether `--playground` / the prompt enabled playground publish. */
     publishToPlayground: boolean;
+    /**
+     * Known DotNS plan from the availability check. Shapes the approvals list
+     * to match what bulletin-deploy will actually submit. Absent = we haven't
+     * run the check yet, so assume the most common path (new register, no
+     * PoP upgrade, 3 DotNS taps). The signing counter clamps up at runtime if
+     * we under-estimated, so users never see "step 5 of 4" even on this path.
+     */
+    plan?: DeployPlan;
+}
+
+/**
+ * DotNS approvals in the exact order bulletin-deploy will fire them. Order
+ * matters because `maybeWrapAuthForSigning` in run.ts labels each incoming
+ * `signTx` call by its index in this list — the Nth `signTx` is labelled
+ * with the Nth entry here, so a mismatch ends up showing "Finalize domain"
+ * on the phone when the app is actually asking for commitment.
+ */
+function dotnsApprovals(plan: DeployPlan | undefined): DeployApproval[] {
+    // Default to the most common path when the caller hasn't told us the
+    // plan yet. Counter will self-correct if we under-estimated.
+    const effective: DeployPlan = plan ?? { action: "register", needsPopUpgrade: false };
+
+    if (effective.action === "update") {
+        // Domain already owned by the signer — bulletin-deploy skips
+        // `register()` entirely (no commitment, no finalize, no PoP grant)
+        // and jumps straight to `setContenthash`. So only one tap.
+        return [{ phase: "dotns", label: "Link content (DotNS setContenthash)" }];
+    }
+
+    const approvals: DeployApproval[] = [];
+    if (effective.needsPopUpgrade) {
+        // `register()` submits `setUserPopStatus` first whenever the predicted
+        // post-grant status differs from the user's current one. Without this
+        // entry the counter previously ran one past total ("step 5 of 4") for
+        // any PoP-gated name.
+        approvals.push({ phase: "dotns", label: "Grant Proof of Personhood" });
+    }
+    approvals.push(
+        { phase: "dotns", label: "Reserve domain (DotNS commitment)" },
+        { phase: "dotns", label: "Finalize domain (DotNS register)" },
+        { phase: "dotns", label: "Link content (DotNS setContenthash)" },
+    );
+    return approvals;
 }
 
 export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
@@ -70,11 +114,7 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
             signer: opts.userSigner.signer,
             signerAddress: opts.userSigner.address,
         };
-        approvals.push(
-            { phase: "dotns", label: "Reserve domain (DotNS commitment)" },
-            { phase: "dotns", label: "Finalize domain (DotNS register)" },
-            { phase: "dotns", label: "Link content (DotNS setContenthash)" },
-        );
+        approvals.push(...dotnsApprovals(opts.plan));
     }
 
     // Playground publish always uses the user's signer so ownership ties to

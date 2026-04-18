@@ -34,6 +34,7 @@ export {
     formatAvailability,
     type AvailabilityResult,
     type CheckAvailabilityOptions,
+    type DeployPlan,
 } from "./availability.js";
 
 // Re-exported so SDK consumers (RevX) can tear down the shared Paseo client

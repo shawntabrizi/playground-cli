@@ -21,6 +21,7 @@ import {
     type DeployEvent,
     type DeployOutcome,
     type DeployPhase,
+    type DeployPlan,
     type SignerMode,
     type DeployApproval,
     type SigningEvent,
@@ -72,6 +73,10 @@ export function DeployScreen({
     const [domain, setDomain] = useState<string | null>(initialDomain);
     const [publishToPlayground, setPublishToPlayground] = useState<boolean | null>(initialPublish);
     const [domainError, setDomainError] = useState<string | null>(null);
+    // Captured from the availability check; feeds `resolveSignerSetup` so
+    // the summary card shows the correct phone-approval count (register +
+    // PoP upgrade = 4 DotNS taps, vs register alone = 3, vs update = 1).
+    const [plan, setPlan] = useState<DeployPlan | null>(null);
     const [stage, setStage] = useState<Stage>(() =>
         pickInitialStage(initialMode, initialBuildDir, initialDomain, initialPublish),
     );
@@ -168,6 +173,7 @@ export function DeployScreen({
                     ownerSs58Address={userSigner?.address}
                     onAvailable={(result) => {
                         setDomain(result.fullDomain);
+                        setPlan(result.plan);
                         advance(mode, buildDir, result.fullDomain);
                     }}
                     onUnavailable={(reason) => {
@@ -196,6 +202,7 @@ export function DeployScreen({
                 <ConfirmStage
                     inputs={resolved}
                     userSigner={userSigner}
+                    plan={plan}
                     onProceed={() => setStage({ kind: "running" })}
                     onCancel={() => {
                         onDone(null);
@@ -208,6 +215,7 @@ export function DeployScreen({
                     projectDir={projectDir}
                     inputs={resolved}
                     userSigner={userSigner}
+                    plan={plan}
                     onFinish={(outcome, chunkTimings) => {
                         setStage({ kind: "done", outcome });
                         // Surface completion on the terminal tab so users can glance over.
@@ -331,11 +339,13 @@ function ValidateDomainStage({
 function ConfirmStage({
     inputs,
     userSigner,
+    plan,
     onProceed,
     onCancel,
 }: {
     inputs: Resolved;
     userSigner: ResolvedSigner | null;
+    plan: DeployPlan | null;
     onProceed: () => void;
     onCancel: () => void;
 }) {
@@ -345,6 +355,7 @@ function ConfirmStage({
                 mode: inputs.mode,
                 userSigner,
                 publishToPlayground: inputs.publishToPlayground,
+                plan: plan ?? undefined,
             });
         } catch (err) {
             return {
@@ -352,7 +363,7 @@ function ConfirmStage({
                 error: err instanceof Error ? err.message : String(err),
             };
         }
-    }, [inputs, userSigner]);
+    }, [inputs, userSigner, plan]);
 
     const view = buildSummaryView({
         mode: inputs.mode,
@@ -442,12 +453,14 @@ function RunningStage({
     projectDir,
     inputs,
     userSigner,
+    plan,
     onFinish,
     onError,
 }: {
     projectDir: string;
     inputs: Resolved;
     userSigner: ResolvedSigner | null;
+    plan: DeployPlan | null;
     onFinish: (outcome: DeployOutcome, chunkTimings: number[]) => void;
     onError: (message: string) => void;
 }) {
@@ -509,6 +522,7 @@ function RunningStage({
                     mode: inputs.mode,
                     publishToPlayground: inputs.publishToPlayground,
                     userSigner,
+                    plan: plan ?? undefined,
                     onEvent: (event) => handleEvent(event),
                 });
                 if (!cancelled) onFinish(outcome, chunkTimingsRef.current);
