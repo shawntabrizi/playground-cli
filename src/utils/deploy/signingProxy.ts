@@ -21,10 +21,18 @@ export interface SigningCounter {
 
 export function createSigningCounter(total: number): SigningCounter {
     let step = 0;
+    // Treat the caller's `total` as a *minimum* — if the real deploy fires
+    // more sigs than we predicted (e.g. bulletin-deploy adds a new DotNS tx
+    // in a future version, or our PoP upgrade detection missed a case), the
+    // UI shows "step N of N" rather than the obviously-wrong "step N of N-1".
+    // Summary card's pre-deploy count can still be stale; this only fixes
+    // the runtime counter.
+    let runningTotal = total;
     return {
         next() {
             step += 1;
-            return { step, total };
+            if (step > runningTotal) runningTotal = step;
+            return { step, total: runningTotal };
         },
         count() {
             return step;

@@ -20,10 +20,21 @@
  *      main async flow returns, if the process hasn't exited naturally within
  *      a short grace period we exit anyway.
  *
- *   3. `startMemoryWatchdog()` samples `process.memoryUsage().rss` every few
- *      seconds. If it crosses a hard cap the process aborts with a loud
- *      error message rather than taking the user's machine down.
+ *   3. `startMemoryWatchdog()` samples `process.memoryUsage().rss` from a
+ *      dedicated worker thread. The worker has its own event loop, so a
+ *      microtask flood on the main thread (polkadot-api subscriptions firing
+ *      `.andThen(...)` chains faster than the queue drains) cannot starve
+ *      the sampler. An earlier `setInterval`-on-main-thread version was seen
+ *      to miss every sample while RSS climbed to 20 GB before macOS jetsam
+ *      delivered SIGKILL — giving the user a mystery "zsh: killed" instead
+ *      of our abort message. If the cap is crossed, the worker sends SIGKILL
+ *      to the containing process (its `process.pid` IS the main PID in
+ *      `worker_threads`). SIGKILL skips cleanup hooks, which is fine: at
+ *      this point the event loop is already starved and signal handlers
+ *      wouldn't fire anyway.
  */
+
+import { Worker } from "node:worker_threads";
 
 /**
  * Maximum RSS we're willing to tolerate before aborting the deploy. A
@@ -37,8 +48,12 @@
  */
 const MEMORY_LIMIT_BYTES = 4 * 1024 * 1024 * 1024; // 4 GB
 
-/** How often the watchdog samples memory. */
-const MEMORY_POLL_MS = 5000;
+/**
+ * How often the worker samples memory. 1 s is cheap now that sampling is
+ * off the main thread — earlier 5 s main-thread sampling gave a leak ~15 s
+ * of headroom to grow into GB territory before the first missed sample.
+ */
+const MEMORY_POLL_MS = 1000;
 
 /** Grace period after the main flow returns before we force-exit. */
 const HARD_EXIT_GRACE_MS = 2000;
@@ -99,46 +114,109 @@ export function scheduleHardExit(exitCode: number): void {
 }
 
 /**
- * Poll RSS and abort if we blow past the absolute limit. Returns a `stop()`
- * that cancels the watchdog — call it from a `finally` block.
+ * Worker-thread body. Sampled as source: `new Worker(WORKER_CODE, { eval: true })`.
  *
- * When `DOT_MEMORY_TRACE=1` is set we also log every sample to stderr so a
+ * Runs in its own V8 isolate + event loop, so the main thread's microtask
+ * pressure cannot delay these samples. `process.memoryUsage()` returns
+ * process-wide stats (the worker shares the same OS process), so RSS here
+ * is the full `dot` process's RSS.
+ *
+ * If the cap is crossed we SIGKILL `process.pid` — which is the containing
+ * process's PID in a worker — and both threads die. We deliberately don't
+ * try to run cleanup: if the event loop is starved enough to hit 4 GB,
+ * cleanup hooks won't fire on the main thread anyway, and leaving the
+ * machine swappy is the worse failure mode.
+ */
+const WATCHDOG_WORKER_SOURCE = `
+const { parentPort, workerData } = require('node:worker_threads');
+const { limit, pollMs, trace } = workerData;
+
+const fmt = (n) => {
+  if (n >= 1024 ** 3) return (n / (1024 ** 3)).toFixed(2) + ' GB';
+  if (n >= 1024 ** 2) return (n / (1024 ** 2)).toFixed(2) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(2) + ' KB';
+  return n + ' B';
+};
+
+const started = Date.now();
+let peak = 0;
+
+const interval = setInterval(() => {
+  const mem = process.memoryUsage();
+  if (mem.rss > peak) peak = mem.rss;
+
+  if (trace) {
+    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+    process.stderr.write(
+      '[mem +' + elapsed + 's] rss=' + fmt(mem.rss) +
+      ' heap=' + fmt(mem.heapUsed) + '/' + fmt(mem.heapTotal) +
+      ' external=' + fmt(mem.external) +
+      ' peak=' + fmt(peak) + '\\n'
+    );
+  }
+
+  if (mem.rss > limit) {
+    process.stderr.write(
+      '\\n\\u2716 Memory use exceeded ' + fmt(limit) +
+      ' (RSS \\u2248 ' + fmt(mem.rss) + '). Watchdog killing process.\\n' +
+      'This is almost certainly a leaked subscription or runaway retry loop. ' +
+      'Re-run with DOT_MEMORY_TRACE=1 DOT_DEPLOY_VERBOSE=1 to capture the timeline.\\n'
+    );
+    // SIGKILL the whole process. process.pid from a worker is the host
+    // process PID, so this takes down the main thread too.
+    process.kill(process.pid, 'SIGKILL');
+  }
+}, pollMs);
+
+parentPort.on('message', (msg) => {
+  if (msg === 'stop') {
+    clearInterval(interval);
+    process.exit(0);
+  }
+});
+`;
+
+/**
+ * Start the memory watchdog in a dedicated worker thread. Returns a `stop()`
+ * that tears the worker down — call it from a `finally` block.
+ *
+ * When `DOT_MEMORY_TRACE=1` is set we stream every sample to stderr so a
  * user hitting a leak can attach the timeline to a bug report without
  * needing a heap snapshot.
  */
 export function startMemoryWatchdog(): () => void {
     const trace = process.env.DOT_MEMORY_TRACE === "1";
-    const started = Date.now();
-    let peak = 0;
+    const worker = new Worker(WATCHDOG_WORKER_SOURCE, {
+        eval: true,
+        workerData: {
+            limit: MEMORY_LIMIT_BYTES,
+            pollMs: MEMORY_POLL_MS,
+            trace,
+        },
+    });
+    // Don't let the worker itself keep the host process alive on a clean
+    // exit — postMessage('stop') on shutdown handles the happy path.
+    worker.unref();
 
-    const interval = setInterval(() => {
-        const mem = process.memoryUsage();
-        const rss = mem.rss;
-        if (rss > peak) peak = rss;
-
-        if (trace) {
-            const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-            process.stderr.write(
-                `[mem +${elapsed}s] rss=${formatBytes(rss)} ` +
-                    `heap=${formatBytes(mem.heapUsed)}/${formatBytes(mem.heapTotal)} ` +
-                    `external=${formatBytes(mem.external)} ` +
-                    `peak=${formatBytes(peak)}\n`,
-            );
+    let stopped = false;
+    return () => {
+        if (stopped) return;
+        stopped = true;
+        try {
+            worker.postMessage("stop");
+        } catch {
+            // Worker may already be gone (e.g. it triggered SIGKILL on itself);
+            // fall through to the defensive terminate below.
         }
-
-        if (rss > MEMORY_LIMIT_BYTES) {
-            process.stderr.write(
-                `\n✖ Memory use exceeded ${formatBytes(MEMORY_LIMIT_BYTES)} ` +
-                    `(RSS ≈ ${formatBytes(rss)}). Aborting to protect your machine.\n` +
-                    `This is almost certainly a leaked subscription or runaway ` +
-                    `retry loop. To diagnose, re-run with DOT_MEMORY_TRACE=1.\n`,
-            );
-            runAllCleanupAndExit(137);
-        }
-    }, MEMORY_POLL_MS);
-    // Don't let the watchdog itself keep the event loop alive.
-    interval.unref();
-    return () => clearInterval(interval);
+        // Defense in depth: if the worker hangs on shutdown for any reason,
+        // force-terminate it so it can't keep the process alive.
+        const killTimer = setTimeout(() => {
+            worker.terminate().catch(() => {
+                /* best-effort */
+            });
+        }, 500);
+        killTimer.unref();
+    };
 }
 
 async function runAllCleanupAndExit(code: number): Promise<never> {
@@ -160,11 +238,4 @@ async function runAllCleanupAndExit(code: number): Promise<never> {
     }
     // `process.exit` never returns; the `never` return type is for TS.
     throw new Error("unreachable");
-}
-
-function formatBytes(n: number): string {
-    if (n >= 1024 * 1024 * 1024) return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-    if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-    if (n >= 1024) return `${(n / 1024).toFixed(2)} KB`;
-    return `${n} B`;
 }

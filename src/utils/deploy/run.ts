@@ -20,6 +20,7 @@ import {
 import type { DeployLogEvent } from "./progress.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { Env } from "../../config.js";
+import type { DeployPlan } from "./availability.js";
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,12 @@ export interface RunDeployOptions {
     onEvent: (event: DeployEvent) => void;
     /** Target environment. Defaults to `testnet`. */
     env?: Env;
+    /**
+     * DotNS plan from the availability check — shapes the approvals list.
+     * Optional; the signing counter falls back to "register, no PoP upgrade"
+     * (3 DotNS taps) if absent and auto-corrects at runtime.
+     */
+    plan?: DeployPlan;
 }
 
 export interface DeployOutcome {
@@ -82,6 +89,7 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
         mode: options.mode,
         userSigner: options.userSigner,
         publishToPlayground: options.publishToPlayground,
+        plan: options.plan,
     });
 
     options.onEvent({ kind: "plan", approvals: setup.approvals });
@@ -111,7 +119,12 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
     // ── Storage + DotNS via bulletin-deploy ──────────────────────────────
     options.onEvent({ kind: "phase-start", phase: "storage-and-dotns" });
 
-    const storageAuth = maybeWrapAuthForSigning(setup.bulletinDeployAuthOptions, options, counter);
+    const storageAuth = maybeWrapAuthForSigning(
+        setup.bulletinDeployAuthOptions,
+        options,
+        counter,
+        setup.approvals,
+    );
 
     let storageResult;
     try {
@@ -174,29 +187,32 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
 
 /**
  * When bulletin-deploy is about to use the user's phone signer for DotNS, wrap
- * it so each `signTx` call surfaces a lifecycle event. We wrap only once and
- * let the signer distinguish calls by step number (DotNS runs three sigs).
+ * it so each `signTx` call surfaces a lifecycle event with the right label.
+ *
+ * Labels are pulled from the DotNS-phase entries of `setup.approvals`, in
+ * order. `resolveSignerSetup` built that list to match bulletin-deploy's
+ * actual on-chain call sequence (including the optional `setUserPopStatus`
+ * at the start when a PoP upgrade is needed), so `seen === N` → phone shows
+ * the Nth entry. If bulletin-deploy ever fires *more* sigs than approvals
+ * anticipated, we fall back to the last known label — better than emitting
+ * a bogus index — and `createSigningCounter` simultaneously extends `total`
+ * so the TUI shows "step N of N" instead of "N of N-1".
  */
 function maybeWrapAuthForSigning(
     auth: ReturnType<typeof resolveSignerSetup>["bulletinDeployAuthOptions"],
     options: RunDeployOptions,
     counter: SigningCounter,
+    approvals: DeployApproval[],
 ) {
     if (!auth.signer || !auth.signerAddress) return auth;
 
-    const labels = ["Reserve domain", "Finalize domain", "Link content"];
+    const labels = approvals.filter((a) => a.phase === "dotns").map((a) => a.label);
+    const fallbackLabel = labels[labels.length - 1] ?? "DotNS step";
     let seen = 0;
     const wrapped = {
         publicKey: auth.signer.publicKey,
         signTx: (...args: Parameters<typeof auth.signer.signTx>) => {
-            // Bulletin-deploy's current DotNS path makes exactly one signTx
-            // per logical step, so `seen` matches the intended label. If a
-            // future version retries signTx inside a step, `seen` would
-            // drift past `labels.length` and we'd show "DotNS step 4" on
-            // the phone — misleading. Cap at the last label so a retry
-            // reuses the most recent step name instead of inventing one.
-            const idx = Math.min(seen, labels.length - 1);
-            const label = labels[idx];
+            const label = labels[seen] ?? fallbackLabel;
             seen += 1;
             const proxy = wrapSignerWithEvents(auth.signer!, {
                 label,

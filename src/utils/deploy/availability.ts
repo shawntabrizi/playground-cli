@@ -20,14 +20,67 @@ import { normalizeDomain } from "./playground.js";
 import { getChainConfig, type Env } from "../../config.js";
 
 /** Mirror of bulletin-deploy's `ProofOfPersonhoodStatus` enum. Kept local so we don't couple to internals. */
-const POP_STATUS_RESERVED = 3;
+const POP_STATUS_NO_STATUS = 0;
 const POP_STATUS_LITE = 1;
 const POP_STATUS_FULL = 2;
+const POP_STATUS_RESERVED = 3;
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+/**
+ * Mirror of `simulateUserStatus` from bulletin-deploy. Reproduced (not
+ * imported) because the helper isn't exported from the package root and we
+ * don't want to reach into `bulletin-deploy/dist/dotns.js`. If the upstream
+ * rule set changes, this needs to track it — but the rule is small and has
+ * been stable since the preflight feature shipped in 0.6.9-rc.5.
+ *
+ * Predicts the user's PoP status AFTER `registerDomain`'s internal
+ * `setUserPopStatus` call completes. Used here to decide whether
+ * bulletin-deploy will actually submit that extra tx — which determines
+ * whether we count 3 or 4 DotNS approvals in the summary card.
+ */
+function predictPostRegisterPopStatus(
+    currentStatus: number,
+    requiredStatus: number,
+    isTestnet: boolean,
+): number {
+    const max = (a: number, b: number) => (a > b ? a : b);
+    if (requiredStatus === POP_STATUS_NO_STATUS && currentStatus === POP_STATUS_LITE && isTestnet) {
+        // Paseo auto-escape: Lite signer on a NoStatus label gets bumped to
+        // Full so `PopRules.priceWithCheck` accepts the signer. Mainnet path
+        // never triggers this branch.
+        return POP_STATUS_FULL;
+    }
+    if (requiredStatus !== POP_STATUS_NO_STATUS) {
+        return max(currentStatus, requiredStatus);
+    }
+    return currentStatus;
+}
+
+/**
+ * What bulletin-deploy will actually submit on-chain, in order. The TUI uses
+ * this to render a correct "N phone taps" count BEFORE the user confirms —
+ * the previous hard-coded "3 DotNS taps" assumption missed the extra
+ * `setUserPopStatus` tap that fires whenever the classifier demands a PoP
+ * level above the user's current one (e.g. short NoStatus name + Lite signer,
+ * or any PoP-gated name + NoStatus signer). Seeing "step 5 of 4" after the
+ * fact is a worse UX than predicting "5" upfront.
+ */
+export interface DeployPlan {
+    /** `register` = new domain (commit + reveal + setContenthash, ± setUserPopStatus). `update` = already owned by us; only setContenthash fires. */
+    action: "register" | "update";
+    /** True iff bulletin-deploy will submit a `setUserPopStatus` tx before `register()`. */
+    needsPopUpgrade: boolean;
+}
+
 export type AvailabilityResult =
-    | { status: "available"; label: string; fullDomain: string; note?: string }
+    | {
+          status: "available";
+          label: string;
+          fullDomain: string;
+          note?: string;
+          plan: DeployPlan;
+      }
     | { status: "reserved"; label: string; fullDomain: string; message: string }
     | { status: "taken"; label: string; fullDomain: string; owner: string }
     | { status: "unknown"; label: string; fullDomain: string; message: string };
@@ -92,9 +145,37 @@ export async function checkDomainAvailability(
                     label,
                     fullDomain,
                     note: "Already owned by you — will update the existing deployment.",
+                    plan: { action: "update", needsPopUpgrade: false },
                 };
             }
         }
+
+        // Whether bulletin-deploy will fire `setUserPopStatus` before
+        // `register()` is a pure function of (classifier requirement, user's
+        // current status, chain = testnet). Reading getUserPopStatus requires
+        // an EVM address — if the caller didn't supply one, we can't tell,
+        // so we assume no upgrade (the counter will self-correct at runtime).
+        let needsPopUpgrade = false;
+        if (userH160) {
+            try {
+                const [userStatus, isTestnet] = await Promise.all([
+                    dotns.getUserPopStatus(userH160),
+                    dotns.isTestnet(),
+                ]);
+                const target = predictPostRegisterPopStatus(
+                    userStatus,
+                    classification.requiredStatus,
+                    isTestnet,
+                );
+                needsPopUpgrade = target !== userStatus && target !== POP_STATUS_NO_STATUS;
+            } catch {
+                // RPC flake here shouldn't block the availability check —
+                // under-counting DotNS approvals is recoverable at runtime
+                // via the counter's clamp-up safety net.
+            }
+        }
+
+        const plan: DeployPlan = { action: "register", needsPopUpgrade };
 
         // Names that require Proof-of-Personhood are still registrable on
         // testnet — bulletin-deploy self-attests during `register()` via
@@ -109,10 +190,11 @@ export async function checkDomainAvailability(
                 label,
                 fullDomain,
                 note: `Requires Proof of Personhood (${requirement}). Will be set up automatically.`,
+                plan,
             };
         }
 
-        return { status: "available", label, fullDomain };
+        return { status: "available", label, fullDomain, plan };
     } catch (err) {
         return {
             status: "unknown",

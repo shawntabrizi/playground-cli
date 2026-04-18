@@ -93,6 +93,16 @@ export const deployCommand = new Command("deploy")
             return;
         }
 
+        // Release the Asset Hub client we opened for preflight mapping +
+        // allowance checks. Nothing else in the deploy path (build, chunk
+        // upload, bulletin-deploy's own DotNS preflight + registration)
+        // touches `getConnection()` — and holding an idle polkadot-api client
+        // with a live best-block subscription for the entire deploy window
+        // was a measurable contributor to background memory pressure. The
+        // playground publish step calls `getConnection()` which auto-creates
+        // a fresh client at that point.
+        destroyConnection();
+
         try {
             const nonInteractive = isFullySpecified(opts);
             if (nonInteractive) {
@@ -223,6 +233,7 @@ async function runHeadless(ctx: {
         mode,
         userSigner: ctx.userSigner,
         publishToPlayground,
+        plan: availability.plan,
     });
     const view = buildSummaryView({
         mode,
@@ -240,6 +251,7 @@ async function runHeadless(ctx: {
         mode,
         publishToPlayground,
         userSigner: ctx.userSigner,
+        plan: availability.plan,
         env: ctx.env,
         onEvent: (event) => logHeadlessEvent(event),
     });
