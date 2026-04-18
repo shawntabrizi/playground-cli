@@ -165,8 +165,8 @@ describe("checkAttestation", () => {
     it("wraps the address in Enum('Account', ...) when querying", async () => {
         const client = makeClient(undefined, 0);
         await checkAttestation(client, "5GrwvaEF_addr");
-        const arg = client.bulletin.query.TransactionStorage.Authorizations.getValue.mock
-            .calls[0][0];
+        const arg =
+            client.bulletin.query.TransactionStorage.Authorizations.getValue.mock.calls[0][0];
         expect(arg).toMatchObject({ type: "Account", value: "5GrwvaEF_addr" });
     });
 });

@@ -4,7 +4,11 @@ import { getConnection } from "../../utils/connection.js";
 import { getSessionSigner, type SessionHandle } from "../../utils/auth.js";
 import { checkBalance, ensureFunded, FUND_AMOUNT } from "../../utils/account/funding.js";
 import { checkMapping, ensureMapped } from "../../utils/account/mapping.js";
-import { checkAllowance, ensureAllowance, LOW_TX_THRESHOLD } from "../../utils/account/allowance.js";
+import {
+    checkAllowance,
+    ensureAllowance,
+    LOW_TX_THRESHOLD,
+} from "../../utils/account/allowance.js";
 import {
     checkAttestation,
     getBulletinBlockTimeMs,

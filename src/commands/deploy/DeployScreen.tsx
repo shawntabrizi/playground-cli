@@ -113,7 +113,11 @@ export function DeployScreen({
                 <Select<SignerMode>
                     label="signer"
                     options={[
-                        { value: "dev", label: "dev signer", hint: "fast, 0 phone taps for upload" },
+                        {
+                            value: "dev",
+                            label: "dev signer",
+                            hint: "fast, 0 phone taps for upload",
+                        },
                         {
                             value: "phone",
                             label: "your phone signer",
@@ -395,7 +399,7 @@ function ConfirmStage({
                 )}
             </Section>
 
-            <Hint>enter to deploy  ·  esc to cancel</Hint>
+            <Hint>{"enter to deploy  ·  esc to cancel"}</Hint>
 
             {"error" in setup && setup.error && (
                 <Callout tone="warning">
@@ -540,9 +544,7 @@ function RunningStage({
                         chunkTimingsRef.current.push(now - last);
                     }
                     lastChunkAtRef.current = now;
-                    queueInfo(
-                        `uploading chunk ${event.event.current}/${event.event.total}`,
-                    );
+                    queueInfo(`uploading chunk ${event.event.current}/${event.event.total}`);
                 } else if (event.event.kind === "info") {
                     queueInfo(event.event.message);
                 }
@@ -638,9 +640,9 @@ function FinalResult({
                     <Text>{"chunks".padEnd(14)}</Text>
                     <Sparkline values={chunkTimings} width={16} />
                     <Text dimColor>
-                        {"  "}
-                        {chunkTimings.length + 1} chunks  ·  avg{" "}
-                        {(average(chunkTimings) / 1000).toFixed(2)}s/chunk
+                        {`  ${chunkTimings.length + 1} chunks  ·  avg ${(
+                            average(chunkTimings) / 1000
+                        ).toFixed(2)}s/chunk`}
                     </Text>
                 </Box>
             )}

@@ -50,7 +50,9 @@ export function DependencyList({ onDone }: { onDone: () => void }) {
         (async () => {
             for (let i = 0; i < TOOL_STEPS.length; i++) {
                 const step = TOOL_STEPS[i];
-                setSteps((prev) => prev.map((s, j) => (j === i ? { ...s, status: "checking" } : s)));
+                setSteps((prev) =>
+                    prev.map((s, j) => (j === i ? { ...s, status: "checking" } : s)),
+                );
 
                 if (await step.check()) {
                     setSteps((prev) => prev.map((s, j) => (j === i ? { ...s, status: "ok" } : s)));
@@ -79,7 +81,9 @@ export function DependencyList({ onDone }: { onDone: () => void }) {
             // gh auth check (advisory — not auto-login)
             const authIdx = TOOL_STEPS.length;
             if (await isGhAuthenticated()) {
-                setSteps((prev) => prev.map((s, j) => (j === authIdx ? { ...s, status: "ok" } : s)));
+                setSteps((prev) =>
+                    prev.map((s, j) => (j === authIdx ? { ...s, status: "ok" } : s)),
+                );
             } else {
                 setSteps((prev) =>
                     prev.map((s, j) =>

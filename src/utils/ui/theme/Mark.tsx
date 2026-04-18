@@ -23,7 +23,10 @@ export function Mark({ kind }: { kind: MarkKind }) {
 function Spinner() {
     const [tick, setTick] = useState(0);
     useEffect(() => {
-        const id = setInterval(() => setTick((t) => (t + 1) % GLYPH.spinner.length), TIMING.spinnerMs);
+        const id = setInterval(
+            () => setTick((t) => (t + 1) % GLYPH.spinner.length),
+            TIMING.spinnerMs,
+        );
         return () => clearInterval(id);
     }, []);
     return <Text color={COLOR.warning}>{GLYPH.spinner[tick]}</Text>;

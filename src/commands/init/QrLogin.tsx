@@ -19,14 +19,7 @@ export function QrLogin({
         return <Row mark="ok" label="logged in" value={status.address} tone="muted" />;
     }
     if (status.step === "error") {
-        return (
-            <Row
-                mark="fail"
-                label="login failed"
-                value={status.message}
-                tone="danger"
-            />
-        );
+        return <Row mark="fail" label="login failed" value={status.message} tone="danger" />;
     }
     return <Row mark="run" label="sign in" value="scan QR with the Polkadot app" tone="muted" />;
 }

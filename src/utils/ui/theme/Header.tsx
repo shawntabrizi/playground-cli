@@ -51,11 +51,7 @@ export function Header({ cmd, subtitle, network, right, tabTitle }: HeaderProps)
                 <Box flexGrow={1} flexDirection="row">
                     {pieces.map((piece, i) => (
                         <React.Fragment key={i}>
-                            {i > 0 && (
-                                <Text dimColor>
-                                    {"  ·  "}
-                                </Text>
-                            )}
+                            {i > 0 && <Text dimColor>{"  ·  "}</Text>}
                             <Text bold={i === 0} dimColor={i > 0}>
                                 {piece}
                             </Text>

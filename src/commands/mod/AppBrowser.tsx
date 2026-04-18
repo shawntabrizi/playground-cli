@@ -119,13 +119,14 @@ export function AppBrowser({ registry, onSelect }: Props) {
         <Box flexDirection="column" paddingLeft={2}>
             <Box>
                 <Text dimColor>
-                    {pad(" #", COL.num)}  {pad("domain", COL.domain)}  {pad("name", COL.name)}  description
+                    {`${pad(" #", COL.num)}  ${pad("domain", COL.domain)}  ${pad(
+                        "name",
+                        COL.name,
+                    )}  description`}
                 </Text>
             </Box>
             <Box>
-                <Text dimColor>
-                    {"─".repeat(COL.num + COL.domain + COL.name + descW + 6)}
-                </Text>
+                <Text dimColor>{"─".repeat(COL.num + COL.domain + COL.name + descW + 6)}</Text>
             </Box>
 
             {visible.map((app, i) => {
@@ -137,7 +138,10 @@ export function AppBrowser({ registry, onSelect }: Props) {
                 return (
                     <Box key={idx}>
                         <Text bold={sel} color={sel ? COLOR.accent : undefined}>
-                            {num}  {pad(app.domain, COL.domain)}  {pad(app.name ?? (app.name === null ? "…" : "—"), COL.name)}  {pad(app.description ?? "", descW)}
+                            {`${num}  ${pad(app.domain, COL.domain)}  ${pad(
+                                app.name ?? (app.name === null ? "…" : "—"),
+                                COL.name,
+                            )}  ${pad(app.description ?? "", descW)}`}
                         </Text>
                     </Box>
                 );
@@ -150,9 +154,7 @@ export function AppBrowser({ registry, onSelect }: Props) {
                 </Box>
             )}
             <Box marginTop={fetching ? 0 : 1}>
-                <Hint>
-                    ↑↓ navigate  ·  ⏎ select  ·  q quit  ·  ({apps.length}/{total})
-                </Hint>
+                <Hint>{`↑↓ navigate  ·  ⏎ select  ·  q quit  ·  (${apps.length}/${total})`}</Hint>
             </Box>
         </Box>
     );
