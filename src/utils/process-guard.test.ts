@@ -31,18 +31,14 @@ describe("isBenignUnsubscriptionError", () => {
     });
 
     it("is case-insensitive on the inner message", () => {
-        expect(
-            isBenignUnsubscriptionError(makeUnsubscriptionError(["NOT CONNECTED"])),
-        ).toBe(true);
+        expect(isBenignUnsubscriptionError(makeUnsubscriptionError(["NOT CONNECTED"]))).toBe(true);
     });
 
     it("rejects UnsubscriptionError with at least one non-Not-connected inner error", () => {
         // A real RPC error mixed in means something genuinely went wrong mid
         // teardown — don't swallow it.
         expect(
-            isBenignUnsubscriptionError(
-                makeUnsubscriptionError(["Not connected", "ECONNREFUSED"]),
-            ),
+            isBenignUnsubscriptionError(makeUnsubscriptionError(["Not connected", "ECONNREFUSED"])),
         ).toBe(false);
     });
 
