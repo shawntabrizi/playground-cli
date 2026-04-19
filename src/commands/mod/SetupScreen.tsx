@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { getGateway, fetchJson } from "@polkadot-apps/bulletin";
 import { StepRunner, type Step } from "../../utils/ui/components/StepRunner.js";
 import { Header, Hint, Row, Section } from "../../utils/ui/theme/index.js";
-import { isGhAuthenticated, forkAndClone, cloneRepo, runCommand } from "../../utils/git.js";
+import { forkAndClone, cloneRepo, runCommand } from "../../utils/git.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 
 interface AppMetadata {
@@ -22,7 +22,7 @@ interface Props {
     metadata: AppMetadata | null;
     registry: any;
     targetDir: string;
-    forceClone: boolean;
+    canFork: boolean;
     onDone: (ok: boolean) => void;
 }
 
@@ -31,11 +31,9 @@ export function SetupScreen({
     metadata: initial,
     registry,
     targetDir,
-    forceClone,
+    canFork,
     onDone,
 }: Props) {
-    const canFork = !forceClone && isGhAuthenticated();
-
     // Metadata is fetched in step 1 and shared with later steps via this ref
     let meta: AppMetadata = initial ?? {};
 
