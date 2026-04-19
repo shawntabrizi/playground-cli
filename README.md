@@ -64,9 +64,19 @@ Passing all four of `--signer`, `--domain`, `--buildDir`, and `--playground` run
 
 The publish step is always signed by the user so the registry contract records their address as the app owner — this is what drives the Playground "my apps" view.
 
-### `dot mod` (stub)
+### `dot mod`
 
-Planned. No behaviour yet.
+Fork (or clone) a playground app into a local directory so you can customise and re-deploy it. Fetches the app's metadata from the registry, forks the underlying GitHub repo into your account (falling back to a fresh-history clone if `gh` isn't authenticated or `--clone` is passed), runs its `setup.sh`, and prints next steps.
+
+Flags:
+
+- `[domain]` — positional; interactive picker over the registry if omitted. `.dot` suffix optional.
+- `--clone` — clone instead of forking. Skips the repo-name prompt (the target is only a throwaway local directory).
+- `--suri <suri>` — dev signer secret URI (e.g. `//Alice`).
+- `-y, --yes` — skip interactive prompts; use the auto-generated default repo name.
+- `--repo-name <name>` — repo / directory name; skips the prompt. Validated against GitHub's repository-name rules (letters, digits, `.`, `-`, `_`, not leading with `.` or `-`) and rejected if the directory already exists.
+
+When forking, you're prompted for the repo name after picking an app; the default is `<slug>-<6 hex chars>` and Enter keeps it. Pass `--repo-name` or `-y` to run non-interactively.
 
 ## Contributing
 

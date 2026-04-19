@@ -16,7 +16,6 @@ export const modCommand = new Command("mod")
     .argument("[domain]", "App domain (interactive picker if omitted)")
     .option("--suri <suri>", "Signer secret URI (e.g. //Alice for dev)")
     .option("--clone", "Clone instead of forking (no GitHub fork created)")
-    .option("--no-install", "Skip dependency installation")
     .option("-y, --yes", "Skip interactive prompts (use default repo name)")
     .option("--repo-name <name>", "Repository / directory name (skips the prompt)")
     .action(
