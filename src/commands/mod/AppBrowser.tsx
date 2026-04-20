@@ -31,10 +31,11 @@ export function AppBrowser({ registry, onSelect }: Props) {
     const [cursor, setCursor] = useState(0);
     const [scroll, setScroll] = useState(0);
     const [fetching, setFetching] = useState(true);
-    // Next ascending-index window to request from `getApps(start, count)`. We
-    // page high → low (newest-first), so this walks downward: the next call's
-    // `start` is `prevStart - BATCH` (clamped to 0). `null` means no more.
-    const nextStart = useRef<number | null>(null);
+    // Offset (in reverse-chronological order) of the next page to request.
+    // Contract's `getApps(start, count)` treats `start` as a REVERSE offset —
+    // `start=0` returns the newest batch, `start=BATCH` the next page, etc.
+    // `null` = no more pages.
+    const nextStart = useRef<number | null>(0);
 
     const gateway = getGateway("paseo");
 
@@ -42,10 +43,6 @@ export function AppBrowser({ registry, onSelect }: Props) {
         async (start: number) => {
             setFetching(true);
 
-            // Contract returns entries ascending from `start`. We want
-            // newest-first in the list, so reverse after. `count` may be
-            // capped short if `start + count > total` — no harm, the
-            // contract simply returns fewer entries.
             const res = await registry.getApps.query(start, BATCH);
             const rawEntries = res.value.entries as Array<{
                 index: number;
@@ -53,18 +50,14 @@ export function AppBrowser({ registry, onSelect }: Props) {
                 metadata_uri: string;
                 owner: string;
             }>;
-            // Keep our `total` in sync with the contract's reported value.
-            // Always calling setTotal is fine — React bails out on same-value
-            // updates, so this doesn't cause extra renders.
-            setTotal(res.value.total as number);
+            const totalFromResp = res.value.total as number;
+            // Always set — React bails on same-value updates.
+            setTotal(totalFromResp);
 
-            // Sort defensively — we can't rely on the contract's ordering
-            // guarantees, and every entry carries its own `index`.
-            const sorted = [...rawEntries].sort((a, b) => b.index - a.index);
+            // Contract returns newest-first; preserve that order for display.
+            nextStart.current = start + BATCH < totalFromResp ? start + BATCH : null;
 
-            nextStart.current = start > 0 ? Math.max(0, start - BATCH) : null;
-
-            const entries: AppEntry[] = sorted.map((e) => ({
+            const entries: AppEntry[] = rawEntries.map((e) => ({
                 domain: e.domain,
                 name: null,
                 description: null,
@@ -78,7 +71,7 @@ export function AppBrowser({ registry, onSelect }: Props) {
             // the gateway — that's IPFS HTTP, not a chain query. Kick them
             // off in parallel and update each row as it lands.
             await Promise.allSettled(
-                sorted.map(async (raw, i) => {
+                rawEntries.map(async (raw, i) => {
                     const entry = entries[i];
                     const cid = raw.metadata_uri;
                     if (!cid) return;
@@ -102,14 +95,13 @@ export function AppBrowser({ registry, onSelect }: Props) {
     );
 
     useEffect(() => {
-        (async () => {
-            const res = await registry.getAppCount.query();
-            const count = res.value as number;
-            setTotal(count);
-            if (count > 0) await loadBatch(Math.max(0, count - BATCH));
-            else setFetching(false);
-        })();
-    }, [registry, loadBatch]);
+        // `getApps(0, BATCH)` returns the newest batch plus `total`, so we
+        // don't need a separate `getAppCount` probe. When the registry is
+        // empty, the response still carries `total: 0` — we drop the spinner
+        // and leave `nextStart.current` at its initial 0 harmlessly (the
+        // scroll-trigger effect guards on `apps.length`, so it won't re-fire).
+        loadBatch(0);
+    }, [loadBatch]);
 
     useEffect(() => {
         if (cursor >= apps.length - 3 && nextStart.current !== null && !fetching) {
