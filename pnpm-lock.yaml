@@ -39,8 +39,8 @@ importers:
         specifier: latest
         version: 0.4.0
       bulletin-deploy:
-        specifier: 0.6.9
-        version: 0.6.9(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
+        specifier: 0.6.16
+        version: 0.6.16(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -1602,8 +1602,8 @@ packages:
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
 
-  bulletin-deploy@0.6.9:
-    resolution: {integrity: sha512-LspXpFy4q7wnKr8X7+wO6nRzMK0lyVz/8rjZ6QcTAbf8xyJa8qW6bpdXw4g70IXJGUV0HBnDHpTmpQvnUOQVuw==}
+  bulletin-deploy@0.6.16:
+    resolution: {integrity: sha512-Kc576rv1uAG7V+/7d/3ZMz/V9cZwd0lS28FbC0oU/ecV4rlhMe8D/MPTLKBBhmPqiw4SgtA9OmKpGH5goMrybQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -4538,7 +4538,7 @@ snapshots:
 
   '@polkadot-labs/hdkd@0.0.26':
     dependencies:
-      '@polkadot-labs/hdkd-helpers': 0.0.27
+      '@polkadot-labs/hdkd-helpers': 0.0.28
 
   '@polkadot/keyring@13.5.9(@polkadot/util-crypto@13.5.9(@polkadot/util@13.5.9))(@polkadot/util@13.5.9)':
     dependencies:
@@ -5013,7 +5013,7 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bulletin-deploy@0.6.9(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3):
+  bulletin-deploy@0.6.16(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3):
     dependencies:
       '@dotdm/cdm': 0.5.4(@polkadot-api/ink-contracts@0.6.1)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
       '@ipld/car': 5.4.3
@@ -5025,7 +5025,6 @@ snapshots:
       '@polkadot/keyring': 13.5.9(@polkadot/util-crypto@13.5.9(@polkadot/util@13.5.9))(@polkadot/util@13.5.9)
       '@polkadot/util-crypto': 13.5.9(@polkadot/util@13.5.9)
       '@sentry/node': 9.47.1
-      blockstore-core: 6.1.3
       ipfs-unixfs: 11.2.5
       ipfs-unixfs-importer: 16.1.5
       multiformats: 13.4.2
