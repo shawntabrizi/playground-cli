@@ -31,6 +31,12 @@ interface DeployOpts {
     domain?: string;
     buildDir?: string;
     playground?: boolean;
+    /**
+     * Commander's auto-negated boolean: defaults to `true`; `--no-build` flips it to `false`.
+     * We never check for `undefined` here since commander always provides a boolean when
+     * a `--no-foo` option is declared.
+     */
+    build?: boolean;
     env?: Env;
     /** Project root. Hidden — defaults to cwd. */
     dir?: string;
@@ -46,6 +52,7 @@ export const deployCommand = new Command("deploy")
         "--buildDir <path>",
         `Directory containing build artifacts (default: ${DEFAULT_BUILD_DIR})`,
     )
+    .option("--no-build", "Skip the build step and deploy existing artifacts in buildDir")
     .option("--playground", "Publish to the playground registry")
     .option("--suri <suri>", "Secret URI for the user signer (e.g. //Alice for dev)")
     .addOption(
@@ -216,6 +223,7 @@ async function runHeadless(ctx: {
     const publishToPlayground = Boolean(ctx.opts.playground);
     const domain = ctx.opts.domain as string;
     const buildDir = ctx.opts.buildDir as string;
+    const skipBuild = ctx.opts.build === false;
 
     // Check availability BEFORE we build + upload, so CI fails fast on a
     // Reserved / already-taken name without wasting a chunk upload.
@@ -239,6 +247,7 @@ async function runHeadless(ctx: {
         mode,
         domain: availability.fullDomain,
         buildDir,
+        skipBuild,
         publishToPlayground,
         approvals: setup.approvals,
     });
@@ -247,6 +256,7 @@ async function runHeadless(ctx: {
     const outcome = await runDeploy({
         projectDir: ctx.projectDir,
         buildDir,
+        skipBuild,
         domain,
         mode,
         publishToPlayground,
@@ -275,6 +285,9 @@ function runInteractive(ctx: {
                 mode: (ctx.opts.signer as SignerMode | undefined) ?? null,
                 publishToPlayground:
                     ctx.opts.playground !== undefined ? Boolean(ctx.opts.playground) : null,
+                // Only pre-fill when the user explicitly asked to skip via `--no-build`;
+                // otherwise show the prompt so they can hit Enter on the default "yes".
+                skipBuild: ctx.opts.build === false ? true : null,
                 userSigner: ctx.userSigner,
                 onDone: (outcome: DeployOutcome | null) => {
                     if (settled) return;

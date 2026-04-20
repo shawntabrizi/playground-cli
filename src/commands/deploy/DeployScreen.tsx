@@ -37,11 +37,13 @@ export interface DeployScreenInputs {
     buildDir: string | null;
     mode: SignerMode | null;
     publishToPlayground: boolean | null;
+    skipBuild: boolean | null;
     userSigner: ResolvedSigner | null;
     onDone: (outcome: DeployOutcome | null) => void;
 }
 
 type Stage =
+    | { kind: "prompt-build" }
     | { kind: "prompt-signer" }
     | { kind: "prompt-buildDir" }
     | { kind: "prompt-domain" }
@@ -57,6 +59,7 @@ interface Resolved {
     buildDir: string;
     domain: string;
     publishToPlayground: boolean;
+    skipBuild: boolean;
 }
 
 export function DeployScreen({
@@ -65,6 +68,7 @@ export function DeployScreen({
     buildDir: initialBuildDir,
     mode: initialMode,
     publishToPlayground: initialPublish,
+    skipBuild: initialSkipBuild,
     userSigner,
     onDone,
 }: DeployScreenInputs) {
@@ -72,13 +76,20 @@ export function DeployScreen({
     const [buildDir, setBuildDir] = useState<string | null>(initialBuildDir);
     const [domain, setDomain] = useState<string | null>(initialDomain);
     const [publishToPlayground, setPublishToPlayground] = useState<boolean | null>(initialPublish);
+    const [skipBuild, setSkipBuild] = useState<boolean | null>(initialSkipBuild);
     const [domainError, setDomainError] = useState<string | null>(null);
     // Captured from the availability check; feeds `resolveSignerSetup` so
     // the summary card shows the correct phone-approval count (register +
     // PoP upgrade = 4 DotNS taps, vs register alone = 3, vs update = 1).
     const [plan, setPlan] = useState<DeployPlan | null>(null);
     const [stage, setStage] = useState<Stage>(() =>
-        pickInitialStage(initialMode, initialBuildDir, initialDomain, initialPublish),
+        pickInitialStage(
+            initialSkipBuild,
+            initialMode,
+            initialBuildDir,
+            initialDomain,
+            initialPublish,
+        ),
     );
 
     // Passed down to RunningStage; read back on completion for the sparkline.
@@ -87,20 +98,27 @@ export function DeployScreen({
     const finalChunkTimingsRef = useRef<number[]>([]);
 
     const advance = (
+        nextSkipBuild: boolean | null = skipBuild,
         nextMode: SignerMode | null = mode,
         nextBuildDir: string | null = buildDir,
         nextDomain: string | null = domain,
         nextPublish: boolean | null = publishToPlayground,
     ) => {
-        const s = pickNextStage(nextMode, nextBuildDir, nextDomain, nextPublish);
+        const s = pickNextStage(nextSkipBuild, nextMode, nextBuildDir, nextDomain, nextPublish);
         setStage(s);
     };
 
     const resolved = useMemo<Resolved | null>(() => {
-        if (mode === null || buildDir === null || domain === null || publishToPlayground === null)
+        if (
+            mode === null ||
+            buildDir === null ||
+            domain === null ||
+            publishToPlayground === null ||
+            skipBuild === null
+        )
             return null;
-        return { mode, buildDir, domain, publishToPlayground };
-    }, [mode, buildDir, domain, publishToPlayground]);
+        return { mode, buildDir, domain, publishToPlayground, skipBuild };
+    }, [mode, buildDir, domain, publishToPlayground, skipBuild]);
 
     // Dynamic terminal tab title: subtitle becomes the domain once we know it.
     const headerSubtitle = resolved?.domain ?? domain ?? undefined;
@@ -113,6 +131,21 @@ export function DeployScreen({
                 network="paseo"
                 right={VERSION_LABEL}
             />
+
+            {stage.kind === "prompt-build" && (
+                <Select<boolean>
+                    label="build before deploy?"
+                    options={[
+                        { value: false, label: "yes", hint: "rebuild the project" },
+                        { value: true, label: "no", hint: "use existing build in buildDir" },
+                    ]}
+                    initialIndex={0}
+                    onSelect={(skip) => {
+                        setSkipBuild(skip);
+                        advance(skip);
+                    }}
+                />
+            )}
 
             {stage.kind === "prompt-signer" && (
                 <Select<SignerMode>
@@ -131,7 +164,7 @@ export function DeployScreen({
                     ]}
                     onSelect={(m) => {
                         setMode(m);
-                        advance(m);
+                        advance(skipBuild, m);
                     }}
                 />
             )}
@@ -142,7 +175,7 @@ export function DeployScreen({
                     initial={DEFAULT_BUILD_DIR}
                     onSubmit={(v) => {
                         setBuildDir(v);
-                        advance(mode, v);
+                        advance(skipBuild, mode, v);
                     }}
                 />
             )}
@@ -174,7 +207,7 @@ export function DeployScreen({
                     onAvailable={(result) => {
                         setDomain(result.fullDomain);
                         setPlan(result.plan);
-                        advance(mode, buildDir, result.fullDomain);
+                        advance(skipBuild, mode, buildDir, result.fullDomain);
                     }}
                     onUnavailable={(reason) => {
                         setDomainError(reason);
@@ -193,7 +226,7 @@ export function DeployScreen({
                     initialIndex={0}
                     onSelect={(yes) => {
                         setPublishToPlayground(yes);
-                        advance(mode, buildDir, domain, yes);
+                        advance(skipBuild, mode, buildDir, domain, yes);
                     }}
                 />
             )}
@@ -248,20 +281,23 @@ export function DeployScreen({
 // ── Stage pickers ────────────────────────────────────────────────────────────
 
 function pickInitialStage(
+    skipBuild: boolean | null,
     mode: SignerMode | null,
     buildDir: string | null,
     domain: string | null,
     publish: boolean | null,
 ): Stage {
-    return pickNextStage(mode, buildDir, domain, publish);
+    return pickNextStage(skipBuild, mode, buildDir, domain, publish);
 }
 
 function pickNextStage(
+    skipBuild: boolean | null,
     mode: SignerMode | null,
     buildDir: string | null,
     domain: string | null,
     publish: boolean | null,
 ): Stage {
+    if (skipBuild === null) return { kind: "prompt-build" };
     if (mode === null) return { kind: "prompt-signer" };
     if (buildDir === null) return { kind: "prompt-buildDir" };
     if (domain === null) return { kind: "prompt-domain" };
@@ -369,6 +405,7 @@ function ConfirmStage({
         mode: inputs.mode,
         domain: inputs.domain.replace(/\.dot$/, "") + ".dot",
         buildDir: inputs.buildDir,
+        skipBuild: inputs.skipBuild,
         publishToPlayground: inputs.publishToPlayground,
         approvals: "approvals" in setup ? setup.approvals : [],
     });
@@ -465,7 +502,10 @@ function RunningStage({
     onError: (message: string) => void;
 }) {
     const initialPhases: Record<DeployPhase, PhaseState> = {
-        build: { status: "pending" },
+        build: {
+            status: inputs.skipBuild ? "complete" : "pending",
+            detail: inputs.skipBuild ? "skipped" : undefined,
+        },
         "storage-and-dotns": { status: "pending" },
         playground: {
             status: inputs.publishToPlayground ? "pending" : "complete",
@@ -518,6 +558,7 @@ function RunningStage({
                 const outcome = await runDeploy({
                     projectDir,
                     buildDir: inputs.buildDir,
+                    skipBuild: inputs.skipBuild,
                     domain: inputs.domain,
                     mode: inputs.mode,
                     publishToPlayground: inputs.publishToPlayground,
