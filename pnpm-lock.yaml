@@ -39,8 +39,8 @@ importers:
         specifier: latest
         version: 0.4.0
       bulletin-deploy:
-        specifier: 0.6.16
-        version: 0.6.16(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
+        specifier: 0.7.0
+        version: 0.7.0(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -223,23 +223,6 @@ packages:
   '@dnsquery/dns-packet@6.1.1':
     resolution: {integrity: sha512-WXTuFvL3G+74SchFAtz3FgIYVOe196ycvGsMgvSH/8Goptb1qpIQtIuM4SOK9G9lhMWYpHxnXyy544ZhluFOew==}
     engines: {node: '>=6'}
-
-  '@dotdm/cdm@0.5.4':
-    resolution: {integrity: sha512-89tu3LgQrgnZkhFPr+aYNVEp6rNTOtuE1FwAlrt/Ji/tbNFzTPJ58yfA87V8TOXGEv1Yh5kPHNHeFuH8RiEbEA==}
-
-  '@dotdm/contracts@0.4.0':
-    resolution: {integrity: sha512-1TfEmMQm5nmjMXBKSFqUKDnhaAC54D2xkvXk2lvv+r+Z7novFJSCylH7FxmiGJw7MI3V4MYl3TJB/Ka37oYgRg==}
-
-  '@dotdm/descriptors@0.1.9':
-    resolution: {integrity: sha512-1bx4GD98+ASu64WhT0RHLjf9/Kihp0+YH12IOixi0ngF6G3bK2fXciZPrhklaw0oGeB2XOjH/N8sZ2oBA6lSCQ==}
-    peerDependencies:
-      polkadot-api: '>=1.21.0'
-
-  '@dotdm/env@0.3.2':
-    resolution: {integrity: sha512-wdxuc+CiwiM3kH0WzwuNLCXLxCeKedYa5SnXhRH0J0kjWyw2BQwD05kQkbIkbPRnBAQ+h45uyzxmldR1Cebe8w==}
-
-  '@dotdm/utils@0.3.1':
-    resolution: {integrity: sha512-pT7E+6opUlulMNJ2ZxdXg7EOB+DtIWgQc7BQ6wYrUUbKKsa1Oy1lrrdrHPmTethuJM2y96BJArmdW1Ma2nPy/Q==}
 
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}
@@ -1602,8 +1585,8 @@ packages:
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
 
-  bulletin-deploy@0.6.16:
-    resolution: {integrity: sha512-Kc576rv1uAG7V+/7d/3ZMz/V9cZwd0lS28FbC0oU/ecV4rlhMe8D/MPTLKBBhmPqiw4SgtA9OmKpGH5goMrybQ==}
+  bulletin-deploy@0.7.0:
+    resolution: {integrity: sha512-fufankGtq5jRaO1BJBgT5n3e7/lTrPuBftOW00doi+ADZcW4kq70qpxEXUcnr8ujrq1pLbwQhwns3oUvegOELw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -3227,81 +3210,6 @@ snapshots:
     dependencies:
       '@leichtgewicht/ip-codec': 2.0.5
       utf8-codec: 1.0.0
-
-  '@dotdm/cdm@0.5.4(@polkadot-api/ink-contracts@0.6.1)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)':
-    dependencies:
-      '@dotdm/contracts': 0.4.0(@polkadot-api/ink-contracts@0.6.1)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
-      '@dotdm/env': 0.3.2(postcss@8.5.10)(rxjs@7.8.2)
-      '@dotdm/utils': 0.3.1
-      '@polkadot-api/sdk-ink': 0.6.2(@polkadot-api/ink-contracts@0.6.1)(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2))(rxjs@7.8.2)(typescript@5.9.3)
-      polkadot-api: 1.23.3(postcss@8.5.10)(rxjs@7.8.2)
-    transitivePeerDependencies:
-      - '@microsoft/api-extractor'
-      - '@polkadot-api/ink-contracts'
-      - '@swc/core'
-      - bufferutil
-      - jiti
-      - postcss
-      - rxjs
-      - supports-color
-      - tsx
-      - typescript
-      - utf-8-validate
-      - yaml
-      - zod
-
-  '@dotdm/contracts@0.4.0(@polkadot-api/ink-contracts@0.6.1)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)':
-    dependencies:
-      '@dotdm/descriptors': 0.1.9(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2))
-      '@dotdm/env': 0.3.2(postcss@8.5.10)(rxjs@7.8.2)
-      '@dotdm/utils': 0.3.1
-      '@noble/hashes': 2.2.0
-      '@polkadot-api/sdk-ink': 0.6.2(@polkadot-api/ink-contracts@0.6.1)(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2))(rxjs@7.8.2)(typescript@5.9.3)
-      multiformats: 13.4.2
-      polkadot-api: 1.23.3(postcss@8.5.10)(rxjs@7.8.2)
-    transitivePeerDependencies:
-      - '@microsoft/api-extractor'
-      - '@polkadot-api/ink-contracts'
-      - '@swc/core'
-      - bufferutil
-      - jiti
-      - postcss
-      - rxjs
-      - supports-color
-      - tsx
-      - typescript
-      - utf-8-validate
-      - yaml
-      - zod
-
-  '@dotdm/descriptors@0.1.9(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2))':
-    dependencies:
-      polkadot-api: 1.23.3(postcss@8.5.10)(rxjs@7.8.2)
-
-  '@dotdm/env@0.3.2(postcss@8.5.10)(rxjs@7.8.2)':
-    dependencies:
-      '@dotdm/descriptors': 0.1.9(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2))
-      '@dotdm/utils': 0.3.1
-      '@polkadot-labs/hdkd': 0.0.26
-      '@polkadot-labs/hdkd-helpers': 0.0.27
-      polkadot-api: 1.23.3(postcss@8.5.10)(rxjs@7.8.2)
-      smoldot: 2.0.40
-    transitivePeerDependencies:
-      - '@microsoft/api-extractor'
-      - '@swc/core'
-      - bufferutil
-      - jiti
-      - postcss
-      - rxjs
-      - supports-color
-      - tsx
-      - utf-8-validate
-      - yaml
-
-  '@dotdm/utils@0.3.1':
-    dependencies:
-      '@polkadot-labs/hdkd': 0.0.26
-      '@polkadot-labs/hdkd-helpers': 0.0.27
 
   '@esbuild/aix-ppc64@0.25.12':
     optional: true
@@ -5013,9 +4921,8 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bulletin-deploy@0.6.16(@polkadot-api/ink-contracts@0.6.1)(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3):
+  bulletin-deploy@0.7.0(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3):
     dependencies:
-      '@dotdm/cdm': 0.5.4(@polkadot-api/ink-contracts@0.6.1)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
       '@ipld/car': 5.4.3
       '@ipld/dag-pb': 4.1.5
       '@noble/hashes': 1.8.0
@@ -5032,7 +4939,6 @@ snapshots:
       viem: 2.48.0(typescript@5.9.3)
     transitivePeerDependencies:
       - '@microsoft/api-extractor'
-      - '@polkadot-api/ink-contracts'
       - '@polkadot/util'
       - '@swc/core'
       - bufferutil
