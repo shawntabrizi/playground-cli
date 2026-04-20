@@ -7,6 +7,7 @@ describe("buildSummaryView", () => {
             mode: "dev",
             domain: "my-app.dot",
             buildDir: "dist",
+            skipBuild: false,
             publishToPlayground: false,
             approvals: [],
         });
@@ -20,6 +21,7 @@ describe("buildSummaryView", () => {
             mode: "dev",
             domain: "my-app.dot",
             buildDir: "dist",
+            skipBuild: false,
             publishToPlayground: true,
             approvals: [{ phase: "playground", label: "Publish to Playground registry" }],
         });
@@ -32,6 +34,7 @@ describe("buildSummaryView", () => {
             mode: "phone",
             domain: "my-app.dot",
             buildDir: "dist",
+            skipBuild: false,
             publishToPlayground: true,
             approvals: [
                 { phase: "dotns", label: "Reserve domain (DotNS commitment)" },
@@ -48,6 +51,28 @@ describe("buildSummaryView", () => {
             "4. Publish to Playground registry",
         ]);
     });
+
+    it("Build row reflects the skipBuild flag", () => {
+        const rebuild = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: false,
+            approvals: [],
+        });
+        expect(rebuild.rows.find((r) => r.label === "Build")?.value).toBe("rebuild first");
+
+        const skip = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: true,
+            publishToPlayground: false,
+            approvals: [],
+        });
+        expect(skip.rows.find((r) => r.label === "Build")?.value).toBe("skip (use existing)");
+    });
 });
 
 describe("renderSummaryText", () => {
@@ -57,6 +82,7 @@ describe("renderSummaryText", () => {
                 mode: "dev",
                 domain: "my-app.dot",
                 buildDir: "dist",
+                skipBuild: false,
                 publishToPlayground: false,
                 approvals: [],
             }),
@@ -70,6 +96,7 @@ describe("renderSummaryText", () => {
                 mode: "phone",
                 domain: "x.dot",
                 buildDir: "dist",
+                skipBuild: false,
                 publishToPlayground: false,
                 approvals: [
                     { phase: "dotns", label: "Reserve domain" },

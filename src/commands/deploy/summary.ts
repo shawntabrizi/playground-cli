@@ -10,6 +10,7 @@ export interface SummaryInputs {
     mode: SignerMode;
     domain: string;
     buildDir: string;
+    skipBuild: boolean;
     publishToPlayground: boolean;
     approvals: DeployApproval[];
 }
@@ -31,6 +32,7 @@ export function buildSummaryView(input: SummaryInputs): SummaryView {
         headline: `Deploying ${input.domain}`,
         rows: [
             { label: "Signer", value: MODE_LABEL[input.mode] },
+            { label: "Build", value: input.skipBuild ? "skip (use existing)" : "rebuild first" },
             { label: "Build dir", value: input.buildDir },
             {
                 label: "Publish",
