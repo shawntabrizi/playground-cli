@@ -18,8 +18,11 @@ export {
     normalizeDomain,
     normalizeGitRemote,
     readGitRemote,
+    readReadme,
+    README_CAP_BYTES,
     type PublishToPlaygroundOptions,
     type PublishToPlaygroundResult,
+    type ReadmeStatus,
 } from "./playground.js";
 export {
     resolveSignerSetup,

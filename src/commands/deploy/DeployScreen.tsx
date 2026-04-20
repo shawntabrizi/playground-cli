@@ -17,6 +17,8 @@ import {
     resolveSignerSetup,
     checkDomainAvailability,
     formatAvailability,
+    readReadme,
+    README_CAP_BYTES,
     type AvailabilityResult,
     type DeployEvent,
     type DeployOutcome,
@@ -238,6 +240,7 @@ export function DeployScreen({
 
             {stage.kind === "confirm" && resolved && (
                 <ConfirmStage
+                    projectDir={projectDir}
                     inputs={resolved}
                     userSigner={userSigner}
                     plan={plan}
@@ -378,12 +381,14 @@ function ValidateDomainStage({
 // ── Confirm stage ────────────────────────────────────────────────────────────
 
 function ConfirmStage({
+    projectDir,
     inputs,
     userSigner,
     plan,
     onProceed,
     onCancel,
 }: {
+    projectDir: string;
     inputs: Resolved;
     userSigner: ResolvedSigner | null;
     plan: DeployPlan | null;
@@ -405,6 +410,15 @@ function ConfirmStage({
             };
         }
     }, [inputs, userSigner, plan]);
+
+    // Only warn on the oversized branch — silent when README is absent or
+    // within the cap, per the product decision to inline tacitly and speak
+    // up only when we're dropping content the user expected to ship.
+    const oversizedReadme = useMemo(() => {
+        if (!inputs.publishToPlayground) return null;
+        const status = readReadme(projectDir);
+        return status.kind === "oversized" ? status : null;
+    }, [projectDir, inputs.publishToPlayground]);
 
     const view = buildSummaryView({
         mode: inputs.mode,
@@ -451,6 +465,16 @@ function ConfirmStage({
                     </>
                 )}
             </Section>
+
+            {oversizedReadme && (
+                <Callout tone="warning" title="readme will not be uploaded">
+                    <Text>
+                        README.md is {formatKbCeil(oversizedReadme.size)} — over the{" "}
+                        {README_CAP_BYTES / 1024} KB limit. the rest of the deploy will continue
+                        without it.
+                    </Text>
+                </Callout>
+            )}
 
             <Hint>{"enter to deploy  ·  esc to cancel"}</Hint>
 
@@ -717,4 +741,13 @@ function truncate(s: string, n: number): string {
 function average(xs: number[]): number {
     if (xs.length === 0) return 0;
     return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+// Round UP to the nearest 0.1 KB when displaying an oversized file, so a
+// file 1 byte over a round-number cap never reads as "20.0 KB — over the
+// 20 KB limit". Worst case we overstate by ~100 bytes, which is fine in a
+// warning already saying the file is being dropped.
+function formatKbCeil(bytes: number): string {
+    const tenths = Math.ceil((bytes / 1024) * 10) / 10;
+    return `${tenths.toFixed(1)} KB`;
 }

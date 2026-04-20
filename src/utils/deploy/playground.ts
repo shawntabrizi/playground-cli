@@ -16,6 +16,8 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { createClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
@@ -46,7 +48,11 @@ export interface PublishToPlaygroundOptions {
     publishSigner: ResolvedSigner;
     /** Explicit repository URL. If omitted we probe `git remote get-url origin`. */
     repositoryUrl?: string;
-    /** Working dir used to probe the git remote when `repositoryUrl` is absent. */
+    /**
+     * Project root. Used both to probe the git remote (when `repositoryUrl`
+     * is absent) and to look for a `README.md` to inline into the metadata.
+     * If omitted, both probes are skipped.
+     */
     cwd?: string;
     /** Progress sink for the metadata-upload sub-step. */
     onLogEvent?: (event: DeployLogEvent) => void;
@@ -61,6 +67,54 @@ export interface PublishToPlaygroundResult {
     fullDomain: string;
     /** Effective metadata payload that got uploaded. */
     metadata: Record<string, string>;
+}
+
+/**
+ * Cap on inlined README bytes. The metadata JSON is fetched once per listed
+ * app in the playground feed; an unbounded README from any single publisher
+ * would bloat every other user's feed load. 20 KB comfortably covers typical
+ * repo READMEs and keeps a 20-app feed batch under ~400 KB.
+ */
+export const README_CAP_BYTES = 20 * 1024;
+
+export type ReadmeStatus =
+    | { kind: "ok"; content: string; size: number }
+    | { kind: "oversized"; size: number }
+    | { kind: "missing" };
+
+/**
+ * Look for a README at the project root. Returns a tagged union so callers
+ * can both decide whether to inline and surface an oversize warning before
+ * the user commits to deploy.
+ *
+ * We enumerate the directory rather than trying `README.md` verbatim so the
+ * match is case-insensitive on every filesystem — macOS/Windows resolve
+ * mismatched case implicitly, but Linux CI does not, and a repo with
+ * `readme.md` on GitHub would otherwise be silently skipped.
+ */
+export function readReadme(cwd: string, capBytes = README_CAP_BYTES): ReadmeStatus {
+    let entries: string[];
+    try {
+        entries = readdirSync(cwd);
+    } catch {
+        return { kind: "missing" };
+    }
+    const match = entries.find((name) => /^readme\.md$/i.test(name));
+    if (!match) return { kind: "missing" };
+    const path = join(cwd, match);
+    let size: number;
+    try {
+        size = statSync(path).size;
+    } catch {
+        return { kind: "missing" };
+    }
+    if (size > capBytes) return { kind: "oversized", size };
+    try {
+        const content = readFileSync(path, "utf8");
+        return { kind: "ok", content, size };
+    } catch {
+        return { kind: "missing" };
+    }
 }
 
 /** Strip `.dot` suffix if present so we can normalize to a canonical `label.dot`. */
@@ -105,6 +159,14 @@ export async function publishToPlayground(
     const repoUrl = options.repositoryUrl ?? readGitRemote(options.cwd);
     const metadata: Record<string, string> = {};
     if (repoUrl) metadata.repository = repoUrl;
+
+    // Inline README.md from the project root when present and within the cap.
+    // Oversized READMEs are deliberately dropped — the UI surfaces a warning
+    // in the confirm stage so the user can bail before we get this far.
+    if (options.cwd) {
+        const readme = readReadme(options.cwd);
+        if (readme.kind === "ok") metadata.readme = readme.content;
+    }
 
     const metadataBytes = new Uint8Array(Buffer.from(JSON.stringify(metadata), "utf8"));
 
