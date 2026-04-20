@@ -7,14 +7,14 @@
   },
   "dependencies": {
     "acc2c3b5e912b762": {
-      "@example/playground-registry": "latest"
+      "@w3s/playground-registry": "latest"
     }
   },
   "contracts": {
     "acc2c3b5e912b762": {
-      "@example/playground-registry": {
-        "version": 6,
-        "address": "0x279585Cb8E8971e34520A3ebbda3E0C4D77C3d97",
+      "@w3s/playground-registry": {
+        "version": 0,
+        "address": "0xb9Aa5e8421AF2c7426a37bA10045158dDe981856",
         "abi": [
           {
             "type": "constructor",
@@ -198,6 +198,55 @@
           },
           {
             "type": "function",
+            "name": "getApps",
+            "inputs": [
+              {
+                "name": "start",
+                "type": "uint32"
+              },
+              {
+                "name": "count",
+                "type": "uint32"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "tuple",
+                "components": [
+                  {
+                    "name": "total",
+                    "type": "uint32"
+                  },
+                  {
+                    "name": "entries",
+                    "type": "tuple[]",
+                    "components": [
+                      {
+                        "name": "index",
+                        "type": "uint32"
+                      },
+                      {
+                        "name": "domain",
+                        "type": "string"
+                      },
+                      {
+                        "name": "metadata_uri",
+                        "type": "string"
+                      },
+                      {
+                        "name": "owner",
+                        "type": "address"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
             "name": "getMetadataUri",
             "inputs": [
               {
@@ -241,7 +290,7 @@
             "stateMutability": "view"
           }
         ],
-        "metadataCid": "bafk2bzaceck7veaix4ttzyd6bmwlssgycrrlgilpat2c272nczzlrgnqy6fze"
+        "metadataCid": "bafk2bzaceb5zctlcjumwv6co6buraoqgatsss3fffmzh6bnlxgemovujkzod4"
       }
     }
   }
