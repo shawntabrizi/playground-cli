@@ -52,17 +52,17 @@ function makeClient(free: bigint) {
 }
 
 describe("checkBalance", () => {
-    it("reports sufficient when balance >= MIN_BALANCE (0.1 PAS)", async () => {
-        const { client } = makeClient(1_000_000_000n);
+    it("reports sufficient when balance >= MIN_BALANCE (0.5 PAS)", async () => {
+        const { client } = makeClient(5_000_000_000n);
         const result = await checkBalance(
             client,
             "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
         );
         expect(result.sufficient).toBe(true);
-        expect(result.free).toBe(1_000_000_000n);
+        expect(result.free).toBe(5_000_000_000n);
     });
 
-    it("reports insufficient when balance < MIN_BALANCE (0.1 PAS)", async () => {
+    it("reports insufficient when balance < MIN_BALANCE (0.5 PAS)", async () => {
         const { client } = makeClient(500_000_000n);
         const result = await checkBalance(
             client,
