@@ -66,6 +66,17 @@ async function hasCdm(): Promise<boolean> {
     return (await commandExists("cdm")) && (await commandExists("cargo-pvm-contract"));
 }
 
+async function hasFoundryPolkadot(): Promise<boolean> {
+    // foundry-polkadot installs `forge` at `~/.foundry/bin/forge` — we probe
+    // `forge` on PATH plus the polkadot-versioned binary the foundryup-polkadot
+    // installer drops in. Vanilla foundry also ships `forge` but without the
+    // `--resolc` codegen path, which `dot deploy` needs for Solidity contracts;
+    // `foundryup-polkadot` is the one that wires in the polkadot fork.
+    const home = homedir();
+    const foundryupPolkadot = resolve(home, ".foundry/bin/foundryup-polkadot");
+    return (await commandExists("forge")) && existsSync(foundryupPolkadot);
+}
+
 function isIpfsInitialized(): boolean {
     return existsSync(resolve(homedir(), ".ipfs"));
 }
@@ -139,6 +150,20 @@ export const TOOL_STEPS: ToolStep[] = [
             }
         },
         manualHint: "https://docs.ipfs.tech/install/ then run: ipfs init",
+    },
+    {
+        name: "foundry (polkadot)",
+        check: () => hasFoundryPolkadot(),
+        // `foundryup-polkadot` installs the polkadot fork alongside any stock
+        // foundry the user may already have, so this step is safe to run even
+        // when `forge` already exists on PATH.
+        install: (onData) =>
+            runPiped(
+                "curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash && $HOME/.foundry/bin/foundryup-polkadot",
+                onData,
+            ),
+        manualHint:
+            "curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash && ~/.foundry/bin/foundryup-polkadot",
     },
     {
         name: "GitHub CLI",

@@ -30,6 +30,7 @@ import {
 } from "../../utils/deploy/index.js";
 import { buildSummaryView } from "./summary.js";
 import type { ResolvedSigner } from "../../utils/signer.js";
+import type { ContractsType } from "../../utils/build/detect.js";
 import { DEFAULT_BUILD_DIR } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 
@@ -40,6 +41,10 @@ export interface DeployScreenInputs {
     mode: SignerMode | null;
     publishToPlayground: boolean | null;
     skipBuild: boolean | null;
+    /** Contract-project kind at `projectDir`, or null if none detected. */
+    contractsType: ContractsType | null;
+    /** Whether to deploy the project's contracts. null = ask the user. */
+    deployContracts: boolean | null;
     userSigner: ResolvedSigner | null;
     onDone: (outcome: DeployOutcome | null) => void;
 }
@@ -51,6 +56,7 @@ type Stage =
     | { kind: "prompt-domain" }
     | { kind: "validate-domain"; domain: string }
     | { kind: "prompt-publish" }
+    | { kind: "prompt-contracts" }
     | { kind: "confirm" }
     | { kind: "running" }
     | { kind: "done"; outcome: DeployOutcome }
@@ -62,6 +68,7 @@ interface Resolved {
     domain: string;
     publishToPlayground: boolean;
     skipBuild: boolean;
+    deployContracts: boolean;
 }
 
 export function DeployScreen({
@@ -71,6 +78,8 @@ export function DeployScreen({
     mode: initialMode,
     publishToPlayground: initialPublish,
     skipBuild: initialSkipBuild,
+    contractsType,
+    deployContracts: initialDeployContracts,
     userSigner,
     onDone,
 }: DeployScreenInputs) {
@@ -79,6 +88,13 @@ export function DeployScreen({
     const [domain, setDomain] = useState<string | null>(initialDomain);
     const [publishToPlayground, setPublishToPlayground] = useState<boolean | null>(initialPublish);
     const [skipBuild, setSkipBuild] = useState<boolean | null>(initialSkipBuild);
+    // When the project has no contracts at all we short-circuit the prompt to
+    // `false` so the confirm stage doesn't wait on a decision that can't be
+    // made. When contracts *are* detected, null means "ask"; anything else is
+    // the resolved choice (from CLI flag or a prior prompt).
+    const [deployContracts, setDeployContracts] = useState<boolean | null>(
+        contractsType === null ? false : initialDeployContracts,
+    );
     const [domainError, setDomainError] = useState<string | null>(null);
     // Captured from the availability check; feeds `resolveSignerSetup` so
     // the summary card shows the correct phone-approval count (register +
@@ -91,6 +107,7 @@ export function DeployScreen({
             initialBuildDir,
             initialDomain,
             initialPublish,
+            contractsType === null ? false : initialDeployContracts,
         ),
     );
 
@@ -105,8 +122,16 @@ export function DeployScreen({
         nextBuildDir: string | null = buildDir,
         nextDomain: string | null = domain,
         nextPublish: boolean | null = publishToPlayground,
+        nextDeployContracts: boolean | null = deployContracts,
     ) => {
-        const s = pickNextStage(nextSkipBuild, nextMode, nextBuildDir, nextDomain, nextPublish);
+        const s = pickNextStage(
+            nextSkipBuild,
+            nextMode,
+            nextBuildDir,
+            nextDomain,
+            nextPublish,
+            nextDeployContracts,
+        );
         setStage(s);
     };
 
@@ -116,11 +141,12 @@ export function DeployScreen({
             buildDir === null ||
             domain === null ||
             publishToPlayground === null ||
-            skipBuild === null
+            skipBuild === null ||
+            deployContracts === null
         )
             return null;
-        return { mode, buildDir, domain, publishToPlayground, skipBuild };
-    }, [mode, buildDir, domain, publishToPlayground, skipBuild]);
+        return { mode, buildDir, domain, publishToPlayground, skipBuild, deployContracts };
+    }, [mode, buildDir, domain, publishToPlayground, skipBuild, deployContracts]);
 
     // Dynamic terminal tab title: subtitle becomes the domain once we know it.
     const headerSubtitle = resolved?.domain ?? domain ?? undefined;
@@ -238,10 +264,30 @@ export function DeployScreen({
                 />
             )}
 
+            {stage.kind === "prompt-contracts" && contractsType !== null && (
+                <Select<boolean>
+                    label={`deploy ${contractsType} contracts?`}
+                    options={[
+                        { value: false, label: "no", hint: "skip the contracts phase" },
+                        {
+                            value: true,
+                            label: "yes",
+                            hint: `compile & deploy via ${contractsType}`,
+                        },
+                    ]}
+                    initialIndex={0}
+                    onSelect={(yes) => {
+                        setDeployContracts(yes);
+                        advance(skipBuild, mode, buildDir, domain, publishToPlayground, yes);
+                    }}
+                />
+            )}
+
             {stage.kind === "confirm" && resolved && (
                 <ConfirmStage
                     projectDir={projectDir}
                     inputs={resolved}
+                    contractsType={contractsType}
                     userSigner={userSigner}
                     plan={plan}
                     onProceed={() => setStage({ kind: "running" })}
@@ -294,8 +340,9 @@ function pickInitialStage(
     buildDir: string | null,
     domain: string | null,
     publish: boolean | null,
+    deployContracts: boolean | null,
 ): Stage {
-    return pickNextStage(skipBuild, mode, buildDir, domain, publish);
+    return pickNextStage(skipBuild, mode, buildDir, domain, publish, deployContracts);
 }
 
 function pickNextStage(
@@ -304,12 +351,14 @@ function pickNextStage(
     buildDir: string | null,
     domain: string | null,
     publish: boolean | null,
+    deployContracts: boolean | null,
 ): Stage {
     if (skipBuild === null) return { kind: "prompt-build" };
     if (mode === null) return { kind: "prompt-signer" };
     if (buildDir === null) return { kind: "prompt-buildDir" };
     if (domain === null) return { kind: "prompt-domain" };
     if (publish === null) return { kind: "prompt-publish" };
+    if (deployContracts === null) return { kind: "prompt-contracts" };
     return { kind: "confirm" };
 }
 
@@ -383,6 +432,7 @@ function ValidateDomainStage({
 function ConfirmStage({
     projectDir,
     inputs,
+    contractsType,
     userSigner,
     plan,
     onProceed,
@@ -390,6 +440,7 @@ function ConfirmStage({
 }: {
     projectDir: string;
     inputs: Resolved;
+    contractsType: ContractsType | null;
     userSigner: ResolvedSigner | null;
     plan: DeployPlan | null;
     onProceed: () => void;
@@ -427,6 +478,9 @@ function ConfirmStage({
         skipBuild: inputs.skipBuild,
         publishToPlayground: inputs.publishToPlayground,
         approvals: "approvals" in setup ? setup.approvals : [],
+        contracts: contractsType
+            ? { type: contractsType, deploy: inputs.deployContracts }
+            : undefined,
     });
 
     useInput((_input, key) => {
@@ -494,9 +548,16 @@ interface PhaseState {
     detail?: string;
 }
 
-const PHASE_ORDER: DeployPhase[] = ["build", "storage-and-dotns", "playground", "done"];
+const PHASE_ORDER: DeployPhase[] = [
+    "build",
+    "contracts",
+    "storage-and-dotns",
+    "playground",
+    "done",
+];
 const PHASE_TITLE: Record<DeployPhase, string> = {
     build: "build",
+    contracts: "contracts",
     "storage-and-dotns": "upload + dotns",
     playground: "publish to playground",
     done: "done",
@@ -534,6 +595,13 @@ function RunningStage({
         build: {
             status: inputs.skipBuild ? "complete" : "pending",
             detail: inputs.skipBuild ? "skipped" : undefined,
+        },
+        // The contracts phase always starts pending — the orchestrator will
+        // fire either `phase-start` or `phase-skipped` (with a reason) based
+        // on `deployContracts` + project detection.
+        contracts: {
+            status: inputs.deployContracts ? "pending" : "complete",
+            detail: inputs.deployContracts ? undefined : "skipped",
         },
         "storage-and-dotns": { status: "pending" },
         playground: {
@@ -591,6 +659,7 @@ function RunningStage({
                     domain: inputs.domain,
                     mode: inputs.mode,
                     publishToPlayground: inputs.publishToPlayground,
+                    deployContracts: inputs.deployContracts,
                     userSigner,
                     plan: plan ?? undefined,
                     onEvent: (event) => handleEvent(event),
@@ -613,13 +682,31 @@ function RunningStage({
                     setWindowTitle(`dot deploy · ${inputs.domain} · publishing`);
                 } else if (event.phase === "build") {
                     setWindowTitle(`dot deploy · ${inputs.domain} · building`);
+                } else if (event.phase === "contracts") {
+                    setWindowTitle(`dot deploy · ${inputs.domain} · contracts`);
                 }
             } else if (event.kind === "phase-complete") {
                 setPhases((p) => ({ ...p, [event.phase]: { status: "complete" } }));
+            } else if (event.kind === "phase-skipped") {
+                setPhases((p) => ({
+                    ...p,
+                    [event.phase]: { status: "complete", detail: "skipped" },
+                }));
+                queueInfo(event.reason);
             } else if (event.kind === "build-log") {
                 queueInfo(event.line);
             } else if (event.kind === "build-detected") {
                 queueInfo(`> ${event.config.description}`);
+            } else if (event.kind === "contracts-event") {
+                const e = event.event;
+                if (e.kind === "info") queueInfo(e.message);
+                else if (e.kind === "compile-log") queueInfo(e.line);
+                else if (e.kind === "compile-detected")
+                    queueInfo(`found ${e.contracts.length} contract(s): ${e.contracts.join(", ")}`);
+                else if (e.kind === "deploy-chunk")
+                    queueInfo(`deploying chunk ${e.chunk}/${e.total}: ${e.crates.join(", ")}`);
+                else if (e.kind === "deploy-done")
+                    queueInfo(`deployed ${e.addresses.length} contract(s)`);
             } else if (event.kind === "storage-event") {
                 if (event.event.kind === "chunk-progress") {
                     const now = performance.now();

@@ -15,7 +15,7 @@ import {
     type InstallConfig,
 } from "./detect.js";
 
-/** Files whose presence alters build strategy (read once at detect time). */
+/** Files whose presence alters build or contract-flow strategy (read once at detect time). */
 const CONFIG_PROBES = [
     "vite.config.ts",
     "vite.config.js",
@@ -24,6 +24,11 @@ const CONFIG_PROBES = [
     "next.config.js",
     "next.config.mjs",
     "tsconfig.json",
+    "foundry.toml",
+    "hardhat.config.ts",
+    "hardhat.config.js",
+    "hardhat.config.cjs",
+    "hardhat.config.mjs",
 ] as const;
 
 /** Read just enough of the project root to drive `detectBuildConfig`. */
@@ -49,11 +54,15 @@ export function loadDetectInput(projectDir: string): DetectInput {
         if (existsSync(join(root, name))) configFiles.add(name);
     }
 
+    const cargoPath = join(root, "Cargo.toml");
+    const cargoToml = existsSync(cargoPath) ? readFileSync(cargoPath, "utf8") : null;
+
     return {
         packageJson,
         lockfiles,
         configFiles,
         hasNodeModules: existsSync(join(root, "node_modules")),
+        cargoToml,
     };
 }
 

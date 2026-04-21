@@ -23,6 +23,8 @@ import {
     type DeployEvent,
 } from "../../utils/deploy/index.js";
 import { buildSummaryView } from "./summary.js";
+import { detectContractsType, type ContractsType } from "../../utils/build/detect.js";
+import { loadDetectInput } from "../../utils/build/runner.js";
 import { DEFAULT_BUILD_DIR, type Env } from "../../config.js";
 
 interface DeployOpts {
@@ -37,6 +39,8 @@ interface DeployOpts {
      * a `--no-foo` option is declared.
      */
     build?: boolean;
+    /** Deploy the project's contracts alongside the frontend. Defaults to false. */
+    contracts?: boolean;
     env?: Env;
     /** Project root. Hidden — defaults to cwd. */
     dir?: string;
@@ -53,6 +57,10 @@ export const deployCommand = new Command("deploy")
         `Directory containing build artifacts (default: ${DEFAULT_BUILD_DIR})`,
     )
     .option("--no-build", "Skip the build step and deploy existing artifacts in buildDir")
+    .option(
+        "--contracts",
+        "Also deploy any contracts detected in the project (foundry/hardhat/cdm)",
+    )
     .option("--playground", "Publish to the playground registry")
     .option("--suri <suri>", "Secret URI for the user signer (e.g. //Alice for dev)")
     .addOption(
@@ -224,6 +232,13 @@ async function runHeadless(ctx: {
     const domain = ctx.opts.domain as string;
     const buildDir = ctx.opts.buildDir as string;
     const skipBuild = ctx.opts.build === false;
+    const deployContracts = Boolean(ctx.opts.contracts);
+    const contractsType = safeDetectContractsType(ctx.projectDir);
+    if (deployContracts && contractsType === null) {
+        throw new Error(
+            "--contracts was passed but no foundry/hardhat/cdm project was detected at the root.",
+        );
+    }
 
     // Check availability BEFORE we build + upload, so CI fails fast on a
     // Reserved / already-taken name without wasting a chunk upload.
@@ -269,6 +284,7 @@ async function runHeadless(ctx: {
         domain,
         mode,
         publishToPlayground,
+        deployContracts,
         userSigner: ctx.userSigner,
         plan: availability.plan,
         env: ctx.env,
@@ -278,12 +294,27 @@ async function runHeadless(ctx: {
     printFinalResult(outcome);
 }
 
+/**
+ * Best-effort contract-project detection for the deploy flow. Swallows I/O
+ * errors (unreadable project dir, malformed package.json, etc.) by returning
+ * null — a false negative just means the "deploy contracts?" prompt doesn't
+ * appear, which is the safer fallback.
+ */
+function safeDetectContractsType(projectDir: string): ContractsType | null {
+    try {
+        return detectContractsType(loadDetectInput(projectDir));
+    } catch {
+        return null;
+    }
+}
+
 function runInteractive(ctx: {
     projectDir: string;
     env: Env;
     userSigner: ResolvedSigner | null;
     opts: DeployOpts;
 }): Promise<void> {
+    const contractsType = safeDetectContractsType(ctx.projectDir);
     return new Promise((resolvePromise, rejectPromise) => {
         let settled = false;
         const app = render(
@@ -297,6 +328,11 @@ function runInteractive(ctx: {
                 // Only pre-fill when the user explicitly asked to skip via `--no-build`;
                 // otherwise show the prompt so they can hit Enter on the default "yes".
                 skipBuild: ctx.opts.build === false ? true : null,
+                contractsType,
+                // --contracts on the CLI pre-answers the prompt; omitting it
+                // leaves null so the interactive flow asks when contracts are
+                // detected (and short-circuits to false when they aren't).
+                deployContracts: ctx.opts.contracts !== undefined ? ctx.opts.contracts : null,
                 userSigner: ctx.userSigner,
                 onDone: (outcome: DeployOutcome | null) => {
                     if (settled) return;

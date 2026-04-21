@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     detectBuildConfig,
+    detectContractsType,
     detectInstallConfig,
     detectPackageManager,
     BuildDetectError,
@@ -13,6 +14,7 @@ function input(overrides: Partial<DetectInput> = {}): DetectInput {
         lockfiles: new Set(),
         configFiles: new Set(),
         hasNodeModules: true,
+        cargoToml: null,
         ...overrides,
     };
 }
@@ -199,5 +201,54 @@ describe("detectInstallConfig", () => {
                 }),
             ),
         ).toEqual({ cmd: "yarn", args: ["install"], description: "yarn install" });
+    });
+});
+
+describe("detectContractsType", () => {
+    it("returns null for an empty project", () => {
+        expect(detectContractsType(input())).toBeNull();
+    });
+
+    it("detects foundry via foundry.toml", () => {
+        expect(detectContractsType(input({ configFiles: new Set(["foundry.toml"]) }))).toBe(
+            "foundry",
+        );
+    });
+
+    it("detects hardhat via any hardhat.config.* variant", () => {
+        for (const name of [
+            "hardhat.config.ts",
+            "hardhat.config.js",
+            "hardhat.config.cjs",
+            "hardhat.config.mjs",
+        ]) {
+            expect(detectContractsType(input({ configFiles: new Set([name]) }))).toBe("hardhat");
+        }
+    });
+
+    it("detects cdm via pvm_contract in Cargo.toml", () => {
+        const cargoToml = `[dependencies]\npvm_contract = "0.1"\n`;
+        expect(detectContractsType(input({ cargoToml }))).toBe("cdm");
+    });
+
+    it("detects cdm via the kebab-case dep name too", () => {
+        const cargoToml = `[workspace.dependencies]\npvm-contract = { version = "0.1" }\n`;
+        expect(detectContractsType(input({ cargoToml }))).toBe("cdm");
+    });
+
+    it("ignores Cargo.toml without a pvm_contract dep", () => {
+        const cargoToml = `[dependencies]\nserde = "1.0"\n`;
+        expect(detectContractsType(input({ cargoToml }))).toBeNull();
+    });
+
+    it("prefers foundry when both foundry.toml and a hardhat config exist", () => {
+        // Mixed projects happen during tooling migrations; foundry wins the
+        // tie-break because its config is stricter (a bare hardhat.config.ts
+        // sometimes lingers in non-hardhat projects).
+        expect(
+            detectContractsType(
+                input({ configFiles: new Set(["foundry.toml", "hardhat.config.ts"]) }),
+            ),
+        ).toBe("foundry");
     });
 });

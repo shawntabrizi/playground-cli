@@ -48,7 +48,12 @@ export interface DetectInput {
     configFiles: Set<string>;
     /** Whether a node_modules/ directory exists at the project root. */
     hasNodeModules: boolean;
+    /** Raw Cargo.toml contents (used to gate the cdm contract flow). Null when absent. */
+    cargoToml: string | null;
 }
+
+/** Kind of contract project we found at the root, or null if none. */
+export type ContractsType = "foundry" | "hardhat" | "cdm";
 
 export class BuildDetectError extends Error {
     constructor(message: string) {
@@ -126,6 +131,35 @@ const PM_INSTALL: Record<PackageManager, InstallConfig> = {
     bun: { cmd: "bun", args: ["install"], description: "bun install" },
     npm: { cmd: "npm", args: ["install"], description: "npm install" },
 };
+
+/** Hardhat config file variants (TS, CJS, MJS, plain JS). */
+const HARDHAT_CONFIGS = [
+    "hardhat.config.ts",
+    "hardhat.config.js",
+    "hardhat.config.cjs",
+    "hardhat.config.mjs",
+] as const;
+
+/**
+ * Decide which contract-project toolchain (if any) the user is using. We only
+ * gate the "deploy contracts?" prompt on this — the actual build & deploy
+ * helpers re-detect at their own granularity, so a false-positive here is
+ * harmless (user sees the prompt, picks "no").
+ *
+ * Detection rules:
+ *   - foundry → `foundry.toml` at the root.
+ *   - hardhat → any `hardhat.config.{ts,js,cjs,mjs}` at the root.
+ *   - cdm     → `Cargo.toml` at the root that mentions `pvm_contract`
+ *               (matches either snake_case or kebab-case, dep or workspace dep).
+ */
+export function detectContractsType(input: DetectInput): ContractsType | null {
+    if (input.configFiles.has("foundry.toml")) return "foundry";
+    for (const name of HARDHAT_CONFIGS) {
+        if (input.configFiles.has(name)) return "hardhat";
+    }
+    if (input.cargoToml && /\bpvm[_-]contract\b/.test(input.cargoToml)) return "cdm";
+    return null;
+}
 
 /**
  * Decide whether we need to run an install step before building. Returns the

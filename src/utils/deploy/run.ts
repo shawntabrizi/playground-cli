@@ -7,9 +7,17 @@
  * off the same events.
  */
 
-import { runBuild, loadDetectInput, detectBuildConfig, type BuildConfig } from "../build/index.js";
+import {
+    runBuild,
+    loadDetectInput,
+    detectBuildConfig,
+    detectContractsType,
+    type BuildConfig,
+    type ContractsType,
+} from "../build/index.js";
 import { runStorageDeploy } from "./storage.js";
 import { publishToPlayground, normalizeDomain } from "./playground.js";
+import { runContractsPhase, type ContractsPhaseEvent } from "./contracts.js";
 import { resolveSignerSetup, type SignerMode, type DeployApproval } from "./signerMode.js";
 import {
     wrapSignerWithEvents,
@@ -18,20 +26,24 @@ import {
     type SigningEvent,
 } from "./signingProxy.js";
 import type { DeployLogEvent } from "./progress.js";
-import type { ResolvedSigner } from "../signer.js";
+import { resolveSigner, type ResolvedSigner } from "../signer.js";
+import { getConnection } from "../connection.js";
 import type { Env } from "../../config.js";
 import type { DeployPlan } from "./availability.js";
+import type { HexString } from "polkadot-api";
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
-export type DeployPhase = "build" | "storage-and-dotns" | "playground" | "done";
+export type DeployPhase = "build" | "contracts" | "storage-and-dotns" | "playground" | "done";
 
 export type DeployEvent =
     | { kind: "plan"; approvals: DeployApproval[] }
     | { kind: "phase-start"; phase: DeployPhase }
     | { kind: "phase-complete"; phase: DeployPhase }
+    | { kind: "phase-skipped"; phase: DeployPhase; reason: string }
     | { kind: "build-log"; line: string }
     | { kind: "build-detected"; config: BuildConfig }
+    | { kind: "contracts-event"; event: ContractsPhaseEvent }
     | { kind: "storage-event"; event: DeployLogEvent }
     | { kind: "signing"; event: SigningEvent }
     | { kind: "error"; phase: DeployPhase; message: string };
@@ -51,6 +63,12 @@ export interface RunDeployOptions {
     mode: SignerMode;
     /** Whether to publish to the playground registry after DotNS succeeds. */
     publishToPlayground: boolean;
+    /**
+     * Whether to compile + deploy the project's contracts (foundry / hardhat /
+     * cdm). When true, the contracts phase runs after `build`; when false
+     * (default) the phase emits a `phase-skipped` event and returns immediately.
+     */
+    deployContracts?: boolean;
     /** The logged-in phone signer. Required for `mode === "phone"` or `publishToPlayground`. */
     userSigner: ResolvedSigner | null;
     /** Event sink — consumed by the TUI / RevX. */
@@ -78,6 +96,8 @@ export interface DeployOutcome {
     approvalsRequested: DeployApproval[];
     /** URL the user can visit to view their deployed app. */
     appUrl: string;
+    /** Contract addresses deployed this run (empty when contracts phase was skipped). */
+    contracts: Array<{ name: string; address: HexString }>;
 }
 
 // ── Orchestrator ─────────────────────────────────────────────────────────────
@@ -115,6 +135,9 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
         }
         options.onEvent({ kind: "phase-complete", phase: "build" });
     }
+
+    // ── Contracts ────────────────────────────────────────────────────────
+    const contractsDeployed = await maybeRunContracts(options);
 
     // ── Storage + DotNS via bulletin-deploy ──────────────────────────────
     options.onEvent({ kind: "phase-start", phase: "storage-and-dotns" });
@@ -178,9 +201,92 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
         metadataCid,
         approvalsRequested: setup.approvals,
         appUrl,
+        contracts: contractsDeployed,
     };
     options.onEvent({ kind: "phase-complete", phase: "done" });
     return outcome;
+}
+
+// ── Contracts orchestration ──────────────────────────────────────────────────
+
+/**
+ * Run the contracts phase when `deployContracts` is true and a recognized
+ * foundry/hardhat/cdm project is detected. Fires `phase-skipped` in every
+ * other case (user said no, nothing detected, etc.) so the UI can collapse
+ * the row without leaving it "pending" forever.
+ *
+ * Signer resolution:
+ *   - phone mode   → reuse `userSigner` (same key that signs DotNS / playground).
+ *   - dev mode     → resolve `//Alice` on the fly. This mirrors how the rest of
+ *                    the `dev` path works — bulletin-deploy uses its own
+ *                    DEFAULT_MNEMONIC for storage, and we deliberately don't
+ *                    entangle the contracts signer with that one.
+ */
+async function maybeRunContracts(options: RunDeployOptions): Promise<DeployOutcome["contracts"]> {
+    if (!options.deployContracts) {
+        options.onEvent({
+            kind: "phase-skipped",
+            phase: "contracts",
+            reason: "contracts deploy not requested",
+        });
+        return [];
+    }
+
+    const contractsType: ContractsType | null = detectContractsType(
+        loadDetectInput(options.projectDir),
+    );
+    if (contractsType === null) {
+        options.onEvent({
+            kind: "phase-skipped",
+            phase: "contracts",
+            reason: "no foundry/hardhat/cdm project detected at the root",
+        });
+        return [];
+    }
+
+    options.onEvent({ kind: "phase-start", phase: "contracts" });
+
+    let contractsSigner: ResolvedSigner | null = null;
+    let ownsContractsSigner = false;
+    try {
+        if (options.mode === "phone") {
+            if (!options.userSigner) {
+                throw new Error(
+                    "contracts deploy requires a signed-in phone session in --signer phone mode",
+                );
+            }
+            contractsSigner = options.userSigner;
+        } else {
+            contractsSigner = await resolveSigner({ suri: "//Alice" });
+            ownsContractsSigner = true;
+        }
+
+        const client = await getConnection();
+        const result = await runContractsPhase({
+            projectDir: options.projectDir,
+            contractsType,
+            // @polkadot-apps/chain-client returns `ChainClient<{assetHub,
+            // bulletin, individuality}>`; cdm only needs the first two. The
+            // structural extra field is harmless at runtime.
+            client: client as unknown as Parameters<typeof runContractsPhase>[0]["client"],
+            signer: contractsSigner.signer,
+            origin: contractsSigner.address,
+            onEvent: (event) => options.onEvent({ kind: "contracts-event", event }),
+        });
+
+        options.onEvent({ kind: "phase-complete", phase: "contracts" });
+        return result.deployed;
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        options.onEvent({ kind: "error", phase: "contracts", message });
+        throw err;
+    } finally {
+        if (ownsContractsSigner && contractsSigner) {
+            try {
+                contractsSigner.destroy();
+            } catch {}
+        }
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
