@@ -10,10 +10,12 @@
  *                 resolc under the hood when `@parity/hardhat-polkadot` is
  *                 loaded in the user's config.
  *
- * All three paths converge on a list of PolkaVM `.polkavm` bytecode files on
- * disk, which we hand to `ContractDeployer.deployBatch` for weight-aware
- * batching via `Utility.batch_all`. No registry registration, no metadata
- * publish in v1 — that's opt-in future work.
+ * All three paths converge on a list of bytecode files on disk that we hand
+ * to `ContractDeployer.deployBatch` for weight-aware batching via
+ * `Utility.batch_all`. The bytes can be PVM or EVM — `Revive.instantiate_with_code`
+ * polymorphically accepts both when the chain has `AllowEVMBytecode = true`
+ * (Asset Hub paseo + hub do). No registry registration, no metadata publish
+ * in v1 — that's opt-in future work.
  *
  * Kept free of React / Ink imports so RevX can consume this from a
  * WebContainer — see the "SDK surface" note in CLAUDE.md.
@@ -31,9 +33,6 @@ import {
 } from "@dotdm/contracts";
 import type { HexString, PolkadotSigner, SS58String } from "polkadot-api";
 import type { ContractsType } from "../build/detect.js";
-
-/** PolkaVM magic bytes — every resolc-emitted blob starts with `0x50564d00` ("PVM\0"). */
-const PVM_MAGIC: ReadonlyArray<number> = [0x50, 0x56, 0x4d, 0x00];
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
@@ -120,7 +119,11 @@ export async function runContractsPhase(
 interface CompiledArtifact {
     /** Human-readable name (crate name for cdm, contract name for Solidity). */
     name: string;
-    /** Absolute path to the PolkaVM `.polkavm` bytecode file on disk. */
+    /**
+     * Absolute path to the bytecode file on disk. Named `pvmPath` to match
+     * cdm's `ContractDeployer.deployBatch(pvmPaths)` API; the bytes can be
+     * PVM or EVM — revive's `instantiate_with_code` handles either.
+     */
     pvmPath: string;
 }
 
@@ -213,12 +216,12 @@ async function compileFoundry(opts: RunContractsPhaseOptions): Promise<CompiledA
         const hex = artifact.bytecode?.object;
         if (typeof hex !== "string") continue;
         const bytes = hexToBytes(hex);
+        // Abstract contracts / interfaces compile to "0x" — skip them.
         if (bytes.length === 0) continue;
-        ensurePvmMagic(contractName, bytes);
 
         artifacts.push({
             name: contractName,
-            pvmPath: writeTmpPvm(`foundry-${contractName}`, bytes),
+            pvmPath: writeTmpBytecode(`foundry-${contractName}`, bytes),
         });
     }
 
@@ -265,12 +268,12 @@ async function compileHardhat(opts: RunContractsPhaseOptions): Promise<CompiledA
             const hex = artifact.bytecode;
             if (typeof hex !== "string") continue;
             const bytes = hexToBytes(hex);
+            // Abstract contracts / interfaces compile to "0x" — skip them.
             if (bytes.length === 0) continue;
-            ensurePvmMagic(contractName, bytes);
 
             artifacts.push({
                 name: contractName,
-                pvmPath: writeTmpPvm(`hardhat-${contractName}`, bytes),
+                pvmPath: writeTmpBytecode(`hardhat-${contractName}`, bytes),
             });
         }
     }
@@ -292,23 +295,6 @@ function hexToBytes(hex: string): Uint8Array {
     return out;
 }
 
-/**
- * Reject EVM bytecode early with a targeted error. A foundry user who forgot
- * `--resolc` (or its `foundry.toml` equivalent) would otherwise silently
- * deploy EVM opcodes that `pallet_revive` can't execute.
- */
-function ensurePvmMagic(contractName: string, bytes: Uint8Array): void {
-    for (let i = 0; i < PVM_MAGIC.length; i++) {
-        if (bytes[i] !== PVM_MAGIC[i]) {
-            throw new Error(
-                `${contractName} bytecode is not PolkaVM (missing 0x50564d00 magic). ` +
-                    "For foundry, ensure `resolc_compile = true` in foundry.toml or pass --resolc. " +
-                    "For hardhat, ensure `@parity/hardhat-polkadot` is loaded in hardhat.config.",
-            );
-        }
-    }
-}
-
 let tmpDirForSession: string | null = null;
 /** Allocate a per-session tmp dir so a failed deploy's artifacts stick around for inspection. */
 function sessionTmpDir(): string {
@@ -320,12 +306,11 @@ function sessionTmpDir(): string {
 }
 
 /**
- * Persist a PolkaVM byte blob to a `.polkavm` file that `ContractDeployer.deploy`
- * can read back. cdm's API is filesystem-oriented even for in-memory bytes,
- * which is why we round-trip through disk.
+ * Persist a contract byte blob to a file that `ContractDeployer.deploy` can
+ * read back. Works for PVM and EVM bytes alike — revive auto-dispatches.
  */
-function writeTmpPvm(stem: string, bytes: Uint8Array): string {
-    const path = join(sessionTmpDir(), `${stem}.polkavm`);
+function writeTmpBytecode(stem: string, bytes: Uint8Array): string {
+    const path = join(sessionTmpDir(), `${stem}.bin`);
     writeFileSync(path, bytes);
     return path;
 }
