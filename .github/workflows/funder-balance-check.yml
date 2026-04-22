@@ -1,0 +1,90 @@
+name: Funder Balance Check
+
+# Scheduled probe for the dedicated PAS funder on Paseo Asset Hub. When the
+# balance falls below the threshold, the workflow opens (or comments on)
+# a GitHub issue labelled `funder-low-balance` so someone can top it up from
+# https://faucet.polkadot.io/. Idempotent — never files a second open issue.
+
+on:
+    schedule:
+        - cron: "*/30 * * * *"
+    workflow_dispatch:
+
+permissions:
+    issues: write
+    contents: read
+
+jobs:
+    check:
+        name: Check dedicated funder balance
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - run: pnpm install --frozen-lockfile
+
+            - id: check
+              name: Probe balance
+              # `continue-on-error` so the follow-up step can react to low /
+              # error exits instead of the job being marked failed and skipping.
+              continue-on-error: true
+              run: |
+                  bun run scripts/check-funder-balance.ts | tee balance.txt
+                  echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+            - name: File or update issue when low
+              if: steps.check.outputs.exitcode != '0'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  set -euo pipefail
+
+                  ADDRESS=$(grep '^address=' balance.txt | cut -d= -f2- || echo "unknown")
+                  BALANCE=$(grep '^balance=' balance.txt | cut -d= -f2- || echo "unknown")
+                  THRESHOLD=$(grep '^threshold=' balance.txt | cut -d= -f2- || echo "5000.00 PAS")
+                  FAUCET="https://faucet.polkadot.io/?network=pah&address=${ADDRESS}"
+                  NOW=$(date -u +%FT%TZ)
+
+                  # `.[0].number // empty` turns an empty result into no
+                  # output. Plain `.[0].number` returns the string "null",
+                  # which slips past `[ -z "$EXISTING" ]` and causes
+                  # `gh issue comment null` to error the first time the
+                  # balance goes low.
+                  EXISTING=$(gh issue list \
+                      --state open \
+                      --label funder-low-balance \
+                      --json number \
+                      --jq '.[0].number // empty' || true)
+
+                  if [ -z "$EXISTING" ]; then
+                      gh issue create \
+                          --title "[URGENT] Dedicated funder balance low — top up required" \
+                          --label funder-low-balance \
+                          --body "$(cat <<EOF
+                  The dedicated Paseo Asset Hub funder account is below the low-balance threshold. Without a top-up, \`dot init\` will start failing for new users once Alice drains.
+
+                  | Field | Value |
+                  | --- | --- |
+                  | Address | \`$ADDRESS\` |
+                  | Current balance | \`$BALANCE\` |
+                  | Threshold | \`$THRESHOLD\` |
+                  | Detected at | \`$NOW\` |
+
+                  **Top up:** [$FAUCET]($FAUCET)
+
+                  Close this issue manually after funding. This workflow will comment on the open issue (rather than opening a new one) while the balance stays low.
+                  EOF
+                  )"
+                  else
+                      gh issue comment "$EXISTING" --body "Still low at \`$NOW\` — current balance \`$BALANCE\` (threshold \`$THRESHOLD\`). Top up at [the faucet]($FAUCET)."
+                  fi

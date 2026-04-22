@@ -14,8 +14,8 @@ const {
     getOrCreateSessionAccountMock,
     getConnectionMock,
     checkBalanceMock,
+    pickFunderMock,
     submitAndWatchMock,
-    createDevSignerMock,
 } = vi.hoisted(() => ({
     runStorageDeploy: vi.fn<
         (arg: any) => Promise<{
@@ -77,7 +77,12 @@ const {
     submitAndWatchMock: vi.fn<(tx: unknown, signer: unknown) => Promise<unknown>>(async () => ({
         ok: true,
     })),
-    createDevSignerMock: vi.fn((name: string) => ({ __devSigner: name })),
+    pickFunderMock: vi.fn<
+        (
+            client: unknown,
+            required: bigint,
+        ) => Promise<{ name: string; address: string; signer: unknown } | null>
+    >(async () => ({ name: "Alice", address: "5Alice", signer: { __funder: "Alice" } })),
 }));
 
 vi.mock("./storage.js", () => ({ runStorageDeploy }));
@@ -107,10 +112,14 @@ vi.mock("../connection.js", () => ({
 }));
 vi.mock("../account/funding.js", () => ({
     checkBalance: checkBalanceMock,
+    pickFunder: (...args: unknown[]) => pickFunderMock(args[0], args[1] as bigint),
+    FUNDER_FEE_BUFFER: 1_000_000_000n,
+}));
+vi.mock("../account/funder.js", () => ({
+    FAUCET_URL: "https://faucet.polkadot.io/?network=pah",
 }));
 vi.mock("@polkadot-apps/tx", () => ({
     submitAndWatch: (...args: unknown[]) => submitAndWatchMock(args[0], args[1]),
-    createDevSigner: (...args: unknown[]) => createDevSignerMock(args[0] as string),
 }));
 
 import { runDeploy, type DeployEvent } from "./run.js";
@@ -178,7 +187,12 @@ beforeEach(() => {
     checkBalanceMock.mockReset();
     checkBalanceMock.mockResolvedValue({ free: 100_000_000_000n, sufficient: true });
     submitAndWatchMock.mockClear();
-    createDevSignerMock.mockClear();
+    pickFunderMock.mockReset();
+    pickFunderMock.mockResolvedValue({
+        name: "Alice",
+        address: "5Alice",
+        signer: { __funder: "Alice" },
+    });
 });
 
 describe("runDeploy", () => {
@@ -581,15 +595,22 @@ describe("runDeploy — contracts phase", () => {
         const [, firstSigner] = submitAndWatchMock.mock.calls[0];
         expect(firstSigner).toHaveProperty("signTx");
         expect(firstSigner).toHaveProperty("signBytes");
-        // Dev fallback must NOT have fired.
-        expect(createDevSignerMock).not.toHaveBeenCalledWith("Alice");
+        // Dev-mode funder-chain lookup must NOT have fired.
+        expect(pickFunderMock).not.toHaveBeenCalled();
     });
 
-    it("ensureSessionFunded: underfunded + pure dev mode → uses Alice as funder", async () => {
+    it("ensureSessionFunded: underfunded + pure dev mode → picks a funder from the chain", async () => {
         detectContractsTypeMock.mockReturnValue("foundry");
         const { client } = makeFakeClient();
         getConnectionMock.mockResolvedValue(client);
         checkBalanceMock.mockResolvedValue({ free: 0n, sufficient: false });
+
+        const dedicatedSigner = { __funder: "dedicated" };
+        pickFunderMock.mockResolvedValueOnce({
+            name: "dedicated",
+            address: "5Dedicated",
+            signer: dedicatedSigner,
+        });
 
         const { push } = collectEvents();
         await runDeploy({
@@ -604,10 +625,45 @@ describe("runDeploy — contracts phase", () => {
             onEvent: push,
         });
 
-        expect(createDevSignerMock).toHaveBeenCalledWith("Alice");
-        // Transfer submitted with the Alice dev signer.
+        // Funder-chain was consulted for `SESSION_FUND_AMOUNT + FUNDER_FEE_BUFFER`.
+        expect(pickFunderMock).toHaveBeenCalledTimes(1);
+        const required = pickFunderMock.mock.calls[0][1];
+        expect(required).toBe(50_000_000_000n + 1_000_000_000n);
+
+        // Transfer was submitted with exactly the signer returned by pickFunder.
         const [, funder] = submitAndWatchMock.mock.calls[0];
-        expect(funder).toMatchObject({ __devSigner: "Alice" });
+        expect(funder).toBe(dedicatedSigner);
+    });
+
+    it("ensureSessionFunded: underfunded + dev mode + every funder drained → throws with faucet link", async () => {
+        detectContractsTypeMock.mockReturnValue("foundry");
+        const { client } = makeFakeClient();
+        getConnectionMock.mockResolvedValue(client);
+        checkBalanceMock.mockResolvedValue({ free: 0n, sufficient: false });
+        pickFunderMock.mockResolvedValueOnce(null);
+
+        const { events, push } = collectEvents();
+        await expect(
+            runDeploy({
+                projectDir: "/tmp/proj",
+                buildDir: "/tmp/proj/dist",
+                skipBuild: true,
+                domain: "my-app",
+                mode: "dev",
+                publishToPlayground: false,
+                userSigner: null,
+                deployContracts: true,
+                onEvent: push,
+            }),
+        ).rejects.toThrow(
+            /Dev account balance low\..*mobile signer.*faucet.*https:\/\/faucet\.polkadot\.io/s,
+        );
+
+        // No transfer should have been attempted.
+        expect(submitAndWatchMock).not.toHaveBeenCalled();
+        // The error should have been surfaced as a contracts-phase error event.
+        const err = events.find((e) => e.kind === "error" && e.phase === "contracts");
+        expect(err).toBeDefined();
     });
 
     it("session-key mapping fires Revive.map_account only when created: true", async () => {

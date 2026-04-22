@@ -31,9 +31,10 @@ import {
     type SigningEvent,
 } from "./signingProxy.js";
 import type { DeployLogEvent } from "./progress.js";
-import { checkBalance } from "../account/funding.js";
-import { Enum } from "polkadot-api";
-import { submitAndWatch, createDevSigner } from "@polkadot-apps/tx";
+import { checkBalance, pickFunder, FUNDER_FEE_BUFFER } from "../account/funding.js";
+import { FAUCET_URL } from "../account/funder.js";
+import { Enum, type PolkadotSigner } from "polkadot-api";
+import { submitAndWatch } from "@polkadot-apps/tx";
 import type { ResolvedSigner } from "../signer.js";
 import { getConnection } from "../connection.js";
 import type { Env } from "../../config.js";
@@ -307,13 +308,27 @@ async function ensureSessionFunded(opts: {
 
     emitInfo(`funding session key ${opts.sessionAddress}…`);
 
-    const funder = opts.userSigner
-        ? wrapSignerWithEvents(opts.userSigner.signer, {
-              label: "Fund contract deploy session key",
-              counter: opts.counter,
-              onEvent: (event) => opts.onEvent({ kind: "signing", event }),
-          })
-        : createDevSigner("Alice");
+    // Phone signer: user pays, with a lifecycle event so the TUI numbers the
+    // tap. Pure dev mode: pick the first funder in the chain that has enough
+    // PAS to cover the top-up. If every dev funder is drained, tell the user
+    // to switch to a mobile signer rather than silently falling back to
+    // anything that might race the drainer.
+    let funder: PolkadotSigner;
+    if (opts.userSigner) {
+        funder = wrapSignerWithEvents(opts.userSigner.signer, {
+            label: "Fund contract deploy session key",
+            counter: opts.counter,
+            onEvent: (event) => opts.onEvent({ kind: "signing", event }),
+        });
+    } else {
+        const picked = await pickFunder(opts.client, SESSION_FUND_AMOUNT + FUNDER_FEE_BUFFER);
+        if (!picked) {
+            throw new Error(
+                `Dev account balance low. Please deploy with mobile signer. To top up funds in your mobile signer, go to the faucet at: ${FAUCET_URL}`,
+            );
+        }
+        funder = picked.signer;
+    }
 
     await submitAndWatch(
         opts.client.assetHub.tx.Balances.transfer_keep_alive({

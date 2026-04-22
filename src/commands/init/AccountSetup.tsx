@@ -3,6 +3,8 @@ import { Row, Section, type MarkKind } from "../../utils/ui/theme/index.js";
 import { getConnection } from "../../utils/connection.js";
 import { getSessionSigner, type SessionHandle } from "../../utils/auth.js";
 import { checkBalance, ensureFunded, FUND_AMOUNT } from "../../utils/account/funding.js";
+import { AllFundersExhaustedError } from "../../utils/account/errors.js";
+import { faucetUrlFor } from "../../utils/account/funder.js";
 import { checkMapping, ensureMapped } from "../../utils/account/mapping.js";
 import {
     checkAllowance,
@@ -126,7 +128,11 @@ export function AccountSetup({
                     funded = true;
                 }
             } catch (err) {
-                update(0, { status: "failed", error: describe(err), valueTone: "danger" });
+                const error =
+                    err instanceof AllFundersExhaustedError
+                        ? `Unable to auto fund your account, please use the faucet at: ${faucetUrlFor(address)}`
+                        : describe(err);
+                update(0, { status: "failed", error, valueTone: "danger" });
             }
 
             // Step 1: Revive mapping (requires funds, user signs via mobile wallet)
