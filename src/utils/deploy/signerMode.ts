@@ -44,7 +44,7 @@ export interface DeploySignerSetup {
 }
 
 export interface DeployApproval {
-    phase: "dotns" | "playground";
+    phase: "dotns" | "playground" | "contracts-fund";
     label: string;
 }
 
@@ -62,6 +62,15 @@ export interface ResolveOptions {
      * we under-estimated, so users never see "step 5 of 4" even on this path.
      */
     plan?: DeployPlan;
+    /**
+     * Whether the contracts phase will top up its session key before deploy.
+     * When true and the user signer is a real phone session, the top-up
+     * `Balances.transfer_keep_alive` needs a phone tap — surfaced here so
+     * the confirm page's approval count matches what the user is about to
+     * experience. When the session is already funded, or the funder is a
+     * local dev key (pure dev mode, no session), no extra approval is added.
+     */
+    contractsFundingNeeded?: boolean;
 }
 
 /**
@@ -103,6 +112,15 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
     const approvals: DeployApproval[] = [];
 
     let bulletinDeployAuthOptions: DeploySignerSetup["bulletinDeployAuthOptions"] = {};
+
+    // Contract session-key top-up — only counts as a phone tap when the
+    // funder is a live session signer. Dev-suri and pure dev (Alice)
+    // funding happen in-process with no human in the loop. Listed FIRST so
+    // the numbered order on the confirm page matches the runtime firing
+    // order: the contracts phase runs before `storage-and-dotns` + playground.
+    if (opts.contractsFundingNeeded && opts.userSigner?.source === "session") {
+        approvals.push({ phase: "contracts-fund", label: "Fund contract deploy session key" });
+    }
 
     if (opts.mode === "phone") {
         if (!opts.userSigner) {

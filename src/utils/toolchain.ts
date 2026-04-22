@@ -1,7 +1,8 @@
-import { exec, spawn } from "node:child_process";
+import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { arch, homedir, platform } from "node:os";
+import { runShell as runPiped } from "./process.js";
 
 /** Async exec — resolves with stdout, rejects on non-zero exit. */
 function run(cmd: string, opts?: { shell?: string }): Promise<string> {
@@ -10,25 +11,6 @@ function run(cmd: string, opts?: { shell?: string }): Promise<string> {
             if (err) reject(err);
             else resolve(stdout);
         });
-    });
-}
-
-/** Async exec with output piped to a callback. */
-function runPiped(cmd: string, onData?: (line: string) => void): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const child = spawn(cmd, { stdio: "pipe", shell: "bash" });
-        const output: string[] = [];
-        const forward = (chunk: Buffer) => {
-            for (const line of chunk.toString().split("\n").filter(Boolean)) {
-                output.push(line);
-                onData?.(line);
-            }
-        };
-        child.stdout?.on("data", forward);
-        child.stderr?.on("data", forward);
-        child.on("close", (code: number) =>
-            code === 0 ? resolve() : reject(new Error(output.join("\n") || `exit ${code}`)),
-        );
     });
 }
 
@@ -64,6 +46,14 @@ async function hasRustSrc(): Promise<boolean> {
 
 async function hasCdm(): Promise<boolean> {
     return (await commandExists("cdm")) && (await commandExists("cargo-pvm-contract"));
+}
+
+async function hasFoundryPolkadot(): Promise<boolean> {
+    // Stock `forge` lacks `--resolc`, which we need for PolkaVM codegen;
+    // `foundryup-polkadot` wires in the polkadot fork.
+    const home = homedir();
+    const foundryupPolkadot = resolve(home, ".foundry/bin/foundryup-polkadot");
+    return (await commandExists("forge")) && existsSync(foundryupPolkadot);
 }
 
 function isIpfsInitialized(): boolean {
@@ -139,6 +129,17 @@ export const TOOL_STEPS: ToolStep[] = [
             }
         },
         manualHint: "https://docs.ipfs.tech/install/ then run: ipfs init",
+    },
+    {
+        name: "foundry (polkadot)",
+        check: () => hasFoundryPolkadot(),
+        install: (onData) =>
+            runPiped(
+                "curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash && $HOME/.foundry/bin/foundryup-polkadot",
+                onData,
+            ),
+        manualHint:
+            "curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash && ~/.foundry/bin/foundryup-polkadot",
     },
     {
         name: "GitHub CLI",

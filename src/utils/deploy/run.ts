@@ -7,9 +7,22 @@
  * off the same events.
  */
 
-import { runBuild, loadDetectInput, detectBuildConfig, type BuildConfig } from "../build/index.js";
+import {
+    runBuild,
+    loadDetectInput,
+    detectBuildConfig,
+    detectContractsType,
+    type BuildConfig,
+    type ContractsType,
+} from "../build/index.js";
 import { runStorageDeploy } from "./storage.js";
 import { publishToPlayground, normalizeDomain } from "./playground.js";
+import { runContractsPhase, type ContractsPhaseEvent } from "./contracts.js";
+import {
+    getOrCreateSessionAccount,
+    SESSION_FUND_AMOUNT,
+    SESSION_MIN_BALANCE,
+} from "./session-account.js";
 import { resolveSignerSetup, type SignerMode, type DeployApproval } from "./signerMode.js";
 import {
     wrapSignerWithEvents,
@@ -18,20 +31,27 @@ import {
     type SigningEvent,
 } from "./signingProxy.js";
 import type { DeployLogEvent } from "./progress.js";
+import { checkBalance } from "../account/funding.js";
+import { Enum } from "polkadot-api";
+import { submitAndWatch, createDevSigner } from "@polkadot-apps/tx";
 import type { ResolvedSigner } from "../signer.js";
+import { getConnection } from "../connection.js";
 import type { Env } from "../../config.js";
 import type { DeployPlan } from "./availability.js";
+import type { HexString } from "polkadot-api";
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
-export type DeployPhase = "build" | "storage-and-dotns" | "playground" | "done";
+export type DeployPhase = "build" | "contracts" | "storage-and-dotns" | "playground" | "done";
 
 export type DeployEvent =
     | { kind: "plan"; approvals: DeployApproval[] }
     | { kind: "phase-start"; phase: DeployPhase }
     | { kind: "phase-complete"; phase: DeployPhase }
+    | { kind: "phase-skipped"; phase: DeployPhase; reason: string }
     | { kind: "build-log"; line: string }
     | { kind: "build-detected"; config: BuildConfig }
+    | { kind: "contracts-event"; event: ContractsPhaseEvent }
     | { kind: "storage-event"; event: DeployLogEvent }
     | { kind: "signing"; event: SigningEvent }
     | { kind: "error"; phase: DeployPhase; message: string };
@@ -51,6 +71,8 @@ export interface RunDeployOptions {
     mode: SignerMode;
     /** Whether to publish to the playground registry after DotNS succeeds. */
     publishToPlayground: boolean;
+    /** Compile + deploy foundry/hardhat/cdm contracts alongside the frontend. */
+    deployContracts?: boolean;
     /** The logged-in phone signer. Required for `mode === "phone"` or `publishToPlayground`. */
     userSigner: ResolvedSigner | null;
     /** Event sink — consumed by the TUI / RevX. */
@@ -63,6 +85,8 @@ export interface RunDeployOptions {
      * (3 DotNS taps) if absent and auto-corrects at runtime.
      */
     plan?: DeployPlan;
+    /** Whether the contracts phase needs a phone tap to top up its session key. */
+    contractsFundingNeeded?: boolean;
 }
 
 export interface DeployOutcome {
@@ -78,6 +102,8 @@ export interface DeployOutcome {
     approvalsRequested: DeployApproval[];
     /** URL the user can visit to view their deployed app. */
     appUrl: string;
+    /** Contract addresses deployed this run (empty when contracts phase was skipped). */
+    contracts: Array<{ name: string; address: HexString }>;
 }
 
 // ── Orchestrator ─────────────────────────────────────────────────────────────
@@ -90,57 +116,66 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
         userSigner: options.userSigner,
         publishToPlayground: options.publishToPlayground,
         plan: options.plan,
+        contractsFundingNeeded: options.contractsFundingNeeded,
     });
 
     options.onEvent({ kind: "plan", approvals: setup.approvals });
 
     const counter = createSigningCounter(setup.approvals.length);
 
-    // ── Build ────────────────────────────────────────────────────────────
+    // Contracts and frontend build+upload run concurrently; both must finish
+    // before playground publish.
     const buildAbs = options.buildDir;
-    if (!options.skipBuild) {
-        options.onEvent({ kind: "phase-start", phase: "build" });
+
+    const contractsPromise = maybeRunContracts(options, counter);
+
+    const frontendPromise = (async () => {
+        if (!options.skipBuild) {
+            options.onEvent({ kind: "phase-start", phase: "build" });
+            try {
+                const config = detectBuildConfig(loadDetectInput(options.projectDir));
+                options.onEvent({ kind: "build-detected", config });
+                await runBuild({
+                    cwd: options.projectDir,
+                    config,
+                    onData: (line) => options.onEvent({ kind: "build-log", line }),
+                });
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                options.onEvent({ kind: "error", phase: "build", message });
+                throw err;
+            }
+            options.onEvent({ kind: "phase-complete", phase: "build" });
+        }
+
+        options.onEvent({ kind: "phase-start", phase: "storage-and-dotns" });
+        const storageAuth = maybeWrapAuthForSigning(
+            setup.bulletinDeployAuthOptions,
+            options,
+            counter,
+            setup.approvals,
+        );
         try {
-            const config = detectBuildConfig(loadDetectInput(options.projectDir));
-            options.onEvent({ kind: "build-detected", config });
-            await runBuild({
-                cwd: options.projectDir,
-                config,
-                onData: (line) => options.onEvent({ kind: "build-log", line }),
+            const storageResult = await runStorageDeploy({
+                content: buildAbs,
+                domainName: label,
+                auth: storageAuth,
+                onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
+                env: options.env,
             });
+            options.onEvent({ kind: "phase-complete", phase: "storage-and-dotns" });
+            return storageResult;
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            options.onEvent({ kind: "error", phase: "build", message });
+            options.onEvent({ kind: "error", phase: "storage-and-dotns", message });
             throw err;
         }
-        options.onEvent({ kind: "phase-complete", phase: "build" });
-    }
+    })();
 
-    // ── Storage + DotNS via bulletin-deploy ──────────────────────────────
-    options.onEvent({ kind: "phase-start", phase: "storage-and-dotns" });
-
-    const storageAuth = maybeWrapAuthForSigning(
-        setup.bulletinDeployAuthOptions,
-        options,
-        counter,
-        setup.approvals,
-    );
-
-    let storageResult;
-    try {
-        storageResult = await runStorageDeploy({
-            content: buildAbs,
-            domainName: label,
-            auth: storageAuth,
-            onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
-            env: options.env,
-        });
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        options.onEvent({ kind: "error", phase: "storage-and-dotns", message });
-        throw err;
-    }
-    options.onEvent({ kind: "phase-complete", phase: "storage-and-dotns" });
+    const [contractsDeployed, storageResult] = await Promise.all([
+        contractsPromise,
+        frontendPromise,
+    ]);
 
     // ── Playground publish ───────────────────────────────────────────────
     let metadataCid: string | undefined;
@@ -178,9 +213,117 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
         metadataCid,
         approvalsRequested: setup.approvals,
         appUrl,
+        contracts: contractsDeployed,
     };
     options.onEvent({ kind: "phase-complete", phase: "done" });
     return outcome;
+}
+
+// ── Contracts orchestration ──────────────────────────────────────────────────
+
+/**
+ * Compile + deploy contracts using the on-disk session key. Fires
+ * `phase-skipped` when disabled or no contract project is detected.
+ */
+async function maybeRunContracts(
+    options: RunDeployOptions,
+    counter: SigningCounter,
+): Promise<DeployOutcome["contracts"]> {
+    if (!options.deployContracts) {
+        options.onEvent({
+            kind: "phase-skipped",
+            phase: "contracts",
+            reason: "contracts deploy not requested",
+        });
+        return [];
+    }
+
+    const contractsType: ContractsType | null = detectContractsType(
+        loadDetectInput(options.projectDir),
+    );
+    if (contractsType === null) {
+        options.onEvent({
+            kind: "phase-skipped",
+            phase: "contracts",
+            reason: "no foundry/hardhat/cdm project detected at the root",
+        });
+        return [];
+    }
+
+    options.onEvent({ kind: "phase-start", phase: "contracts" });
+
+    try {
+        const { info: session, created } = await getOrCreateSessionAccount();
+        const client = await getConnection();
+
+        await ensureSessionFunded({
+            client,
+            sessionAddress: session.account.ss58Address,
+            userSigner: options.userSigner,
+            counter,
+            onEvent: options.onEvent,
+        });
+        if (created) {
+            await submitAndWatch(client.assetHub.tx.Revive.map_account(), session.account.signer);
+        }
+
+        const result = await runContractsPhase({
+            projectDir: options.projectDir,
+            contractsType,
+            // cdm's PipelineChainClient is a structural subset of our
+            // ChainClient — cast keeps the extra `individuality` field out
+            // of the SDK-surface type without affecting runtime behaviour.
+            client: client as unknown as Parameters<typeof runContractsPhase>[0]["client"],
+            signer: session.account.signer,
+            origin: session.account.ss58Address,
+            onEvent: (event) => options.onEvent({ kind: "contracts-event", event }),
+        });
+
+        options.onEvent({ kind: "phase-complete", phase: "contracts" });
+        return result.deployed;
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        options.onEvent({ kind: "error", phase: "contracts", message });
+        throw err;
+    }
+}
+
+/** Top up the contracts session key if it's below `SESSION_MIN_BALANCE`. */
+async function ensureSessionFunded(opts: {
+    client: Awaited<ReturnType<typeof getConnection>>;
+    sessionAddress: string;
+    userSigner: ResolvedSigner | null;
+    counter: SigningCounter;
+    onEvent: RunDeployOptions["onEvent"];
+}): Promise<void> {
+    const emitInfo = (message: string) =>
+        opts.onEvent({ kind: "contracts-event", event: { kind: "info", message } });
+
+    const balance = await checkBalance(opts.client, opts.sessionAddress, SESSION_MIN_BALANCE);
+    if (balance.sufficient) {
+        emitInfo(`session key funded (${opts.sessionAddress})`);
+        return;
+    }
+
+    emitInfo(`funding session key ${opts.sessionAddress}…`);
+
+    const funder = opts.userSigner
+        ? wrapSignerWithEvents(opts.userSigner.signer, {
+              label: "Fund contract deploy session key",
+              counter: opts.counter,
+              onEvent: (event) => opts.onEvent({ kind: "signing", event }),
+          })
+        : createDevSigner("Alice");
+
+    await submitAndWatch(
+        opts.client.assetHub.tx.Balances.transfer_keep_alive({
+            dest: Enum("Id", opts.sessionAddress),
+            value: SESSION_FUND_AMOUNT,
+        }),
+        funder,
+    );
+
+    emitInfo("session key funded");
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

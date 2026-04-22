@@ -21,21 +21,30 @@ export interface BalanceStatus {
     sufficient: boolean;
 }
 
-export async function checkBalance(client: PaseoClient, address: string): Promise<BalanceStatus> {
+export async function checkBalance(
+    client: PaseoClient,
+    address: string,
+    minBalance: bigint = MIN_BALANCE,
+): Promise<BalanceStatus> {
     const account = await client.assetHub.query.System.Account.getValue(address, AT_BEST);
     const free = account.data.free;
-    return { free, sufficient: free >= MIN_BALANCE };
+    return { free, sufficient: free >= minBalance };
 }
 
-export async function ensureFunded(client: PaseoClient, address: string): Promise<void> {
-    const { sufficient } = await checkBalance(client, address);
+export async function ensureFunded(
+    client: PaseoClient,
+    address: string,
+    minBalance: bigint = MIN_BALANCE,
+    fundAmount: bigint = FUND_AMOUNT,
+): Promise<void> {
+    const { sufficient } = await checkBalance(client, address, minBalance);
     if (sufficient) return;
 
     const alice = createDevSigner("Alice");
     await submitAndWatch(
         client.assetHub.tx.Balances.transfer_keep_alive({
             dest: Enum("Id", address),
-            value: FUND_AMOUNT,
+            value: fundAmount,
         }),
         alice,
     );

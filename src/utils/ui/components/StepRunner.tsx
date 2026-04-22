@@ -6,9 +6,13 @@
  * Warnings (`isWarning = true`) show inline and don't stop execution.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Box } from "ink";
 import { Row, Section, LogTail, type MarkKind } from "../theme/index.js";
+
+// Coalesce log updates to ≤10 Hz — see CLAUDE.md "Throttle TUI info updates".
+const LOG_THROTTLE_MS = 100;
+const LOG_LINE_MAX = 160;
 
 export interface Step {
     name: string;
@@ -57,8 +61,31 @@ export function StepRunner({ title, steps, onDone }: Props) {
     );
     const [output, setOutput] = useState<string[]>([]);
 
+    const bufferRef = useRef<string[]>([]);
+    const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const scheduleFlush = () => {
+        if (flushTimerRef.current !== null) return;
+        flushTimerRef.current = setTimeout(() => {
+            flushTimerRef.current = null;
+            setOutput([...bufferRef.current]);
+        }, LOG_THROTTLE_MS);
+    };
+
     useEffect(() => {
         let cancelled = false;
+
+        const pushLine = (line: string) => {
+            const truncated =
+                line.length > LOG_LINE_MAX ? `${line.slice(0, LOG_LINE_MAX - 1)}…` : line;
+            const next = [...bufferRef.current, truncated].slice(-LOG_LINES);
+            bufferRef.current = next;
+            scheduleFlush();
+        };
+
+        const clearBuffer = () => {
+            bufferRef.current = [];
+            setOutput([]);
+        };
 
         (async () => {
             let error: string | undefined;
@@ -69,12 +96,10 @@ export function StepRunner({ title, steps, onDone }: Props) {
                 setStates((prev) =>
                     prev.map((s, j) => (j === i ? { ...s, status: "running" } : s)),
                 );
-                setOutput([]);
+                clearBuffer();
 
                 try {
-                    await steps[i].run((line) => {
-                        setOutput((prev) => [...prev.slice(-(LOG_LINES - 1)), line]);
-                    });
+                    await steps[i].run(pushLine);
                     setStates((prev) => prev.map((s, j) => (j === i ? { ...s, status: "ok" } : s)));
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
@@ -101,7 +126,12 @@ export function StepRunner({ title, steps, onDone }: Props) {
 
         return () => {
             cancelled = true;
+            if (flushTimerRef.current !== null) {
+                clearTimeout(flushTimerRef.current);
+                flushTimerRef.current = null;
+            }
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const running = states.some((s) => s.status === "running");

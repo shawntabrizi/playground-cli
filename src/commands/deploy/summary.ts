@@ -5,6 +5,7 @@
  */
 
 import type { SignerMode, DeployApproval } from "../../utils/deploy/index.js";
+import type { ContractsType } from "../../utils/build/detect.js";
 
 export interface SummaryInputs {
     mode: SignerMode;
@@ -13,6 +14,8 @@ export interface SummaryInputs {
     skipBuild: boolean;
     publishToPlayground: boolean;
     approvals: DeployApproval[];
+    /** Contract project kind + user's yes/no. Omit when no contracts were detected. */
+    contracts?: { type: ContractsType; deploy: boolean };
 }
 
 export interface SummaryView {
@@ -28,17 +31,24 @@ const MODE_LABEL: Record<SignerMode, string> = {
 };
 
 export function buildSummaryView(input: SummaryInputs): SummaryView {
+    const rows: SummaryView["rows"] = [
+        { label: "Signer", value: MODE_LABEL[input.mode] },
+        { label: "Build", value: input.skipBuild ? "skip (use existing)" : "rebuild first" },
+        { label: "Build dir", value: input.buildDir },
+        {
+            label: "Publish",
+            value: input.publishToPlayground ? "Playground + your apps" : "DotNS only",
+        },
+    ];
+    if (input.contracts) {
+        rows.push({
+            label: "Contracts",
+            value: input.contracts.deploy ? `deploy (${input.contracts.type})` : "skip",
+        });
+    }
     return {
         headline: `Deploying ${input.domain}`,
-        rows: [
-            { label: "Signer", value: MODE_LABEL[input.mode] },
-            { label: "Build", value: input.skipBuild ? "skip (use existing)" : "rebuild first" },
-            { label: "Build dir", value: input.buildDir },
-            {
-                label: "Publish",
-                value: input.publishToPlayground ? "Playground + your apps" : "DotNS only",
-            },
-        ],
+        rows,
         approvalLines: input.approvals.map((a, i) => `${i + 1}. ${a.label}`),
         totalApprovals: input.approvals.length,
     };

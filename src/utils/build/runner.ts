@@ -5,7 +5,7 @@
 
 import { readFileSync, statSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { runStreamed } from "../process.js";
 import {
     detectBuildConfig,
     detectInstallConfig,
@@ -15,7 +15,7 @@ import {
     type InstallConfig,
 } from "./detect.js";
 
-/** Files whose presence alters build strategy (read once at detect time). */
+/** Files whose presence alters build or contract-flow strategy (read once at detect time). */
 const CONFIG_PROBES = [
     "vite.config.ts",
     "vite.config.js",
@@ -24,6 +24,11 @@ const CONFIG_PROBES = [
     "next.config.js",
     "next.config.mjs",
     "tsconfig.json",
+    "foundry.toml",
+    "hardhat.config.ts",
+    "hardhat.config.js",
+    "hardhat.config.cjs",
+    "hardhat.config.mjs",
 ] as const;
 
 /** Read just enough of the project root to drive `detectBuildConfig`. */
@@ -49,11 +54,15 @@ export function loadDetectInput(projectDir: string): DetectInput {
         if (existsSync(join(root, name))) configFiles.add(name);
     }
 
+    const cargoPath = join(root, "Cargo.toml");
+    const cargoToml = existsSync(cargoPath) ? readFileSync(cargoPath, "utf8") : null;
+
     return {
         packageJson,
         lockfiles,
         configFiles,
         hasNodeModules: existsSync(join(root, "node_modules")),
+        cargoToml,
     };
 }
 
@@ -70,62 +79,6 @@ export interface RunBuildResult {
     config: BuildConfig;
     /** Absolute path where the built artifacts live, according to the config. */
     outputDir: string;
-}
-
-/**
- * Spawn a streamed child process and resolve/reject based on exit code.
- * Forwards every non-empty line through `onData` and includes the last few
- * lines in the rejection error when the process exits non-zero.
- */
-async function runStreamed(opts: {
-    cmd: string;
-    args: string[];
-    cwd: string;
-    description: string;
-    failurePrefix: string;
-    onData?: (line: string) => void;
-}): Promise<void> {
-    await new Promise<void>((resolvePromise, rejectPromise) => {
-        const child = spawn(opts.cmd, opts.args, {
-            cwd: opts.cwd,
-            stdio: ["ignore", "pipe", "pipe"],
-            env: { ...process.env, FORCE_COLOR: process.env.FORCE_COLOR ?? "1" },
-        });
-
-        const tail: string[] = [];
-        const MAX_TAIL = 50;
-
-        const forward = (chunk: Buffer) => {
-            for (const line of chunk.toString().split("\n")) {
-                if (line.length === 0) continue;
-                tail.push(line);
-                if (tail.length > MAX_TAIL) tail.shift();
-                opts.onData?.(line);
-            }
-        };
-
-        child.stdout.on("data", forward);
-        child.stderr.on("data", forward);
-        child.on("error", (err) =>
-            rejectPromise(
-                new Error(`Failed to spawn "${opts.description}": ${err.message}`, {
-                    cause: err,
-                }),
-            ),
-        );
-        child.on("close", (code) => {
-            if (code === 0) {
-                resolvePromise();
-            } else {
-                const snippet = tail.slice(-10).join("\n") || "(no output)";
-                rejectPromise(
-                    new Error(
-                        `${opts.failurePrefix} (${opts.description}) with exit code ${code}.\n${snippet}`,
-                    ),
-                );
-            }
-        });
-    });
 }
 
 /**

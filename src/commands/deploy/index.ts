@@ -23,6 +23,10 @@ import {
     type DeployEvent,
 } from "../../utils/deploy/index.js";
 import { buildSummaryView } from "./summary.js";
+import { detectContractsType, type ContractsType } from "../../utils/build/detect.js";
+import { loadDetectInput } from "../../utils/build/runner.js";
+import { readSessionAccount, SESSION_MIN_BALANCE } from "../../utils/deploy/session-account.js";
+import { checkBalance } from "../../utils/account/funding.js";
 import { DEFAULT_BUILD_DIR, type Env } from "../../config.js";
 
 interface DeployOpts {
@@ -37,6 +41,8 @@ interface DeployOpts {
      * a `--no-foo` option is declared.
      */
     build?: boolean;
+    /** Deploy the project's contracts alongside the frontend. Defaults to false. */
+    contracts?: boolean;
     env?: Env;
     /** Project root. Hidden — defaults to cwd. */
     dir?: string;
@@ -53,6 +59,10 @@ export const deployCommand = new Command("deploy")
         `Directory containing build artifacts (default: ${DEFAULT_BUILD_DIR})`,
     )
     .option("--no-build", "Skip the build step and deploy existing artifacts in buildDir")
+    .option(
+        "--contracts",
+        "Also deploy any contracts detected in the project (foundry/hardhat/cdm)",
+    )
     .option("--playground", "Publish to the playground registry")
     .option("--suri <suri>", "Secret URI for the user signer (e.g. //Alice for dev)")
     .addOption(
@@ -224,6 +234,13 @@ async function runHeadless(ctx: {
     const domain = ctx.opts.domain as string;
     const buildDir = ctx.opts.buildDir as string;
     const skipBuild = ctx.opts.build === false;
+    const deployContracts = Boolean(ctx.opts.contracts);
+    const contractsType = safeDetectContractsType(ctx.projectDir);
+    if (deployContracts && contractsType === null) {
+        throw new Error(
+            "--contracts was passed but no foundry/hardhat/cdm project was detected at the root.",
+        );
+    }
 
     // Check availability BEFORE we build + upload, so CI fails fast on a
     // Reserved / already-taken name without wasting a chunk upload.
@@ -246,11 +263,17 @@ async function runHeadless(ctx: {
     }
     process.stdout.write(`✔ ${formatAvailability(availability)}\n`);
 
+    const contractsFundingNeeded = await computeContractsFundingNeeded({
+        deployContracts,
+        userSigner: ctx.userSigner,
+    });
+
     const setup = resolveSignerSetup({
         mode,
         userSigner: ctx.userSigner,
         publishToPlayground,
         plan: availability.plan,
+        contractsFundingNeeded,
     });
     const view = buildSummaryView({
         mode,
@@ -269,6 +292,8 @@ async function runHeadless(ctx: {
         domain,
         mode,
         publishToPlayground,
+        deployContracts,
+        contractsFundingNeeded,
         userSigner: ctx.userSigner,
         plan: availability.plan,
         env: ctx.env,
@@ -278,12 +303,44 @@ async function runHeadless(ctx: {
     printFinalResult(outcome);
 }
 
+/** Best-effort contract-project detection; null on any I/O error. */
+export function safeDetectContractsType(projectDir: string): ContractsType | null {
+    try {
+        return detectContractsType(loadDetectInput(projectDir));
+    } catch {
+        return null;
+    }
+}
+
+/** Whether the contracts phase will need a phone tap to top up the session key. */
+export async function computeContractsFundingNeeded(args: {
+    deployContracts: boolean;
+    userSigner: ResolvedSigner | null;
+}): Promise<boolean> {
+    if (!args.deployContracts) return false;
+    if (args.userSigner?.source !== "session") return false;
+    try {
+        const session = await readSessionAccount();
+        if (session === null) return true;
+        const client = await getConnection();
+        const { sufficient } = await checkBalance(
+            client,
+            session.account.ss58Address,
+            SESSION_MIN_BALANCE,
+        );
+        return !sufficient;
+    } catch {
+        return true;
+    }
+}
+
 function runInteractive(ctx: {
     projectDir: string;
     env: Env;
     userSigner: ResolvedSigner | null;
     opts: DeployOpts;
 }): Promise<void> {
+    const contractsType = safeDetectContractsType(ctx.projectDir);
     return new Promise((resolvePromise, rejectPromise) => {
         let settled = false;
         const app = render(
@@ -297,6 +354,8 @@ function runInteractive(ctx: {
                 // Only pre-fill when the user explicitly asked to skip via `--no-build`;
                 // otherwise show the prompt so they can hit Enter on the default "yes".
                 skipBuild: ctx.opts.build === false ? true : null,
+                contractsType,
+                deployContracts: ctx.opts.contracts !== undefined ? ctx.opts.contracts : null,
                 userSigner: ctx.userSigner,
                 onDone: (outcome: DeployOutcome | null) => {
                     if (settled) return;

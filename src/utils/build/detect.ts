@@ -48,7 +48,12 @@ export interface DetectInput {
     configFiles: Set<string>;
     /** Whether a node_modules/ directory exists at the project root. */
     hasNodeModules: boolean;
+    /** Raw Cargo.toml contents (used to gate the cdm contract flow). Null when absent. */
+    cargoToml: string | null;
 }
+
+/** Kind of contract project we found at the root, or null if none. */
+export type ContractsType = "foundry" | "hardhat" | "cdm";
 
 export class BuildDetectError extends Error {
     constructor(message: string) {
@@ -126,6 +131,29 @@ const PM_INSTALL: Record<PackageManager, InstallConfig> = {
     bun: { cmd: "bun", args: ["install"], description: "bun install" },
     npm: { cmd: "npm", args: ["install"], description: "npm install" },
 };
+
+/** Hardhat config file variants (TS, CJS, MJS, plain JS). */
+const HARDHAT_CONFIGS = [
+    "hardhat.config.ts",
+    "hardhat.config.js",
+    "hardhat.config.cjs",
+    "hardhat.config.mjs",
+] as const;
+
+/**
+ * Detect which contract toolchain is in use at the project root:
+ *   foundry → `foundry.toml`
+ *   hardhat → `hardhat.config.{ts,js,cjs,mjs}`
+ *   cdm     → `Cargo.toml` mentioning `pvm_contract` (snake or kebab case)
+ */
+export function detectContractsType(input: DetectInput): ContractsType | null {
+    if (input.configFiles.has("foundry.toml")) return "foundry";
+    for (const name of HARDHAT_CONFIGS) {
+        if (input.configFiles.has(name)) return "hardhat";
+    }
+    if (input.cargoToml && /\bpvm[_-]contract\b/.test(input.cargoToml)) return "cdm";
+    return null;
+}
 
 /**
  * Decide whether we need to run an install step before building. Returns the

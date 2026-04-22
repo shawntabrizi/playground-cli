@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import {
     Header,
@@ -9,6 +9,8 @@ import {
     Sparkline,
     Select,
     Input,
+    Mark,
+    LAYOUT,
     setWindowTitle,
     type MarkKind,
 } from "../../utils/ui/theme/index.js";
@@ -22,14 +24,24 @@ import {
     type AvailabilityResult,
     type DeployEvent,
     type DeployOutcome,
-    type DeployPhase,
     type DeployPlan,
     type SignerMode,
     type DeployApproval,
     type SigningEvent,
 } from "../../utils/deploy/index.js";
 import { buildSummaryView } from "./summary.js";
+import {
+    initialRunningState,
+    runningReducer,
+    type ContractsSectionState,
+    type FrontendSectionState,
+    type StepStatus,
+} from "./runningState.js";
+import { readSessionAccount, SESSION_MIN_BALANCE } from "../../utils/deploy/session-account.js";
+import { checkBalance } from "../../utils/account/funding.js";
+import { getConnection } from "../../utils/connection.js";
 import type { ResolvedSigner } from "../../utils/signer.js";
+import type { ContractsType } from "../../utils/build/detect.js";
 import { DEFAULT_BUILD_DIR } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 
@@ -40,6 +52,10 @@ export interface DeployScreenInputs {
     mode: SignerMode | null;
     publishToPlayground: boolean | null;
     skipBuild: boolean | null;
+    /** Contract-project kind at `projectDir`, or null if none detected. */
+    contractsType: ContractsType | null;
+    /** Whether to deploy the project's contracts. null = ask the user. */
+    deployContracts: boolean | null;
     userSigner: ResolvedSigner | null;
     onDone: (outcome: DeployOutcome | null) => void;
 }
@@ -51,6 +67,7 @@ type Stage =
     | { kind: "prompt-domain" }
     | { kind: "validate-domain"; domain: string }
     | { kind: "prompt-publish" }
+    | { kind: "prompt-contracts" }
     | { kind: "confirm" }
     | { kind: "running" }
     | { kind: "done"; outcome: DeployOutcome }
@@ -62,6 +79,7 @@ interface Resolved {
     domain: string;
     publishToPlayground: boolean;
     skipBuild: boolean;
+    deployContracts: boolean;
 }
 
 export function DeployScreen({
@@ -71,6 +89,8 @@ export function DeployScreen({
     mode: initialMode,
     publishToPlayground: initialPublish,
     skipBuild: initialSkipBuild,
+    contractsType,
+    deployContracts: initialDeployContracts,
     userSigner,
     onDone,
 }: DeployScreenInputs) {
@@ -79,6 +99,10 @@ export function DeployScreen({
     const [domain, setDomain] = useState<string | null>(initialDomain);
     const [publishToPlayground, setPublishToPlayground] = useState<boolean | null>(initialPublish);
     const [skipBuild, setSkipBuild] = useState<boolean | null>(initialSkipBuild);
+    // null → ask; false short-circuits the prompt when no contracts exist.
+    const [deployContracts, setDeployContracts] = useState<boolean | null>(
+        contractsType === null ? false : initialDeployContracts,
+    );
     const [domainError, setDomainError] = useState<string | null>(null);
     // Captured from the availability check; feeds `resolveSignerSetup` so
     // the summary card shows the correct phone-approval count (register +
@@ -91,6 +115,7 @@ export function DeployScreen({
             initialBuildDir,
             initialDomain,
             initialPublish,
+            contractsType === null ? false : initialDeployContracts,
         ),
     );
 
@@ -105,8 +130,16 @@ export function DeployScreen({
         nextBuildDir: string | null = buildDir,
         nextDomain: string | null = domain,
         nextPublish: boolean | null = publishToPlayground,
+        nextDeployContracts: boolean | null = deployContracts,
     ) => {
-        const s = pickNextStage(nextSkipBuild, nextMode, nextBuildDir, nextDomain, nextPublish);
+        const s = pickNextStage(
+            nextSkipBuild,
+            nextMode,
+            nextBuildDir,
+            nextDomain,
+            nextPublish,
+            nextDeployContracts,
+        );
         setStage(s);
     };
 
@@ -116,11 +149,12 @@ export function DeployScreen({
             buildDir === null ||
             domain === null ||
             publishToPlayground === null ||
-            skipBuild === null
+            skipBuild === null ||
+            deployContracts === null
         )
             return null;
-        return { mode, buildDir, domain, publishToPlayground, skipBuild };
-    }, [mode, buildDir, domain, publishToPlayground, skipBuild]);
+        return { mode, buildDir, domain, publishToPlayground, skipBuild, deployContracts };
+    }, [mode, buildDir, domain, publishToPlayground, skipBuild, deployContracts]);
 
     // Dynamic terminal tab title: subtitle becomes the domain once we know it.
     const headerSubtitle = resolved?.domain ?? domain ?? undefined;
@@ -238,10 +272,30 @@ export function DeployScreen({
                 />
             )}
 
+            {stage.kind === "prompt-contracts" && contractsType !== null && (
+                <Select<boolean>
+                    label={`deploy ${contractsType} contracts?`}
+                    options={[
+                        { value: false, label: "no", hint: "skip the contracts phase" },
+                        {
+                            value: true,
+                            label: "yes",
+                            hint: `compile & deploy via ${contractsType}`,
+                        },
+                    ]}
+                    initialIndex={0}
+                    onSelect={(yes) => {
+                        setDeployContracts(yes);
+                        advance(skipBuild, mode, buildDir, domain, publishToPlayground, yes);
+                    }}
+                />
+            )}
+
             {stage.kind === "confirm" && resolved && (
                 <ConfirmStage
                     projectDir={projectDir}
                     inputs={resolved}
+                    contractsType={contractsType}
                     userSigner={userSigner}
                     plan={plan}
                     onProceed={() => setStage({ kind: "running" })}
@@ -251,27 +305,28 @@ export function DeployScreen({
                 />
             )}
 
-            {stage.kind === "running" && resolved && (
-                <RunningStage
-                    projectDir={projectDir}
-                    inputs={resolved}
-                    userSigner={userSigner}
-                    plan={plan}
-                    onFinish={(outcome, chunkTimings) => {
-                        setStage({ kind: "done", outcome });
-                        // Surface completion on the terminal tab so users can glance over.
-                        setWindowTitle(`dot deploy · ${resolved.domain} · ✓`);
-                        onDone(outcome);
-                        // chunkTimings is threaded via ref below — consumed by FinalResult.
-                        finalChunkTimingsRef.current = chunkTimings;
-                    }}
-                    onError={(message) => {
-                        setStage({ kind: "error", message });
-                        setWindowTitle(`dot deploy · ${resolved.domain} · ✕`);
-                        onDone(null);
-                    }}
-                />
-            )}
+            {resolved &&
+                (stage.kind === "running" || stage.kind === "done" || stage.kind === "error") && (
+                    <RunningStage
+                        projectDir={projectDir}
+                        inputs={resolved}
+                        userSigner={userSigner}
+                        plan={plan}
+                        onFinish={(outcome, chunkTimings) => {
+                            setStage({ kind: "done", outcome });
+                            // Surface completion on the terminal tab so users can glance over.
+                            setWindowTitle(`dot deploy · ${resolved.domain} · ✓`);
+                            onDone(outcome);
+                            // chunkTimings is threaded via ref below — consumed by FinalResult.
+                            finalChunkTimingsRef.current = chunkTimings;
+                        }}
+                        onError={(message) => {
+                            setStage({ kind: "error", message });
+                            setWindowTitle(`dot deploy · ${resolved.domain} · ✕`);
+                            onDone(null);
+                        }}
+                    />
+                )}
 
             {stage.kind === "done" && (
                 <FinalResult outcome={stage.outcome} chunkTimings={finalChunkTimingsRef.current} />
@@ -294,8 +349,9 @@ function pickInitialStage(
     buildDir: string | null,
     domain: string | null,
     publish: boolean | null,
+    deployContracts: boolean | null,
 ): Stage {
-    return pickNextStage(skipBuild, mode, buildDir, domain, publish);
+    return pickNextStage(skipBuild, mode, buildDir, domain, publish, deployContracts);
 }
 
 function pickNextStage(
@@ -304,12 +360,14 @@ function pickNextStage(
     buildDir: string | null,
     domain: string | null,
     publish: boolean | null,
+    deployContracts: boolean | null,
 ): Stage {
     if (skipBuild === null) return { kind: "prompt-build" };
     if (mode === null) return { kind: "prompt-signer" };
     if (buildDir === null) return { kind: "prompt-buildDir" };
     if (domain === null) return { kind: "prompt-domain" };
     if (publish === null) return { kind: "prompt-publish" };
+    if (deployContracts === null) return { kind: "prompt-contracts" };
     return { kind: "confirm" };
 }
 
@@ -383,6 +441,7 @@ function ValidateDomainStage({
 function ConfirmStage({
     projectDir,
     inputs,
+    contractsType,
     userSigner,
     plan,
     onProceed,
@@ -390,11 +449,40 @@ function ConfirmStage({
 }: {
     projectDir: string;
     inputs: Resolved;
+    contractsType: ContractsType | null;
     userSigner: ResolvedSigner | null;
     plan: DeployPlan | null;
     onProceed: () => void;
     onCancel: () => void;
 }) {
+    // Start pessimistic so the approvals list populates immediately; a
+    // balance query refines it. Over-estimating one tap is better than
+    // under-counting.
+    const needsSessionFunding = inputs.deployContracts && userSigner?.source === "session";
+    const [contractsFundingNeeded, setContractsFundingNeeded] =
+        useState<boolean>(needsSessionFunding);
+
+    useEffect(() => {
+        if (!needsSessionFunding) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const session = await readSessionAccount();
+                if (session === null) return;
+                const client = await getConnection();
+                const { sufficient } = await checkBalance(
+                    client,
+                    session.account.ss58Address,
+                    SESSION_MIN_BALANCE,
+                );
+                if (!cancelled) setContractsFundingNeeded(!sufficient);
+            } catch {}
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [needsSessionFunding]);
+
     const setup = useMemo(() => {
         try {
             return resolveSignerSetup({
@@ -402,6 +490,7 @@ function ConfirmStage({
                 userSigner,
                 publishToPlayground: inputs.publishToPlayground,
                 plan: plan ?? undefined,
+                contractsFundingNeeded,
             });
         } catch (err) {
             return {
@@ -409,7 +498,7 @@ function ConfirmStage({
                 error: err instanceof Error ? err.message : String(err),
             };
         }
-    }, [inputs, userSigner, plan]);
+    }, [inputs, userSigner, plan, contractsFundingNeeded]);
 
     // Only warn on the oversized branch — silent when README is absent or
     // within the cap, per the product decision to inline tacitly and speak
@@ -427,6 +516,9 @@ function ConfirmStage({
         skipBuild: inputs.skipBuild,
         publishToPlayground: inputs.publishToPlayground,
         approvals: "approvals" in setup ? setup.approvals : [],
+        contracts: contractsType
+            ? { type: contractsType, deploy: inputs.deployContracts }
+            : undefined,
     });
 
     useInput((_input, key) => {
@@ -489,20 +581,7 @@ function ConfirmStage({
 
 // ── Running stage ────────────────────────────────────────────────────────────
 
-interface PhaseState {
-    status: "pending" | "running" | "complete" | "error";
-    detail?: string;
-}
-
-const PHASE_ORDER: DeployPhase[] = ["build", "storage-and-dotns", "playground", "done"];
-const PHASE_TITLE: Record<DeployPhase, string> = {
-    build: "build",
-    "storage-and-dotns": "upload + dotns",
-    playground: "publish to playground",
-    done: "done",
-};
-
-function phaseMark(status: PhaseState["status"]): MarkKind {
+function stepMark(status: StepStatus): MarkKind {
     switch (status) {
         case "complete":
             return "ok";
@@ -530,48 +609,62 @@ function RunningStage({
     onFinish: (outcome: DeployOutcome, chunkTimings: number[]) => void;
     onError: (message: string) => void;
 }) {
-    const initialPhases: Record<DeployPhase, PhaseState> = {
-        build: {
-            status: inputs.skipBuild ? "complete" : "pending",
-            detail: inputs.skipBuild ? "skipped" : undefined,
-        },
-        "storage-and-dotns": { status: "pending" },
-        playground: {
-            status: inputs.publishToPlayground ? "pending" : "complete",
-            detail: inputs.publishToPlayground ? undefined : "skipped",
-        },
-        done: { status: "pending" },
-    };
-    const [phases, setPhases] = useState(initialPhases);
+    const [runningState, setRunningState] = useState(() =>
+        initialRunningState({
+            deployContracts: inputs.deployContracts,
+            skipBuild: inputs.skipBuild,
+            publishToPlayground: inputs.publishToPlayground,
+        }),
+    );
+    const contractsState = runningState.contracts;
+    const frontendState = runningState.frontend;
+    const playgroundState = runningState.playground;
     const [signingPrompt, setSigningPrompt] = useState<SigningEvent | null>(null);
-    const [latestInfo, setLatestInfo] = useState<string | null>(null);
 
     // Per-chunk timing for the sparkline on completion. Held in refs to avoid
     // re-renders on every chunk tick.
     const chunkTimingsRef = useRef<number[]>([]);
     const lastChunkAtRef = useRef<number | null>(null);
 
-    // ── Throttled info updates ──────────────────────────────────────────
-    // Verbose builds (vite / next) and bulletin-deploy's per-chunk logs can
-    // fire hundreds of info events per second. Calling setLatestInfo on
-    // every one floods React's update queue and on long deploys builds up
-    // enough backpressure to spike memory into the gigabytes. Users only
-    // ever see the most recent line anyway, so we coalesce updates to ~10
-    // per second via a ref-based sink.
-    const pendingInfoRef = useRef<string | null>(null);
-    const infoTimerRef = useRef<NodeJS.Timeout | null>(null);
+    // Flush each section's latest-line row at ≤10 Hz — see CLAUDE.md
+    // "Throttle TUI info updates" for the incident that made this mandatory.
     const INFO_THROTTLE_MS = 100;
     const INFO_MAX_LEN = 160;
-    const queueInfo = (line: string) => {
+    const contractsPendingRef = useRef<string | null>(null);
+    const contractsTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const frontendPendingRef = useRef<string | null>(null);
+    const frontendTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const queueContractsLog = (line: string) => {
         const truncated = line.length > INFO_MAX_LEN ? `${line.slice(0, INFO_MAX_LEN - 1)}…` : line;
-        pendingInfoRef.current = truncated;
-        if (infoTimerRef.current === null) {
-            infoTimerRef.current = setTimeout(() => {
-                if (pendingInfoRef.current !== null) {
-                    setLatestInfo(pendingInfoRef.current);
-                    pendingInfoRef.current = null;
+        contractsPendingRef.current = truncated;
+        if (contractsTimerRef.current === null) {
+            contractsTimerRef.current = setTimeout(() => {
+                if (contractsPendingRef.current !== null) {
+                    const v = contractsPendingRef.current;
+                    contractsPendingRef.current = null;
+                    setRunningState((s) => ({
+                        ...s,
+                        contracts: { ...s.contracts, latestLog: v },
+                    }));
                 }
-                infoTimerRef.current = null;
+                contractsTimerRef.current = null;
+            }, INFO_THROTTLE_MS);
+        }
+    };
+    const queueFrontendLog = (line: string) => {
+        const truncated = line.length > INFO_MAX_LEN ? `${line.slice(0, INFO_MAX_LEN - 1)}…` : line;
+        frontendPendingRef.current = truncated;
+        if (frontendTimerRef.current === null) {
+            frontendTimerRef.current = setTimeout(() => {
+                if (frontendPendingRef.current !== null) {
+                    const v = frontendPendingRef.current;
+                    frontendPendingRef.current = null;
+                    setRunningState((s) => ({
+                        ...s,
+                        frontend: { ...s.frontend, latestLog: v },
+                    }));
+                }
+                frontendTimerRef.current = null;
             }, INFO_THROTTLE_MS);
         }
     };
@@ -591,6 +684,9 @@ function RunningStage({
                     domain: inputs.domain,
                     mode: inputs.mode,
                     publishToPlayground: inputs.publishToPlayground,
+                    deployContracts: inputs.deployContracts,
+                    contractsFundingNeeded:
+                        inputs.deployContracts && userSigner?.source === "session",
                     userSigner,
                     plan: plan ?? undefined,
                     onEvent: (event) => handleEvent(event),
@@ -605,21 +701,28 @@ function RunningStage({
         })();
 
         function handleEvent(event: DeployEvent) {
+            setRunningState((s) => runningReducer(s, event));
             if (event.kind === "phase-start") {
-                setPhases((p) => ({ ...p, [event.phase]: { status: "running" } }));
-                if (event.phase === "storage-and-dotns") {
+                if (event.phase === "build") {
+                    setWindowTitle(`dot deploy · ${inputs.domain} · building`);
+                } else if (event.phase === "contracts") {
+                    setWindowTitle(`dot deploy · ${inputs.domain} · contracts`);
+                } else if (event.phase === "storage-and-dotns") {
                     setWindowTitle(`dot deploy · ${inputs.domain} · uploading`);
                 } else if (event.phase === "playground") {
                     setWindowTitle(`dot deploy · ${inputs.domain} · publishing`);
-                } else if (event.phase === "build") {
-                    setWindowTitle(`dot deploy · ${inputs.domain} · building`);
                 }
-            } else if (event.kind === "phase-complete") {
-                setPhases((p) => ({ ...p, [event.phase]: { status: "complete" } }));
             } else if (event.kind === "build-log") {
-                queueInfo(event.line);
+                queueFrontendLog(event.line);
             } else if (event.kind === "build-detected") {
-                queueInfo(`> ${event.config.description}`);
+                queueFrontendLog(`> ${event.config.description}`);
+            } else if (event.kind === "contracts-event") {
+                const e = event.event;
+                if (e.kind === "info") queueContractsLog(e.message);
+                else if (e.kind === "compile-log") queueContractsLog(e.line);
+                else if (e.kind === "deploy-chunk") {
+                    queueContractsLog(`deploying chunk ${e.chunk}/${e.total}`);
+                }
             } else if (event.kind === "storage-event") {
                 if (event.event.kind === "chunk-progress") {
                     const now = performance.now();
@@ -628,9 +731,9 @@ function RunningStage({
                         chunkTimingsRef.current.push(now - last);
                     }
                     lastChunkAtRef.current = now;
-                    queueInfo(`uploading chunk ${event.event.current}/${event.event.total}`);
+                    queueFrontendLog(`uploading chunk ${event.event.current}/${event.event.total}`);
                 } else if (event.event.kind === "info") {
-                    queueInfo(event.event.message);
+                    queueFrontendLog(event.event.message);
                 }
             } else if (event.kind === "signing") {
                 if (event.event.kind === "sign-request") {
@@ -639,46 +742,38 @@ function RunningStage({
                     setSigningPrompt(null);
                 } else if (event.event.kind === "sign-error") {
                     setSigningPrompt(null);
-                    queueInfo(`signing rejected: ${event.event.message}`);
+                    queueFrontendLog(`signing rejected: ${event.event.message}`);
                 }
-            } else if (event.kind === "error") {
-                setPhases((p) => ({
-                    ...p,
-                    [event.phase]: { status: "error", detail: event.message },
-                }));
             }
         }
 
         return () => {
             cancelled = true;
-            if (infoTimerRef.current !== null) {
-                clearTimeout(infoTimerRef.current);
-                infoTimerRef.current = null;
+            if (contractsTimerRef.current !== null) {
+                clearTimeout(contractsTimerRef.current);
+                contractsTimerRef.current = null;
+            }
+            if (frontendTimerRef.current !== null) {
+                clearTimeout(frontendTimerRef.current);
+                frontendTimerRef.current = null;
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    const contractsVisible = contractsState.buildStatus !== "skipped";
     return (
         <Box flexDirection="column">
-            <Section gapBelow={false}>
-                {PHASE_ORDER.filter((p) => p !== "done").map((phase) => {
-                    const state = phases[phase];
-                    return (
-                        <Row
-                            key={phase}
-                            mark={phaseMark(state.status)}
-                            label={PHASE_TITLE[phase]}
-                            value={state.detail}
-                            tone={state.status === "error" ? "danger" : "muted"}
-                        />
-                    );
-                })}
-            </Section>
-
-            {latestInfo && (
+            {contractsVisible && <ContractsSectionView state={contractsState} />}
+            <FrontendSectionView state={frontendState} />
+            {playgroundState.status !== "skipped" && (
                 <Box marginTop={1}>
-                    <Hint indent={2}>{truncate(latestInfo, 120)}</Hint>
+                    <Row
+                        mark={stepMark(playgroundState.status)}
+                        label="publish to playground"
+                        value={playgroundState.error}
+                        tone={playgroundState.status === "error" ? "danger" : "muted"}
+                    />
                 </Box>
             )}
 
@@ -691,6 +786,71 @@ function RunningStage({
                 </Callout>
             )}
         </Box>
+    );
+}
+
+function ContractsSectionView({ state }: { state: ContractsSectionState }) {
+    const running =
+        state.buildStatus === "running" ||
+        state.deployStatus === "running" ||
+        state.contracts.some((c) => c.status === "running");
+    return (
+        <Section title="contracts">
+            <Row
+                mark={stepMark(state.buildStatus)}
+                label="build"
+                tone={state.buildStatus === "error" ? "danger" : "muted"}
+            />
+            <Row
+                mark={stepMark(state.deployStatus)}
+                label="deploy"
+                value={state.error}
+                tone={state.deployStatus === "error" ? "danger" : "muted"}
+            />
+            {state.contracts.length > 0 && (
+                <Box flexDirection="column" paddingLeft={LAYOUT.leftMargin + 4}>
+                    {state.contracts.map((c) => (
+                        <Box key={c.name} flexDirection="row">
+                            <Box marginRight={1}>
+                                <Mark kind={stepMark(c.status)} />
+                            </Box>
+                            <Box width={16}>
+                                <Text>{c.name}</Text>
+                            </Box>
+                            {c.address && (
+                                <Box flexGrow={1} paddingRight={2}>
+                                    <Text dimColor wrap="truncate-middle">
+                                        {c.address}
+                                    </Text>
+                                </Box>
+                            )}
+                        </Box>
+                    ))}
+                </Box>
+            )}
+            {running && state.latestLog && <Hint indent={2}>{truncate(state.latestLog, 120)}</Hint>}
+        </Section>
+    );
+}
+
+function FrontendSectionView({ state }: { state: FrontendSectionState }) {
+    const running = state.buildStatus === "running" || state.uploadStatus === "running";
+    return (
+        <Section title="frontend" gapBelow={false}>
+            <Row
+                mark={stepMark(state.buildStatus)}
+                label="build"
+                value={state.buildStatus === "skipped" ? "skipped" : undefined}
+                tone={state.buildStatus === "error" ? "danger" : "muted"}
+            />
+            <Row
+                mark={stepMark(state.uploadStatus)}
+                label="upload + dotns"
+                value={state.error}
+                tone={state.uploadStatus === "error" ? "danger" : "muted"}
+            />
+            {running && state.latestLog && <Hint indent={2}>{truncate(state.latestLog, 120)}</Hint>}
+        </Section>
     );
 }
 

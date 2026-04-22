@@ -73,6 +73,76 @@ describe("buildSummaryView", () => {
         });
         expect(skip.rows.find((r) => r.label === "Build")?.value).toBe("skip (use existing)");
     });
+
+    it("omits Contracts row when contracts is undefined", () => {
+        const view = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: false,
+            approvals: [],
+        });
+        expect(view.rows.find((r) => r.label === "Contracts")).toBeUndefined();
+    });
+
+    it("Contracts row shows 'deploy (foundry)' for foundry + deploy true", () => {
+        const view = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: false,
+            approvals: [],
+            contracts: { type: "foundry", deploy: true },
+        });
+        expect(view.rows.find((r) => r.label === "Contracts")?.value).toBe("deploy (foundry)");
+    });
+
+    it("Contracts row shows 'skip' when deploy is false regardless of type", () => {
+        const view = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: false,
+            approvals: [],
+            contracts: { type: "hardhat", deploy: false },
+        });
+        expect(view.rows.find((r) => r.label === "Contracts")?.value).toBe("skip");
+    });
+
+    it("Contracts row shows 'deploy (cdm)' for cdm + deploy true", () => {
+        const view = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: false,
+            approvals: [],
+            contracts: { type: "cdm", deploy: true },
+        });
+        expect(view.rows.find((r) => r.label === "Contracts")?.value).toBe("deploy (cdm)");
+    });
+
+    it("Contracts row is appended after signer/build/buildDir/publish", () => {
+        const view = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: false,
+            approvals: [],
+            contracts: { type: "foundry", deploy: true },
+        });
+        expect(view.rows.map((r) => r.label)).toEqual([
+            "Signer",
+            "Build",
+            "Build dir",
+            "Publish",
+            "Contracts",
+        ]);
+    });
 });
 
 describe("renderSummaryText", () => {
@@ -88,6 +158,22 @@ describe("renderSummaryText", () => {
             }),
         );
         expect(text).toContain("No phone approvals required.");
+    });
+
+    it("includes Contracts row in rendered text when present", () => {
+        const text = renderSummaryText(
+            buildSummaryView({
+                mode: "dev",
+                domain: "my-app.dot",
+                buildDir: "dist",
+                skipBuild: false,
+                publishToPlayground: false,
+                approvals: [],
+                contracts: { type: "foundry", deploy: true },
+            }),
+        );
+        expect(text).toContain("Contracts");
+        expect(text).toContain("deploy (foundry)");
     });
 
     it("lists numbered approvals when non-empty", () => {
