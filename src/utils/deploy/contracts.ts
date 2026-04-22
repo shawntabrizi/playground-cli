@@ -21,10 +21,10 @@
  * WebContainer — see the "SDK surface" note in CLAUDE.md.
  */
 
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { runStreamed } from "../process.js";
 import {
     ContractDeployer,
     buildContracts,
@@ -41,7 +41,13 @@ export type ContractsPhaseEvent =
     /** Per-line stdout/stderr from the compile step (forge/hardhat) or cdm builder. */
     | { kind: "compile-log"; line: string }
     | { kind: "compile-detected"; contracts: string[] }
-    | { kind: "deploy-chunk"; chunk: number; total: number; crates: string[] }
+    | {
+          kind: "deploy-chunk";
+          chunk: number;
+          total: number;
+          /** Contracts landed in this chunk, paired with their on-chain addresses. */
+          contracts: Array<{ name: string; address: HexString }>;
+      }
     | { kind: "deploy-done"; addresses: Array<{ name: string; address: HexString }> };
 
 export interface RunContractsPhaseOptions {
@@ -98,11 +104,11 @@ export async function runContractsPhase(
             chunk: chunkResult.chunkIndex + 1,
             total: chunkResult.totalChunks,
             // cdm preserves input order across chunks, so the Nth address of a
-            // chunk maps to `artifacts[base + N]`. Track the cumulative offset
-            // via a closure counter so multi-chunk labels stay correct.
-            crates: chunkResult.addresses.map(
-                (_, i) => artifacts[base + i]?.name ?? `contract-${base + i}`,
-            ),
+            // chunk maps to `artifacts[base + N]`.
+            contracts: chunkResult.addresses.map((addr, i) => ({
+                name: artifacts[base + i]?.name ?? `contract-${base + i}`,
+                address: addr as HexString,
+            })),
         });
     });
 
@@ -182,16 +188,14 @@ async function compileFoundry(opts: RunContractsPhaseOptions): Promise<CompiledA
     // `--resolc` forces PolkaVM codegen regardless of `foundry.toml`. Safer
     // than depending on user config — per our empirical test, plain
     // `forge build` emits EVM bytecode by default even on the polkadot fork.
-    await runStreamed(
-        {
-            cmd: "forge",
-            args: ["build", "--resolc"],
-            cwd: projectDir,
-            description: "forge build --resolc",
-            failurePrefix: "forge build failed",
-        },
-        (line) => opts.onEvent({ kind: "compile-log", line }),
-    );
+    await runStreamed({
+        cmd: "forge",
+        args: ["build", "--resolc"],
+        cwd: projectDir,
+        description: "forge build --resolc",
+        failurePrefix: "forge build failed",
+        onData: (line) => opts.onEvent({ kind: "compile-log", line }),
+    });
 
     const outDir = join(projectDir, "out");
     if (!existsSync(outDir)) {
@@ -233,16 +237,14 @@ async function compileFoundry(opts: RunContractsPhaseOptions): Promise<CompiledA
 async function compileHardhat(opts: RunContractsPhaseOptions): Promise<CompiledArtifact[]> {
     const projectDir = resolve(opts.projectDir);
 
-    await runStreamed(
-        {
-            cmd: "npx",
-            args: ["hardhat", "compile"],
-            cwd: projectDir,
-            description: "npx hardhat compile",
-            failurePrefix: "hardhat compile failed",
-        },
-        (line) => opts.onEvent({ kind: "compile-log", line }),
-    );
+    await runStreamed({
+        cmd: "npx",
+        args: ["hardhat", "compile"],
+        cwd: projectDir,
+        description: "npx hardhat compile",
+        failurePrefix: "hardhat compile failed",
+        onData: (line) => opts.onEvent({ kind: "compile-log", line }),
+    });
 
     const artifactsRoot = join(projectDir, "artifacts", "contracts");
     if (!existsSync(artifactsRoot)) {
@@ -313,56 +315,4 @@ function writeTmpBytecode(stem: string, bytes: Uint8Array): string {
     const path = join(sessionTmpDir(), `${stem}.bin`);
     writeFileSync(path, bytes);
     return path;
-}
-
-/** Same streaming-child-process helper shape `runner.ts` uses — duplicated to keep this file import-light. */
-async function runStreamed(
-    opts: {
-        cmd: string;
-        args: string[];
-        cwd: string;
-        description: string;
-        failurePrefix: string;
-    },
-    onData: (line: string) => void,
-): Promise<void> {
-    await new Promise<void>((resolvePromise, rejectPromise) => {
-        const child = spawn(opts.cmd, opts.args, {
-            cwd: opts.cwd,
-            stdio: ["ignore", "pipe", "pipe"],
-            env: { ...process.env, FORCE_COLOR: process.env.FORCE_COLOR ?? "1" },
-        });
-
-        const tail: string[] = [];
-        const MAX_TAIL = 50;
-
-        const forward = (chunk: Buffer) => {
-            for (const line of chunk.toString().split("\n")) {
-                if (line.length === 0) continue;
-                tail.push(line);
-                if (tail.length > MAX_TAIL) tail.shift();
-                onData(line);
-            }
-        };
-
-        child.stdout.on("data", forward);
-        child.stderr.on("data", forward);
-        child.on("error", (err) =>
-            rejectPromise(
-                new Error(`Failed to spawn "${opts.description}": ${err.message}`, { cause: err }),
-            ),
-        );
-        child.on("close", (code) => {
-            if (code === 0) {
-                resolvePromise();
-            } else {
-                const snippet = tail.slice(-10).join("\n") || "(no output)";
-                rejectPromise(
-                    new Error(
-                        `${opts.failurePrefix} (${opts.description}) with exit code ${code}.\n${snippet}`,
-                    ),
-                );
-            }
-        });
-    });
 }

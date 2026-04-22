@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import {
     Header,
@@ -9,6 +9,8 @@ import {
     Sparkline,
     Select,
     Input,
+    Mark,
+    LAYOUT,
     setWindowTitle,
     type MarkKind,
 } from "../../utils/ui/theme/index.js";
@@ -22,7 +24,6 @@ import {
     type AvailabilityResult,
     type DeployEvent,
     type DeployOutcome,
-    type DeployPhase,
     type DeployPlan,
     type SignerMode,
     type DeployApproval,
@@ -300,27 +301,28 @@ export function DeployScreen({
                 />
             )}
 
-            {stage.kind === "running" && resolved && (
-                <RunningStage
-                    projectDir={projectDir}
-                    inputs={resolved}
-                    userSigner={userSigner}
-                    plan={plan}
-                    onFinish={(outcome, chunkTimings) => {
-                        setStage({ kind: "done", outcome });
-                        // Surface completion on the terminal tab so users can glance over.
-                        setWindowTitle(`dot deploy · ${resolved.domain} · ✓`);
-                        onDone(outcome);
-                        // chunkTimings is threaded via ref below — consumed by FinalResult.
-                        finalChunkTimingsRef.current = chunkTimings;
-                    }}
-                    onError={(message) => {
-                        setStage({ kind: "error", message });
-                        setWindowTitle(`dot deploy · ${resolved.domain} · ✕`);
-                        onDone(null);
-                    }}
-                />
-            )}
+            {resolved &&
+                (stage.kind === "running" || stage.kind === "done" || stage.kind === "error") && (
+                    <RunningStage
+                        projectDir={projectDir}
+                        inputs={resolved}
+                        userSigner={userSigner}
+                        plan={plan}
+                        onFinish={(outcome, chunkTimings) => {
+                            setStage({ kind: "done", outcome });
+                            // Surface completion on the terminal tab so users can glance over.
+                            setWindowTitle(`dot deploy · ${resolved.domain} · ✓`);
+                            onDone(outcome);
+                            // chunkTimings is threaded via ref below — consumed by FinalResult.
+                            finalChunkTimingsRef.current = chunkTimings;
+                        }}
+                        onError={(message) => {
+                            setStage({ kind: "error", message });
+                            setWindowTitle(`dot deploy · ${resolved.domain} · ✕`);
+                            onDone(null);
+                        }}
+                    />
+                )}
 
             {stage.kind === "done" && (
                 <FinalResult outcome={stage.outcome} chunkTimings={finalChunkTimingsRef.current} />
@@ -586,27 +588,35 @@ function ConfirmStage({
 
 // ── Running stage ────────────────────────────────────────────────────────────
 
-interface PhaseState {
-    status: "pending" | "running" | "complete" | "error";
-    detail?: string;
+type StepStatus = "pending" | "running" | "complete" | "error" | "skipped";
+
+interface ContractRowState {
+    name: string;
+    status: StepStatus;
+    address?: string;
 }
 
-const PHASE_ORDER: DeployPhase[] = [
-    "build",
-    "contracts",
-    "storage-and-dotns",
-    "playground",
-    "done",
-];
-const PHASE_TITLE: Record<DeployPhase, string> = {
-    build: "build",
-    contracts: "contracts",
-    "storage-and-dotns": "upload + dotns",
-    playground: "publish to playground",
-    done: "done",
-};
+interface ContractsSectionState {
+    buildStatus: StepStatus;
+    deployStatus: StepStatus;
+    contracts: ContractRowState[];
+    error?: string;
+    latestLog: string | null;
+}
 
-function phaseMark(status: PhaseState["status"]): MarkKind {
+interface FrontendSectionState {
+    buildStatus: StepStatus;
+    uploadStatus: StepStatus;
+    error?: string;
+    latestLog: string | null;
+}
+
+interface PlaygroundRowState {
+    status: StepStatus;
+    error?: string;
+}
+
+function stepMark(status: StepStatus): MarkKind {
     switch (status) {
         case "complete":
             return "ok";
@@ -634,55 +644,63 @@ function RunningStage({
     onFinish: (outcome: DeployOutcome, chunkTimings: number[]) => void;
     onError: (message: string) => void;
 }) {
-    const initialPhases: Record<DeployPhase, PhaseState> = {
-        build: {
-            status: inputs.skipBuild ? "complete" : "pending",
-            detail: inputs.skipBuild ? "skipped" : undefined,
-        },
-        // The contracts phase always starts pending — the orchestrator will
-        // fire either `phase-start` or `phase-skipped` (with a reason) based
-        // on `deployContracts` + project detection.
-        contracts: {
-            status: inputs.deployContracts ? "pending" : "complete",
-            detail: inputs.deployContracts ? undefined : "skipped",
-        },
-        "storage-and-dotns": { status: "pending" },
-        playground: {
-            status: inputs.publishToPlayground ? "pending" : "complete",
-            detail: inputs.publishToPlayground ? undefined : "skipped",
-        },
-        done: { status: "pending" },
-    };
-    const [phases, setPhases] = useState(initialPhases);
+    const [contractsState, setContractsState] = useState<ContractsSectionState>({
+        buildStatus: inputs.deployContracts ? "pending" : "skipped",
+        deployStatus: inputs.deployContracts ? "pending" : "skipped",
+        contracts: [],
+        latestLog: null,
+    });
+    const [frontendState, setFrontendState] = useState<FrontendSectionState>({
+        buildStatus: inputs.skipBuild ? "skipped" : "pending",
+        uploadStatus: "pending",
+        latestLog: null,
+    });
+    const [playgroundState, setPlaygroundState] = useState<PlaygroundRowState>({
+        status: inputs.publishToPlayground ? "pending" : "skipped",
+    });
     const [signingPrompt, setSigningPrompt] = useState<SigningEvent | null>(null);
-    const [latestInfo, setLatestInfo] = useState<string | null>(null);
 
     // Per-chunk timing for the sparkline on completion. Held in refs to avoid
     // re-renders on every chunk tick.
     const chunkTimingsRef = useRef<number[]>([]);
     const lastChunkAtRef = useRef<number | null>(null);
 
-    // ── Throttled info updates ──────────────────────────────────────────
-    // Verbose builds (vite / next) and bulletin-deploy's per-chunk logs can
-    // fire hundreds of info events per second. Calling setLatestInfo on
-    // every one floods React's update queue and on long deploys builds up
-    // enough backpressure to spike memory into the gigabytes. Users only
-    // ever see the most recent line anyway, so we coalesce updates to ~10
-    // per second via a ref-based sink.
-    const pendingInfoRef = useRef<string | null>(null);
-    const infoTimerRef = useRef<NodeJS.Timeout | null>(null);
+    // Two independent coalescers — contracts logs and frontend logs run
+    // concurrently and each update its own section's latest-line row. Per
+    // the 20 GB incident in CLAUDE.md: firehose streams can't drive raw
+    // setState-per-line without overwhelming Ink's reconciler. Flush each
+    // sink at ≤10 Hz, keep only the most recent line, cap length at 160.
     const INFO_THROTTLE_MS = 100;
     const INFO_MAX_LEN = 160;
-    const queueInfo = (line: string) => {
+    const contractsPendingRef = useRef<string | null>(null);
+    const contractsTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const frontendPendingRef = useRef<string | null>(null);
+    const frontendTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const queueContractsLog = (line: string) => {
         const truncated = line.length > INFO_MAX_LEN ? `${line.slice(0, INFO_MAX_LEN - 1)}…` : line;
-        pendingInfoRef.current = truncated;
-        if (infoTimerRef.current === null) {
-            infoTimerRef.current = setTimeout(() => {
-                if (pendingInfoRef.current !== null) {
-                    setLatestInfo(pendingInfoRef.current);
-                    pendingInfoRef.current = null;
+        contractsPendingRef.current = truncated;
+        if (contractsTimerRef.current === null) {
+            contractsTimerRef.current = setTimeout(() => {
+                if (contractsPendingRef.current !== null) {
+                    const v = contractsPendingRef.current;
+                    contractsPendingRef.current = null;
+                    setContractsState((s) => ({ ...s, latestLog: v }));
                 }
-                infoTimerRef.current = null;
+                contractsTimerRef.current = null;
+            }, INFO_THROTTLE_MS);
+        }
+    };
+    const queueFrontendLog = (line: string) => {
+        const truncated = line.length > INFO_MAX_LEN ? `${line.slice(0, INFO_MAX_LEN - 1)}…` : line;
+        frontendPendingRef.current = truncated;
+        if (frontendTimerRef.current === null) {
+            frontendTimerRef.current = setTimeout(() => {
+                if (frontendPendingRef.current !== null) {
+                    const v = frontendPendingRef.current;
+                    frontendPendingRef.current = null;
+                    setFrontendState((s) => ({ ...s, latestLog: v }));
+                }
+                frontendTimerRef.current = null;
             }, INFO_THROTTLE_MS);
         }
     };
@@ -726,38 +744,93 @@ function RunningStage({
 
         function handleEvent(event: DeployEvent) {
             if (event.kind === "phase-start") {
-                setPhases((p) => ({ ...p, [event.phase]: { status: "running" } }));
-                if (event.phase === "storage-and-dotns") {
-                    setWindowTitle(`dot deploy · ${inputs.domain} · uploading`);
-                } else if (event.phase === "playground") {
-                    setWindowTitle(`dot deploy · ${inputs.domain} · publishing`);
-                } else if (event.phase === "build") {
+                if (event.phase === "build") {
+                    setFrontendState((s) => ({ ...s, buildStatus: "running" }));
                     setWindowTitle(`dot deploy · ${inputs.domain} · building`);
                 } else if (event.phase === "contracts") {
+                    setContractsState((s) => ({ ...s, buildStatus: "running" }));
                     setWindowTitle(`dot deploy · ${inputs.domain} · contracts`);
+                } else if (event.phase === "storage-and-dotns") {
+                    setFrontendState((s) => ({ ...s, uploadStatus: "running" }));
+                    setWindowTitle(`dot deploy · ${inputs.domain} · uploading`);
+                } else if (event.phase === "playground") {
+                    setPlaygroundState({ status: "running" });
+                    setWindowTitle(`dot deploy · ${inputs.domain} · publishing`);
                 }
             } else if (event.kind === "phase-complete") {
-                setPhases((p) => ({ ...p, [event.phase]: { status: "complete" } }));
+                if (event.phase === "build") {
+                    setFrontendState((s) => ({ ...s, buildStatus: "complete" }));
+                } else if (event.phase === "contracts") {
+                    setContractsState((s) => ({
+                        ...s,
+                        buildStatus: s.buildStatus === "skipped" ? "skipped" : "complete",
+                        deployStatus: "complete",
+                    }));
+                } else if (event.phase === "storage-and-dotns") {
+                    setFrontendState((s) => ({ ...s, uploadStatus: "complete" }));
+                } else if (event.phase === "playground") {
+                    setPlaygroundState({ status: "complete" });
+                }
             } else if (event.kind === "phase-skipped") {
-                setPhases((p) => ({
-                    ...p,
-                    [event.phase]: { status: "complete", detail: "skipped" },
-                }));
-                queueInfo(event.reason);
+                if (event.phase === "contracts") {
+                    setContractsState((s) => ({
+                        ...s,
+                        buildStatus: "skipped",
+                        deployStatus: "skipped",
+                    }));
+                } else if (event.phase === "build") {
+                    setFrontendState((s) => ({ ...s, buildStatus: "skipped" }));
+                } else if (event.phase === "storage-and-dotns") {
+                    setFrontendState((s) => ({ ...s, uploadStatus: "skipped" }));
+                } else if (event.phase === "playground") {
+                    setPlaygroundState({ status: "skipped" });
+                }
             } else if (event.kind === "build-log") {
-                queueInfo(event.line);
+                queueFrontendLog(event.line);
             } else if (event.kind === "build-detected") {
-                queueInfo(`> ${event.config.description}`);
+                queueFrontendLog(`> ${event.config.description}`);
             } else if (event.kind === "contracts-event") {
                 const e = event.event;
-                if (e.kind === "info") queueInfo(e.message);
-                else if (e.kind === "compile-log") queueInfo(e.line);
-                else if (e.kind === "compile-detected")
-                    queueInfo(`found ${e.contracts.length} contract(s): ${e.contracts.join(", ")}`);
-                else if (e.kind === "deploy-chunk")
-                    queueInfo(`deploying chunk ${e.chunk}/${e.total}: ${e.crates.join(", ")}`);
-                else if (e.kind === "deploy-done")
-                    queueInfo(`deployed ${e.addresses.length} contract(s)`);
+                if (e.kind === "info") queueContractsLog(e.message);
+                else if (e.kind === "compile-log") queueContractsLog(e.line);
+                else if (e.kind === "compile-detected") {
+                    // Build just finished producing artifacts; deploy starts
+                    // next. Mark every contract as "running" up-front — cdm's
+                    // planDeploy + chunk submission can take 10–20s before
+                    // the first deploy-chunk event fires, and without a live
+                    // spinner on each sub-row it looks like the UI froze.
+                    setContractsState((s) => ({
+                        ...s,
+                        buildStatus: "complete",
+                        deployStatus: "running",
+                        contracts: e.contracts.map((name) => ({ name, status: "running" })),
+                    }));
+                } else if (e.kind === "deploy-chunk") {
+                    // Each chunk landed — mark its contracts complete with
+                    // their on-chain addresses as soon as we know them,
+                    // rather than waiting for deploy-done.
+                    const byName = new Map(e.contracts.map((c) => [c.name, c.address]));
+                    setContractsState((s) => ({
+                        ...s,
+                        contracts: s.contracts.map((c) =>
+                            byName.has(c.name)
+                                ? { ...c, status: "complete", address: byName.get(c.name) }
+                                : c,
+                        ),
+                    }));
+                    queueContractsLog(`deploying chunk ${e.chunk}/${e.total}`);
+                } else if (e.kind === "deploy-done") {
+                    const byName = new Map(e.addresses.map((a) => [a.name, a.address]));
+                    setContractsState((s) => ({
+                        ...s,
+                        deployStatus: "complete",
+                        contracts: s.contracts.map((c) => ({
+                            ...c,
+                            status: "complete",
+                            address: byName.get(c.name) ?? c.address,
+                        })),
+                    }));
+                }
             } else if (event.kind === "storage-event") {
                 if (event.event.kind === "chunk-progress") {
                     const now = performance.now();
@@ -766,9 +839,9 @@ function RunningStage({
                         chunkTimingsRef.current.push(now - last);
                     }
                     lastChunkAtRef.current = now;
-                    queueInfo(`uploading chunk ${event.event.current}/${event.event.total}`);
+                    queueFrontendLog(`uploading chunk ${event.event.current}/${event.event.total}`);
                 } else if (event.event.kind === "info") {
-                    queueInfo(event.event.message);
+                    queueFrontendLog(event.event.message);
                 }
             } else if (event.kind === "signing") {
                 if (event.event.kind === "sign-request") {
@@ -777,46 +850,61 @@ function RunningStage({
                     setSigningPrompt(null);
                 } else if (event.event.kind === "sign-error") {
                     setSigningPrompt(null);
-                    queueInfo(`signing rejected: ${event.event.message}`);
+                    queueFrontendLog(`signing rejected: ${event.event.message}`);
                 }
             } else if (event.kind === "error") {
-                setPhases((p) => ({
-                    ...p,
-                    [event.phase]: { status: "error", detail: event.message },
-                }));
+                const msg = event.message;
+                if (event.phase === "build") {
+                    setFrontendState((s) => ({
+                        ...s,
+                        buildStatus: "error",
+                        error: msg,
+                    }));
+                } else if (event.phase === "contracts") {
+                    setContractsState((s) => ({
+                        ...s,
+                        deployStatus: "error",
+                        error: msg,
+                    }));
+                } else if (event.phase === "storage-and-dotns") {
+                    setFrontendState((s) => ({
+                        ...s,
+                        uploadStatus: "error",
+                        error: msg,
+                    }));
+                } else if (event.phase === "playground") {
+                    setPlaygroundState({ status: "error", error: msg });
+                }
             }
         }
 
         return () => {
             cancelled = true;
-            if (infoTimerRef.current !== null) {
-                clearTimeout(infoTimerRef.current);
-                infoTimerRef.current = null;
+            if (contractsTimerRef.current !== null) {
+                clearTimeout(contractsTimerRef.current);
+                contractsTimerRef.current = null;
+            }
+            if (frontendTimerRef.current !== null) {
+                clearTimeout(frontendTimerRef.current);
+                frontendTimerRef.current = null;
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    const contractsVisible = contractsState.buildStatus !== "skipped";
     return (
         <Box flexDirection="column">
-            <Section gapBelow={false}>
-                {PHASE_ORDER.filter((p) => p !== "done").map((phase) => {
-                    const state = phases[phase];
-                    return (
-                        <Row
-                            key={phase}
-                            mark={phaseMark(state.status)}
-                            label={PHASE_TITLE[phase]}
-                            value={state.detail}
-                            tone={state.status === "error" ? "danger" : "muted"}
-                        />
-                    );
-                })}
-            </Section>
-
-            {latestInfo && (
+            {contractsVisible && <ContractsSectionView state={contractsState} />}
+            <FrontendSectionView state={frontendState} />
+            {playgroundState.status !== "skipped" && (
                 <Box marginTop={1}>
-                    <Hint indent={2}>{truncate(latestInfo, 120)}</Hint>
+                    <Row
+                        mark={stepMark(playgroundState.status)}
+                        label="publish to playground"
+                        value={playgroundState.error}
+                        tone={playgroundState.status === "error" ? "danger" : "muted"}
+                    />
                 </Box>
             )}
 
@@ -829,6 +917,71 @@ function RunningStage({
                 </Callout>
             )}
         </Box>
+    );
+}
+
+function ContractsSectionView({ state }: { state: ContractsSectionState }) {
+    const running =
+        state.buildStatus === "running" ||
+        state.deployStatus === "running" ||
+        state.contracts.some((c) => c.status === "running");
+    return (
+        <Section title="contracts">
+            <Row
+                mark={stepMark(state.buildStatus)}
+                label="build"
+                tone={state.buildStatus === "error" ? "danger" : "muted"}
+            />
+            <Row
+                mark={stepMark(state.deployStatus)}
+                label="deploy"
+                value={state.error}
+                tone={state.deployStatus === "error" ? "danger" : "muted"}
+            />
+            {state.contracts.length > 0 && (
+                <Box flexDirection="column" paddingLeft={LAYOUT.leftMargin + 4}>
+                    {state.contracts.map((c) => (
+                        <Box key={c.name} flexDirection="row">
+                            <Box marginRight={1}>
+                                <Mark kind={stepMark(c.status)} />
+                            </Box>
+                            <Box width={16}>
+                                <Text>{c.name}</Text>
+                            </Box>
+                            {c.address && (
+                                <Box flexGrow={1} paddingRight={2}>
+                                    <Text dimColor wrap="truncate-middle">
+                                        {c.address}
+                                    </Text>
+                                </Box>
+                            )}
+                        </Box>
+                    ))}
+                </Box>
+            )}
+            {running && state.latestLog && <Hint indent={2}>{truncate(state.latestLog, 120)}</Hint>}
+        </Section>
+    );
+}
+
+function FrontendSectionView({ state }: { state: FrontendSectionState }) {
+    const running = state.buildStatus === "running" || state.uploadStatus === "running";
+    return (
+        <Section title="frontend" gapBelow={false}>
+            <Row
+                mark={stepMark(state.buildStatus)}
+                label="build"
+                value={state.buildStatus === "skipped" ? "skipped" : undefined}
+                tone={state.buildStatus === "error" ? "danger" : "muted"}
+            />
+            <Row
+                mark={stepMark(state.uploadStatus)}
+                label="upload + dotns"
+                value={state.error}
+                tone={state.uploadStatus === "error" ? "danger" : "muted"}
+            />
+            {running && state.latestLog && <Hint indent={2}>{truncate(state.latestLog, 120)}</Hint>}
+        </Section>
     );
 }
 

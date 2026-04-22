@@ -1,7 +1,8 @@
-import { exec, spawn } from "node:child_process";
+import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { arch, homedir, platform } from "node:os";
+import { runShell as runPiped } from "./process.js";
 
 /** Async exec — resolves with stdout, rejects on non-zero exit. */
 function run(cmd: string, opts?: { shell?: string }): Promise<string> {
@@ -10,25 +11,6 @@ function run(cmd: string, opts?: { shell?: string }): Promise<string> {
             if (err) reject(err);
             else resolve(stdout);
         });
-    });
-}
-
-/** Async exec with output piped to a callback. */
-function runPiped(cmd: string, onData?: (line: string) => void): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const child = spawn(cmd, { stdio: "pipe", shell: "bash" });
-        const output: string[] = [];
-        const forward = (chunk: Buffer) => {
-            for (const line of chunk.toString().split("\n").filter(Boolean)) {
-                output.push(line);
-                onData?.(line);
-            }
-        };
-        child.stdout?.on("data", forward);
-        child.stderr?.on("data", forward);
-        child.on("close", (code: number) =>
-            code === 0 ? resolve() : reject(new Error(output.join("\n") || `exit ${code}`)),
-        );
     });
 }
 

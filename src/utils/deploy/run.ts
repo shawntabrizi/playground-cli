@@ -133,54 +133,62 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
 
     const counter = createSigningCounter(setup.approvals.length);
 
-    // ── Build ────────────────────────────────────────────────────────────
+    // Contracts and frontend-build+upload are independent and run concurrently.
+    // Contracts work is network-bound (chain txs); frontend work is CPU-bound
+    // (vite/next) + network-bound (bulletin chunks). They share no state, so
+    // the only coordination needed is that both must finish before playground
+    // publish.
     const buildAbs = options.buildDir;
-    if (!options.skipBuild) {
-        options.onEvent({ kind: "phase-start", phase: "build" });
+
+    const contractsPromise = maybeRunContracts(options, counter);
+
+    const frontendPromise = (async () => {
+        if (!options.skipBuild) {
+            options.onEvent({ kind: "phase-start", phase: "build" });
+            try {
+                const config = detectBuildConfig(loadDetectInput(options.projectDir));
+                options.onEvent({ kind: "build-detected", config });
+                await runBuild({
+                    cwd: options.projectDir,
+                    config,
+                    onData: (line) => options.onEvent({ kind: "build-log", line }),
+                });
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                options.onEvent({ kind: "error", phase: "build", message });
+                throw err;
+            }
+            options.onEvent({ kind: "phase-complete", phase: "build" });
+        }
+
+        options.onEvent({ kind: "phase-start", phase: "storage-and-dotns" });
+        const storageAuth = maybeWrapAuthForSigning(
+            setup.bulletinDeployAuthOptions,
+            options,
+            counter,
+            setup.approvals,
+        );
         try {
-            const config = detectBuildConfig(loadDetectInput(options.projectDir));
-            options.onEvent({ kind: "build-detected", config });
-            await runBuild({
-                cwd: options.projectDir,
-                config,
-                onData: (line) => options.onEvent({ kind: "build-log", line }),
+            const storageResult = await runStorageDeploy({
+                content: buildAbs,
+                domainName: label,
+                auth: storageAuth,
+                onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
+                env: options.env,
             });
+            options.onEvent({ kind: "phase-complete", phase: "storage-and-dotns" });
+            return storageResult;
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            options.onEvent({ kind: "error", phase: "build", message });
+            options.onEvent({ kind: "error", phase: "storage-and-dotns", message });
             throw err;
         }
-        options.onEvent({ kind: "phase-complete", phase: "build" });
-    }
+    })();
 
-    // ── Contracts ────────────────────────────────────────────────────────
-    const contractsDeployed = await maybeRunContracts(options, counter);
-
-    // ── Storage + DotNS via bulletin-deploy ──────────────────────────────
-    options.onEvent({ kind: "phase-start", phase: "storage-and-dotns" });
-
-    const storageAuth = maybeWrapAuthForSigning(
-        setup.bulletinDeployAuthOptions,
-        options,
-        counter,
-        setup.approvals,
-    );
-
-    let storageResult;
-    try {
-        storageResult = await runStorageDeploy({
-            content: buildAbs,
-            domainName: label,
-            auth: storageAuth,
-            onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
-            env: options.env,
-        });
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        options.onEvent({ kind: "error", phase: "storage-and-dotns", message });
-        throw err;
-    }
-    options.onEvent({ kind: "phase-complete", phase: "storage-and-dotns" });
+    const [contractsDeployed, storageResult] = await Promise.all([
+        contractsPromise,
+        frontendPromise,
+    ]);
 
     // ── Playground publish ───────────────────────────────────────────────
     let metadataCid: string | undefined;
