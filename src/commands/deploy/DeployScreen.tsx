@@ -51,6 +51,8 @@ export interface DeployScreenInputs {
     buildDir: string | null;
     mode: SignerMode | null;
     publishToPlayground: boolean | null;
+    /** Publish to the playground with private visibility. Not interactively prompted — set via `--private`. */
+    playgroundPrivate: boolean;
     skipBuild: boolean | null;
     /** Contract-project kind at `projectDir`, or null if none detected. */
     contractsType: ContractsType | null;
@@ -88,6 +90,7 @@ export function DeployScreen({
     buildDir: initialBuildDir,
     mode: initialMode,
     publishToPlayground: initialPublish,
+    playgroundPrivate,
     skipBuild: initialSkipBuild,
     contractsType,
     deployContracts: initialDeployContracts,
@@ -310,6 +313,7 @@ export function DeployScreen({
                     <RunningStage
                         projectDir={projectDir}
                         inputs={resolved}
+                        playgroundPrivate={playgroundPrivate}
                         userSigner={userSigner}
                         plan={plan}
                         onFinish={(outcome, chunkTimings) => {
@@ -597,6 +601,7 @@ function stepMark(status: StepStatus): MarkKind {
 function RunningStage({
     projectDir,
     inputs,
+    playgroundPrivate,
     userSigner,
     plan,
     onFinish,
@@ -604,6 +609,7 @@ function RunningStage({
 }: {
     projectDir: string;
     inputs: Resolved;
+    playgroundPrivate: boolean;
     userSigner: ResolvedSigner | null;
     plan: DeployPlan | null;
     onFinish: (outcome: DeployOutcome, chunkTimings: number[]) => void;
@@ -684,6 +690,7 @@ function RunningStage({
                     domain: inputs.domain,
                     mode: inputs.mode,
                     publishToPlayground: inputs.publishToPlayground,
+                    playgroundPrivate,
                     deployContracts: inputs.deployContracts,
                     contractsFundingNeeded:
                         inputs.deployContracts && userSigner?.source === "session",

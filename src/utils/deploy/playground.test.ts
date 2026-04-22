@@ -176,7 +176,7 @@ describe("publishToPlayground", () => {
                 repository: "https://github.com/paritytech/example",
             });
             expect(result.metadataCid).toBe("bafymeta");
-            expect(publishTx).toHaveBeenCalledWith("my-app.dot", "bafymeta");
+            expect(publishTx).toHaveBeenCalledWith("my-app.dot", "bafymeta", 1);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -226,6 +226,17 @@ describe("publishToPlayground", () => {
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
+    });
+
+    it("passes visibility=0 when isPrivate is true", async () => {
+        await publishToPlayground({
+            domain: "secret",
+            publishSigner: fakeSigner,
+            repositoryUrl: "https://example.com/x",
+            cwd: "/definitely/not/a/repo",
+            isPrivate: true,
+        });
+        expect(publishTx).toHaveBeenCalledWith("secret.dot", "bafymeta", 0);
     });
 
     it("retries up to 3 times on registry publish failure", async () => {
