@@ -49,6 +49,15 @@ jobs:
               run: |
                   set -euo pipefail
 
+                  # Ensure the label exists before we try to attach it — `gh
+                  # issue create --label` hard-fails if the label is missing.
+                  # `--force` turns create-if-missing into an idempotent
+                  # create-or-update so repeated runs are safe.
+                  gh label create funder-low-balance \
+                      --color "B60205" \
+                      --description "Dedicated funder balance below threshold" \
+                      --force
+
                   ADDRESS=$(grep '^address=' balance.txt | cut -d= -f2- || echo "unknown")
                   BALANCE=$(grep '^balance=' balance.txt | cut -d= -f2- || echo "unknown")
                   THRESHOLD=$(grep '^threshold=' balance.txt | cut -d= -f2- || echo "5000.00 PAS")
