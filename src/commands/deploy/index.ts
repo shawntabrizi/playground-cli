@@ -309,7 +309,7 @@ async function runHeadless(ctx: {
  * null — a false negative just means the "deploy contracts?" prompt doesn't
  * appear, which is the safer fallback.
  */
-function safeDetectContractsType(projectDir: string): ContractsType | null {
+export function safeDetectContractsType(projectDir: string): ContractsType | null {
     try {
         return detectContractsType(loadDetectInput(projectDir));
     } catch {
@@ -326,7 +326,7 @@ function safeDetectContractsType(projectDir: string): ContractsType | null {
  * sign in-process with no human in the loop. If the balance query fails
  * we default to `true` on the "overestimate one tap" principle.
  */
-async function computeContractsFundingNeeded(args: {
+export async function computeContractsFundingNeeded(args: {
     deployContracts: boolean;
     userSigner: ResolvedSigner | null;
 }): Promise<boolean> {

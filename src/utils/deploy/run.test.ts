@@ -9,6 +9,13 @@ const {
     runBuildMock,
     detectBuildConfigMock,
     loadDetectInputMock,
+    detectContractsTypeMock,
+    runContractsPhaseMock,
+    getOrCreateSessionAccountMock,
+    getConnectionMock,
+    checkBalanceMock,
+    submitAndWatchMock,
+    createDevSignerMock,
 } = vi.hoisted(() => ({
     runStorageDeploy: vi.fn<
         (arg: any) => Promise<{
@@ -41,6 +48,36 @@ const {
         configFiles: new Set<string>(),
         hasNodeModules: true,
     })),
+    detectContractsTypeMock: vi.fn<() => "foundry" | "hardhat" | "cdm" | null>(() => null),
+    runContractsPhaseMock: vi.fn<
+        (arg: any) => Promise<{
+            deployed: Array<{ name: string; address: `0x${string}` }>;
+        }>
+    >(async () => ({ deployed: [{ name: "Counter", address: "0xdeadbeef" }] })),
+    getOrCreateSessionAccountMock: vi.fn(async () => ({
+        info: {
+            account: {
+                ss58Address: "5SessionAddr",
+                signer: { __sessionSigner: true },
+            },
+        },
+        created: false,
+    })),
+    getConnectionMock: vi.fn(),
+    checkBalanceMock: vi.fn<
+        (
+            client: unknown,
+            address: string,
+            min?: bigint,
+        ) => Promise<{
+            free: bigint;
+            sufficient: boolean;
+        }>
+    >(async () => ({ free: 100_000_000_000n, sufficient: true })),
+    submitAndWatchMock: vi.fn<(tx: unknown, signer: unknown) => Promise<unknown>>(async () => ({
+        ok: true,
+    })),
+    createDevSignerMock: vi.fn((name: string) => ({ __devSigner: name })),
 }));
 
 vi.mock("./storage.js", () => ({ runStorageDeploy }));
@@ -55,6 +92,25 @@ vi.mock("../build/index.js", () => ({
     runBuild: runBuildMock,
     loadDetectInput: loadDetectInputMock,
     detectBuildConfig: detectBuildConfigMock,
+    detectContractsType: detectContractsTypeMock,
+}));
+vi.mock("./contracts.js", () => ({
+    runContractsPhase: runContractsPhaseMock,
+}));
+vi.mock("./session-account.js", () => ({
+    getOrCreateSessionAccount: getOrCreateSessionAccountMock,
+    SESSION_MIN_BALANCE: 5_000_000_000n,
+    SESSION_FUND_AMOUNT: 50_000_000_000n,
+}));
+vi.mock("../connection.js", () => ({
+    getConnection: getConnectionMock,
+}));
+vi.mock("../account/funding.js", () => ({
+    checkBalance: checkBalanceMock,
+}));
+vi.mock("@polkadot-apps/tx", () => ({
+    submitAndWatch: (...args: unknown[]) => submitAndWatchMock(args[0], args[1]),
+    createDevSigner: (...args: unknown[]) => createDevSignerMock(args[0] as string),
 }));
 
 import { runDeploy, type DeployEvent } from "./run.js";
@@ -76,10 +132,53 @@ function collectEvents(): { events: DeployEvent[]; push: (e: DeployEvent) => voi
     return { events, push: (e) => events.push(e) };
 }
 
+/**
+ * Build a fake `PaseoClient`-ish object that exposes the exact tx factories
+ * `maybeRunContracts` / `ensureSessionFunded` call (`Balances.transfer_keep_alive`,
+ * `Revive.map_account`). Returns `transferFactory` and `mapAccountFactory` so
+ * callers can assert what `submitAndWatch` was handed.
+ */
+function makeFakeClient() {
+    const transferFactory = vi
+        .fn()
+        .mockImplementation((args: unknown) => ({ __kind: "transfer_keep_alive", args }));
+    const mapAccountFactory = vi.fn().mockReturnValue({ __kind: "map_account" });
+    return {
+        client: {
+            assetHub: {
+                tx: {
+                    Balances: { transfer_keep_alive: transferFactory },
+                    Revive: { map_account: mapAccountFactory },
+                },
+            },
+        } as any,
+        transferFactory,
+        mapAccountFactory,
+    };
+}
+
 beforeEach(() => {
     runStorageDeploy.mockClear();
     publishToPlaygroundMock.mockClear();
     runBuildMock.mockClear();
+    runContractsPhaseMock.mockClear();
+    detectContractsTypeMock.mockReset();
+    detectContractsTypeMock.mockReturnValue(null);
+    getOrCreateSessionAccountMock.mockClear();
+    getOrCreateSessionAccountMock.mockImplementation(async () => ({
+        info: {
+            account: {
+                ss58Address: "5SessionAddr",
+                signer: { __sessionSigner: true },
+            },
+        },
+        created: false,
+    }));
+    getConnectionMock.mockReset();
+    checkBalanceMock.mockReset();
+    checkBalanceMock.mockResolvedValue({ free: 100_000_000_000n, sufficient: true });
+    submitAndWatchMock.mockClear();
+    createDevSignerMock.mockClear();
 });
 
 describe("runDeploy", () => {
@@ -280,5 +379,325 @@ describe("runDeploy", () => {
 
         const err = events.find((e) => e.kind === "error");
         expect(err).toMatchObject({ phase: "storage-and-dotns", message: "bulletin rpc down" });
+    });
+});
+
+// ── Contracts-phase orchestration ────────────────────────────────────────────
+
+describe("runDeploy — contracts phase", () => {
+    it("runs contracts and build concurrently (both invoked before either resolves)", async () => {
+        detectContractsTypeMock.mockReturnValue("foundry");
+        const { client } = makeFakeClient();
+        getConnectionMock.mockResolvedValue(client);
+
+        // Gate each mock on an explicit resolver so we can observe that both
+        // were *entered* before either has settled. If the orchestrator were
+        // accidentally sequential (await-contracts → await-build), only the
+        // first mock would ever be called within the assertion window.
+        let resolveContracts!: () => void;
+        const contractsGate = new Promise<void>((r) => {
+            resolveContracts = r;
+        });
+        runContractsPhaseMock.mockImplementationOnce(async () => {
+            await contractsGate;
+            return { deployed: [{ name: "Counter", address: "0xabc" }] };
+        });
+
+        let resolveBuild!: () => void;
+        const buildGate = new Promise<void>((r) => {
+            resolveBuild = r;
+        });
+        runBuildMock.mockImplementationOnce(async () => {
+            await buildGate;
+            return { config: {} as any, outputDir: "/tmp/dist" };
+        });
+
+        const { push } = collectEvents();
+        const deployPromise = runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: false,
+            userSigner: null,
+            deployContracts: true,
+            onEvent: push,
+        });
+
+        // Give microtasks + the Promise.all scheduler a window to invoke
+        // both branches. Neither branch has resolved yet.
+        await new Promise((r) => setTimeout(r, 20));
+        expect(runContractsPhaseMock).toHaveBeenCalled();
+        expect(runBuildMock).toHaveBeenCalled();
+
+        resolveContracts();
+        resolveBuild();
+        const outcome = await deployPromise;
+        expect(outcome.contracts).toEqual([{ name: "Counter", address: "0xabc" }]);
+    });
+
+    it("storage-and-dotns waits for BOTH contracts and build before starting", async () => {
+        detectContractsTypeMock.mockReturnValue("foundry");
+        const { client } = makeFakeClient();
+        getConnectionMock.mockResolvedValue(client);
+
+        let resolveContracts!: () => void;
+        const contractsGate = new Promise<void>((r) => {
+            resolveContracts = r;
+        });
+        runContractsPhaseMock.mockImplementationOnce(async () => {
+            await contractsGate;
+            return { deployed: [] };
+        });
+
+        let resolveBuild!: () => void;
+        const buildGate = new Promise<void>((r) => {
+            resolveBuild = r;
+        });
+        runBuildMock.mockImplementationOnce(async () => {
+            await buildGate;
+            return { config: {} as any, outputDir: "/tmp/dist" };
+        });
+
+        const { push } = collectEvents();
+        const deployPromise = runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: false,
+            userSigner: null,
+            deployContracts: true,
+            onEvent: push,
+        });
+
+        // Resolve only contracts — storage must still be dormant because
+        // build hasn't completed yet. Note: build precedes storage in the
+        // frontend branch, so storage is always gated by build too.
+        resolveContracts();
+        await new Promise((r) => setTimeout(r, 20));
+        expect(runStorageDeploy).not.toHaveBeenCalled();
+
+        resolveBuild();
+        await deployPromise;
+        expect(runStorageDeploy).toHaveBeenCalledTimes(1);
+    });
+
+    it("deployContracts: false → phase-skipped with 'not requested' reason", async () => {
+        const { events, push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            skipBuild: true,
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: false,
+            userSigner: null,
+            onEvent: push,
+        });
+
+        const skipped = events.find((e) => e.kind === "phase-skipped" && e.phase === "contracts");
+        expect(skipped).toMatchObject({
+            kind: "phase-skipped",
+            phase: "contracts",
+            reason: expect.stringMatching(/contracts deploy not requested/),
+        });
+        expect(runContractsPhaseMock).not.toHaveBeenCalled();
+    });
+
+    it("deployContracts: true but no contracts project → phase-skipped with 'no foundry/hardhat/cdm' reason", async () => {
+        detectContractsTypeMock.mockReturnValue(null);
+        const { events, push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            skipBuild: true,
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: false,
+            userSigner: null,
+            deployContracts: true,
+            onEvent: push,
+        });
+
+        const skipped = events.find((e) => e.kind === "phase-skipped" && e.phase === "contracts");
+        expect(skipped).toMatchObject({
+            reason: expect.stringMatching(/no foundry\/hardhat\/cdm/),
+        });
+        expect(runContractsPhaseMock).not.toHaveBeenCalled();
+    });
+
+    it("ensureSessionFunded: already funded → no transfer submitted, contracts still run", async () => {
+        detectContractsTypeMock.mockReturnValue("foundry");
+        const { client } = makeFakeClient();
+        getConnectionMock.mockResolvedValue(client);
+        checkBalanceMock.mockResolvedValue({ free: 50_000_000_000n, sufficient: true });
+
+        const { push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            skipBuild: true,
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: false,
+            userSigner: null,
+            deployContracts: true,
+            onEvent: push,
+        });
+
+        // `submitAndWatch` must not have been called for the transfer.
+        // (It's also not called for map_account because `created: false`.)
+        expect(submitAndWatchMock).not.toHaveBeenCalled();
+        expect(runContractsPhaseMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("ensureSessionFunded: underfunded + phone signer → wraps user signer, transfers SESSION_FUND_AMOUNT", async () => {
+        detectContractsTypeMock.mockReturnValue("foundry");
+        const { client, transferFactory } = makeFakeClient();
+        getConnectionMock.mockResolvedValue(client);
+        checkBalanceMock.mockResolvedValue({ free: 0n, sufficient: false });
+
+        const { push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            skipBuild: true,
+            domain: "my-app",
+            mode: "phone",
+            publishToPlayground: false,
+            userSigner: fakeUserSigner,
+            deployContracts: true,
+            onEvent: push,
+        });
+
+        // Transfer was submitted with `value = SESSION_FUND_AMOUNT` (50 PAS).
+        const transferArg = transferFactory.mock.calls[0][0] as { value: bigint };
+        expect(transferArg.value).toBe(50_000_000_000n);
+
+        // The first `submitAndWatch` call is the transfer. Its signer is the
+        // `wrapSignerWithEvents` proxy, which exposes `signTx`/`signBytes`
+        // (so we check identity-by-shape rather than drilling into internals).
+        const [, firstSigner] = submitAndWatchMock.mock.calls[0];
+        expect(firstSigner).toHaveProperty("signTx");
+        expect(firstSigner).toHaveProperty("signBytes");
+        // Dev fallback must NOT have fired.
+        expect(createDevSignerMock).not.toHaveBeenCalledWith("Alice");
+    });
+
+    it("ensureSessionFunded: underfunded + pure dev mode → uses Alice as funder", async () => {
+        detectContractsTypeMock.mockReturnValue("foundry");
+        const { client } = makeFakeClient();
+        getConnectionMock.mockResolvedValue(client);
+        checkBalanceMock.mockResolvedValue({ free: 0n, sufficient: false });
+
+        const { push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            skipBuild: true,
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: false,
+            userSigner: null,
+            deployContracts: true,
+            onEvent: push,
+        });
+
+        expect(createDevSignerMock).toHaveBeenCalledWith("Alice");
+        // Transfer submitted with the Alice dev signer.
+        const [, funder] = submitAndWatchMock.mock.calls[0];
+        expect(funder).toMatchObject({ __devSigner: "Alice" });
+    });
+
+    it("session-key mapping fires Revive.map_account only when created: true", async () => {
+        detectContractsTypeMock.mockReturnValue("foundry");
+        const { client, mapAccountFactory } = makeFakeClient();
+        getConnectionMock.mockResolvedValue(client);
+        getOrCreateSessionAccountMock.mockResolvedValue({
+            info: {
+                account: {
+                    ss58Address: "5SessionAddr",
+                    signer: { __sessionSigner: true },
+                },
+            },
+            created: true,
+        });
+
+        const { push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            skipBuild: true,
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: false,
+            userSigner: null,
+            deployContracts: true,
+            onEvent: push,
+        });
+
+        expect(mapAccountFactory).toHaveBeenCalledTimes(1);
+    });
+
+    it("session-key mapping does NOT fire when created: false", async () => {
+        detectContractsTypeMock.mockReturnValue("foundry");
+        const { client, mapAccountFactory } = makeFakeClient();
+        getConnectionMock.mockResolvedValue(client);
+        getOrCreateSessionAccountMock.mockResolvedValue({
+            info: {
+                account: {
+                    ss58Address: "5SessionAddr",
+                    signer: { __sessionSigner: true },
+                },
+            },
+            created: false,
+        });
+
+        const { push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            skipBuild: true,
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: false,
+            userSigner: null,
+            deployContracts: true,
+            onEvent: push,
+        });
+
+        expect(mapAccountFactory).not.toHaveBeenCalled();
+    });
+
+    it("contracts phase error → runDeploy rejects AND emits a contracts error event", async () => {
+        detectContractsTypeMock.mockReturnValue("foundry");
+        const { client } = makeFakeClient();
+        getConnectionMock.mockResolvedValue(client);
+        runContractsPhaseMock.mockImplementationOnce(async () => {
+            throw new Error("forge blew up");
+        });
+
+        const { events, push } = collectEvents();
+        await expect(
+            runDeploy({
+                projectDir: "/tmp/proj",
+                buildDir: "/tmp/proj/dist",
+                skipBuild: true,
+                domain: "my-app",
+                mode: "dev",
+                publishToPlayground: false,
+                userSigner: null,
+                deployContracts: true,
+                onEvent: push,
+            }),
+        ).rejects.toThrow(/forge blew up/);
+
+        const err = events.find((e) => e.kind === "error" && e.phase === "contracts");
+        expect(err).toMatchObject({
+            kind: "error",
+            phase: "contracts",
+            message: "forge blew up",
+        });
     });
 });

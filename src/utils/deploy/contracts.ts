@@ -214,13 +214,12 @@ async function compileFoundry(opts: RunContractsPhaseOptions): Promise<CompiledA
         const artifactPath = join(outDir, entry.name, `${contractName}.json`);
         if (!existsSync(artifactPath)) continue;
 
-        const artifact = JSON.parse(readFileSync(artifactPath, "utf8")) as {
-            bytecode?: { object?: string };
-        };
-        const hex = artifact.bytecode?.object;
-        if (typeof hex !== "string") continue;
+        const hex = extractFoundryBytecode(JSON.parse(readFileSync(artifactPath, "utf8")));
+        if (hex === null) continue;
         const bytes = hexToBytes(hex);
-        // Abstract contracts / interfaces compile to "0x" — skip them.
+        // Abstract contracts / interfaces compile to "0x" — skip them
+        // (extractFoundryBytecode already returns null for "0x", but guard
+        // against any other zero-byte hex just in case).
         if (bytes.length === 0) continue;
 
         artifacts.push({
@@ -264,13 +263,12 @@ async function compileHardhat(opts: RunContractsPhaseOptions): Promise<CompiledA
             if (!sub.endsWith(".json") || sub.endsWith(".dbg.json")) continue;
 
             const contractName = sub.slice(0, -".json".length);
-            const artifact = JSON.parse(readFileSync(join(dir, sub), "utf8")) as {
-                bytecode?: string;
-            };
-            const hex = artifact.bytecode;
-            if (typeof hex !== "string") continue;
+            const hex = extractHardhatBytecode(JSON.parse(readFileSync(join(dir, sub), "utf8")));
+            if (hex === null) continue;
             const bytes = hexToBytes(hex);
-            // Abstract contracts / interfaces compile to "0x" — skip them.
+            // Abstract contracts / interfaces compile to "0x" — skip them
+            // (extractHardhatBytecode already returns null for "0x", but
+            // guard against any other zero-byte hex just in case).
             if (bytes.length === 0) continue;
 
             artifacts.push({
@@ -285,7 +283,42 @@ async function compileHardhat(opts: RunContractsPhaseOptions): Promise<CompiledA
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
-function hexToBytes(hex: string): Uint8Array {
+/**
+ * Pull the deploy bytecode out of a Foundry `<Contract>.json` artifact.
+ *
+ * Foundry nests the hex under `bytecode.object`. Returns `null` for any
+ * shape that isn't a non-empty hex string ("0x" included, since an empty
+ * bytecode belongs to an abstract contract / interface we'd skip anyway).
+ * Exported so the JSON→hex selection can be unit-tested without spawning
+ * `forge`.
+ */
+export function extractFoundryBytecode(artifactJson: unknown): string | null {
+    if (typeof artifactJson !== "object" || artifactJson === null) return null;
+    const bytecode = (artifactJson as { bytecode?: unknown }).bytecode;
+    if (typeof bytecode !== "object" || bytecode === null) return null;
+    const hex = (bytecode as { object?: unknown }).object;
+    if (typeof hex !== "string") return null;
+    if (hex === "0x" || hex === "") return null;
+    return hex;
+}
+
+/**
+ * Pull the deploy bytecode out of a Hardhat `<Contract>.json` artifact.
+ *
+ * Hardhat stores the hex as a plain string under `bytecode` — *not* the
+ * `{ object: string }` shape Foundry uses. We deliberately refuse the
+ * Foundry shape here so a misrouted artifact fails loudly instead of
+ * silently producing the wrong bytes.
+ */
+export function extractHardhatBytecode(artifactJson: unknown): string | null {
+    if (typeof artifactJson !== "object" || artifactJson === null) return null;
+    const hex = (artifactJson as { bytecode?: unknown }).bytecode;
+    if (typeof hex !== "string") return null;
+    if (hex === "0x" || hex === "") return null;
+    return hex;
+}
+
+export function hexToBytes(hex: string): Uint8Array {
     const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
     if (clean.length % 2 !== 0) {
         throw new Error(`invalid hex string (odd length): ${hex.slice(0, 20)}…`);
