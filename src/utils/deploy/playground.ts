@@ -58,6 +58,11 @@ export interface PublishToPlaygroundOptions {
     onLogEvent?: (event: DeployLogEvent) => void;
     /** Target environment. */
     env?: Env;
+    /**
+     * If true, publish with visibility=0 (private) so the app is only visible
+     * to its owner in the playground. Defaults to public (visibility=1).
+     */
+    isPrivate?: boolean;
 }
 
 export interface PublishToPlaygroundResult {
@@ -205,7 +210,8 @@ export async function publishToPlayground(
     let lastError: unknown;
     for (let attempt = 1; attempt <= MAX_REGISTRY_RETRIES; attempt++) {
         try {
-            const result = await registry.publish.tx(fullDomain, metadataCid);
+            const visibility = options.isPrivate ? 0 : 1;
+            const result = await registry.publish.tx(fullDomain, metadataCid, visibility);
             if (result && result.ok === false) {
                 throw new Error("Registry publish transaction reverted");
             }

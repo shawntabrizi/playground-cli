@@ -72,6 +72,8 @@ export interface RunDeployOptions {
     mode: SignerMode;
     /** Whether to publish to the playground registry after DotNS succeeds. */
     publishToPlayground: boolean;
+    /** Publish to the playground with private visibility (owner-only). Ignored when `publishToPlayground` is false. */
+    playgroundPrivate?: boolean;
     /** Compile + deploy foundry/hardhat/cdm contracts alongside the frontend. */
     deployContracts?: boolean;
     /** The logged-in phone signer. Required for `mode === "phone"` or `publishToPlayground`. */
@@ -196,6 +198,7 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
                 cwd: options.projectDir,
                 onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
                 env: options.env,
+                isPrivate: options.playgroundPrivate,
             });
             metadataCid = pub.metadataCid;
         } catch (err) {

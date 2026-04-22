@@ -13,8 +13,8 @@
   "contracts": {
     "acc2c3b5e912b762": {
       "@w3s/playground-registry": {
-        "version": 0,
-        "address": "0xb9Aa5e8421AF2c7426a37bA10045158dDe981856",
+        "version": 4,
+        "address": "0x17a7Bdc44B39472A7243Ba9b21099de26c12CbA5",
         "abi": [
           {
             "type": "constructor",
@@ -32,6 +32,10 @@
               {
                 "name": "metadata_uri",
                 "type": "string"
+              },
+              {
+                "name": "visibility",
+                "type": "uint8"
               }
             ],
             "outputs": [],
@@ -198,6 +202,155 @@
           },
           {
             "type": "function",
+            "name": "addAdmin",
+            "inputs": [
+              {
+                "name": "admin",
+                "type": "address"
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "removeAdmin",
+            "inputs": [
+              {
+                "name": "admin",
+                "type": "address"
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "isAdmin",
+            "inputs": [
+              {
+                "name": "addr",
+                "type": "address"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "bool"
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
+            "name": "setVisibility",
+            "inputs": [
+              {
+                "name": "domain",
+                "type": "string"
+              },
+              {
+                "name": "visibility",
+                "type": "uint8"
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "getVisibility",
+            "inputs": [
+              {
+                "name": "domain",
+                "type": "string"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint8"
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
+            "name": "pin",
+            "inputs": [
+              {
+                "name": "domain",
+                "type": "string"
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "unpin",
+            "inputs": [
+              {
+                "name": "domain",
+                "type": "string"
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "isPinned",
+            "inputs": [
+              {
+                "name": "domain",
+                "type": "string"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "bool"
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
+            "name": "getPinnedApps",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "",
+                "type": "tuple[]",
+                "components": [
+                  {
+                    "name": "index",
+                    "type": "uint32"
+                  },
+                  {
+                    "name": "domain",
+                    "type": "string"
+                  },
+                  {
+                    "name": "metadata_uri",
+                    "type": "string"
+                  },
+                  {
+                    "name": "owner",
+                    "type": "address"
+                  },
+                  {
+                    "name": "visibility",
+                    "type": "uint8"
+                  }
+                ]
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
             "name": "getApps",
             "inputs": [
               {
@@ -219,6 +372,10 @@
                     "type": "uint32"
                   },
                   {
+                    "name": "scanned",
+                    "type": "uint32"
+                  },
+                  {
                     "name": "entries",
                     "type": "tuple[]",
                     "components": [
@@ -237,6 +394,10 @@
                       {
                         "name": "owner",
                         "type": "address"
+                      },
+                      {
+                        "name": "visibility",
+                        "type": "uint8"
                       }
                     ]
                   }
@@ -290,7 +451,7 @@
             "stateMutability": "view"
           }
         ],
-        "metadataCid": "bafk2bzaceb5zctlcjumwv6co6buraoqgatsss3fffmzh6bnlxgemovujkzod4"
+        "metadataCid": "bafk2bzacecdn3ughcmfhdp5q4w7tdritnh7uiipuf4meum3dat5ip65kx3wl6"
       }
     }
   }

@@ -35,6 +35,8 @@ interface DeployOpts {
     domain?: string;
     buildDir?: string;
     playground?: boolean;
+    /** Publish to the playground with private visibility (owner-only). Only meaningful with `--playground`. */
+    private?: boolean;
     /**
      * Commander's auto-negated boolean: defaults to `true`; `--no-build` flips it to `false`.
      * We never check for `undefined` here since commander always provides a boolean when
@@ -64,6 +66,10 @@ export const deployCommand = new Command("deploy")
         "Also deploy any contracts detected in the project (foundry/hardhat/cdm)",
     )
     .option("--playground", "Publish to the playground registry")
+    .option(
+        "--private",
+        "Publish to the playground with private visibility (owner-only). Requires --playground.",
+    )
     .option("--suri <suri>", "Secret URI for the user signer (e.g. //Alice for dev)")
     .addOption(
         new Option("--env <env>", "Target environment")
@@ -292,6 +298,7 @@ async function runHeadless(ctx: {
         domain,
         mode,
         publishToPlayground,
+        playgroundPrivate: Boolean(ctx.opts.private),
         deployContracts,
         contractsFundingNeeded,
         userSigner: ctx.userSigner,
@@ -351,6 +358,7 @@ function runInteractive(ctx: {
                 mode: (ctx.opts.signer as SignerMode | undefined) ?? null,
                 publishToPlayground:
                     ctx.opts.playground !== undefined ? Boolean(ctx.opts.playground) : null,
+                playgroundPrivate: Boolean(ctx.opts.private),
                 // Only pre-fill when the user explicitly asked to skip via `--no-build`;
                 // otherwise show the prompt so they can hit Enter on the default "yes".
                 skipBuild: ctx.opts.build === false ? true : null,
