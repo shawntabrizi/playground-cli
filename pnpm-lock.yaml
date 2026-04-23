@@ -45,8 +45,8 @@ importers:
         specifier: latest
         version: 0.4.0
       bulletin-deploy:
-        specifier: 0.7.0
-        version: 0.7.0(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
+        specifier: 0.7.2
+        version: 0.7.2(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -1603,8 +1603,8 @@ packages:
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
 
-  bulletin-deploy@0.7.0:
-    resolution: {integrity: sha512-fufankGtq5jRaO1BJBgT5n3e7/lTrPuBftOW00doi+ADZcW4kq70qpxEXUcnr8ujrq1pLbwQhwns3oUvegOELw==}
+  bulletin-deploy@0.7.2:
+    resolution: {integrity: sha512-o+SoSGJCAPN0mIjMYc/z8P7coAt35csML2EAf2QysDkEqYDmqXEe950FQZasYXYD4QL9exxTHdr6L1YINQ0gCA==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -5021,7 +5021,7 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bulletin-deploy@0.7.0(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3):
+  bulletin-deploy@0.7.2(@polkadot/util@13.5.9)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3):
     dependencies:
       '@ipld/car': 5.4.3
       '@ipld/dag-pb': 4.1.5
