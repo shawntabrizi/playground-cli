@@ -22,7 +22,7 @@ importers:
         version: 0.6.9(postcss@8.5.10)(rxjs@7.8.2)
       '@polkadot-apps/chain-client':
         specifier: latest
-        version: 2.0.4(postcss@8.5.10)(rxjs@7.8.2)
+        version: 2.0.5(postcss@8.5.10)(rxjs@7.8.2)
       '@polkadot-apps/contracts':
         specifier: latest
         version: 0.3.2(@novasamatech/host-api@0.6.17)(@polkadot-api/ink-contracts@0.6.1)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
@@ -1064,6 +1064,9 @@ packages:
 
   '@polkadot-apps/chain-client@2.0.4':
     resolution: {integrity: sha512-wBjWsi6hBNfcXVHiyoVzcChNmoxzsA9fkdA4sMbqeJ62rwohslq0liUbC14my+lofhE815jaVCeeQeoNX5vs2g==}
+
+  '@polkadot-apps/chain-client@2.0.5':
+    resolution: {integrity: sha512-lPmHSJyll0c7fCXwmMgctoD2HpfMCcBAFMtiPer4CSSP3uR0xjVQH3ULu8Xtbh/Aiq7TRirPBfL5ovvQhs4TJg==}
 
   '@polkadot-apps/contracts@0.3.2':
     resolution: {integrity: sha512-V8deSU5BP9lzdNbthnprKB+LQR2NsD9N+G6Rl68jfEoS1fBCCaWf9GlcOitgog3Ve1XxzoSa6Gl1GjYuiy/J2w==}
@@ -3235,7 +3238,7 @@ snapshots:
       '@dotdm/utils': 0.3.1
       '@noble/hashes': 2.2.0
       '@polkadot-apps/bulletin': 0.6.9(postcss@8.5.10)(rxjs@7.8.2)
-      '@polkadot-apps/chain-client': 2.0.4(postcss@8.5.10)(rxjs@7.8.2)
+      '@polkadot-apps/chain-client': 2.0.5(postcss@8.5.10)(rxjs@7.8.2)
       '@polkadot-apps/contracts': 0.4.0(@novasamatech/host-api@0.6.17)(@polkadot-api/ink-contracts@0.6.1)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)
       '@polkadot-apps/descriptors': 1.0.1(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2))
       '@polkadot-apps/tx': 0.3.5(postcss@8.5.10)(rxjs@7.8.2)
@@ -3261,7 +3264,7 @@ snapshots:
   '@dotdm/env@1.0.0(postcss@8.5.10)(rxjs@7.8.2)':
     dependencies:
       '@dotdm/utils': 0.3.1
-      '@polkadot-apps/chain-client': 2.0.4(postcss@8.5.10)(rxjs@7.8.2)
+      '@polkadot-apps/chain-client': 2.0.5(postcss@8.5.10)(rxjs@7.8.2)
       '@polkadot-apps/descriptors': 1.0.1(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2))
       '@polkadot-labs/hdkd': 0.0.26
       '@polkadot-labs/hdkd-helpers': 0.0.27
@@ -4313,6 +4316,24 @@ snapshots:
       - yaml
 
   '@polkadot-apps/chain-client@2.0.4(postcss@8.5.10)(rxjs@7.8.2)':
+    dependencies:
+      '@polkadot-apps/descriptors': 1.0.1(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2))
+      '@polkadot-apps/host': 0.5.1(postcss@8.5.10)(rxjs@7.8.2)
+      polkadot-api: 1.23.3(postcss@8.5.10)(rxjs@7.8.2)
+    transitivePeerDependencies:
+      - '@microsoft/api-extractor'
+      - '@novasamatech/product-sdk'
+      - '@swc/core'
+      - bufferutil
+      - jiti
+      - postcss
+      - rxjs
+      - supports-color
+      - tsx
+      - utf-8-validate
+      - yaml
+
+  '@polkadot-apps/chain-client@2.0.5(postcss@8.5.10)(rxjs@7.8.2)':
     dependencies:
       '@polkadot-apps/descriptors': 1.0.1(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2))
       '@polkadot-apps/host': 0.5.1(postcss@8.5.10)(rxjs@7.8.2)
