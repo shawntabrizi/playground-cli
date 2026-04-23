@@ -10,6 +10,7 @@ import { initCommand } from "./commands/init/index.js";
 import { modCommand } from "./commands/mod/index.js";
 import { buildCommand } from "./commands/build.js";
 import { deployCommand } from "./commands/deploy/index.js";
+import { logoutCommand } from "./commands/logout/index.js";
 import { updateCommand } from "./commands/update.js";
 import { installSignalHandlers, onProcessShutdown } from "./utils/process-guard.js";
 import { clearWindowTitle } from "./utils/ui/theme/window-title.js";
@@ -49,6 +50,7 @@ program.addCommand(initCommand);
 program.addCommand(modCommand);
 program.addCommand(buildCommand);
 program.addCommand(deployCommand);
+program.addCommand(logoutCommand);
 program.addCommand(updateCommand);
 
 program.parseAsync().then(() => process.exit(0));

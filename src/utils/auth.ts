@@ -6,8 +6,13 @@
  *   2. Print QR code to stdout (if needed) — before Ink mounts
  *   3. `waitForLogin()` — awaits the already-running auth to complete
  *   4. `getSessionSigner()` — gets a working signer for tx signing (separate adapter)
+ *   5. `findSession()` / `waitForLogout()` — sign out flow, mirror image of connect/waitForLogin
  */
 
+import type { Dirent } from "node:fs";
+import { readdir, unlink } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { ss58Encode } from "@polkadot-apps/address";
 import {
     createTerminalAdapter,
@@ -16,6 +21,7 @@ import {
     type TerminalAdapter,
     type PairingStatus,
     type AttestationStatus,
+    type StoredUserSession,
 } from "@polkadot-apps/terminal";
 import { createTxSigner } from "./session-signer-patch.js";
 import type { PolkadotSigner } from "polkadot-api";
@@ -213,4 +219,128 @@ export async function getSessionSigner(): Promise<SessionHandle | null> {
     };
 
     return { address, signer, destroy };
+}
+
+// ── Sign-out flow ─────────────────────────────────────────────────────────────
+//
+// Mirror image of connect() + waitForLogin(). `findSession()` does the I/O to
+// decide if there's anything to sign out of; `waitForLogout()` performs the
+// disconnect and takes ownership of the adapter's `destroy()`.
+
+export type LogoutStatus =
+    | { step: "disconnecting"; address: string }
+    | { step: "success"; address: string }
+    | { step: "partial"; address: string; reason: string }
+    | { step: "error"; message: string };
+
+export interface LogoutHandle {
+    adapter: TerminalAdapter;
+    address: string;
+    session: StoredUserSession;
+}
+
+/**
+ * Look up the currently paired session, if any.
+ *
+ * Returns a handle ready for `waitForLogout()`, or `null` when no session is
+ * signed in. On the null path the adapter is destroyed here so callers don't
+ * have to care.
+ */
+export async function findSession(): Promise<LogoutHandle | null> {
+    const adapter = createAdapter();
+    const sessions = await waitForSessions(adapter, 3000);
+    if (sessions.length === 0) {
+        adapter.destroy();
+        return null;
+    }
+    const session = sessions[0];
+    const pubkey = new Uint8Array(session.remoteAccount.accountId);
+    const address = ss58Encode(pubkey);
+    return { adapter, address, session };
+}
+
+/**
+ * Disconnect the given session. Reports progress via callback.
+ *
+ * Happy path: `adapter.sessions.disconnect()` sends a `Disconnected` statement
+ * so the paired mobile app drops its side of the connection, then clears the
+ * local session + user-secret files.
+ *
+ * If the remote notification fails (statement store unreachable, WebSocket
+ * torn down, …) we fall back to deleting the `${DAPP_ID}_*` files in
+ * `~/.polkadot-apps/` directly — strictly narrower than `rm -rf ~/.polkadot-apps`
+ * and keeps the user unblocked. The mobile app will show a stale pairing
+ * until it reconnects, which we surface via `partial`.
+ *
+ * Always releases the adapter before returning.
+ */
+export async function waitForLogout(
+    handle: LogoutHandle,
+    onStatus: (status: LogoutStatus) => void,
+): Promise<void> {
+    const { adapter, address, session } = handle;
+
+    // Everything that can throw — including the consumer's onStatus — lives
+    // inside this try so the finally is guaranteed to run and release the
+    // WebSocket. Losing the destroy() would turn the CLI into a zombie.
+    try {
+        onStatus({ step: "disconnecting", address });
+        const result = await adapter.sessions.disconnect(session);
+        if (result.isOk()) {
+            onStatus({ step: "success", address });
+            return;
+        }
+        const reason = result.error.message || "remote unreachable";
+        await clearLocalAppStorage();
+        onStatus({ step: "partial", address, reason });
+    } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        try {
+            await clearLocalAppStorage();
+            onStatus({ step: "partial", address, reason });
+        } catch (cleanupErr) {
+            const msg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+            onStatus({ step: "error", message: msg });
+        }
+    } finally {
+        try {
+            adapter.destroy();
+        } catch {
+            // best-effort
+        }
+    }
+}
+
+/**
+ * Best-effort removal of this app's persisted state under `~/.polkadot-apps/`.
+ *
+ * Scoped by `${DAPP_ID}_` prefix so files belonging to other polkadot apps
+ * sharing the directory (e.g. polkadot-desktop, other CLI tools) are left
+ * alone. Errors are swallowed — this is a fallback, not a guarantee.
+ *
+ * Exported for tests; not part of the public API.
+ * @internal
+ */
+export async function clearLocalAppStorage(
+    dir: string = join(homedir(), ".polkadot-apps"),
+): Promise<void> {
+    // @polkadot-apps/terminal's node-storage only writes flat `${appId}_${key}.json`
+    // files, never subdirectories. Filter by isFile() anyway so a future change
+    // up-stack (or an unrelated user stash) can't trip this helper.
+    let entries: Dirent[];
+    try {
+        entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+        return;
+    }
+    const prefix = `${DAPP_ID}_`;
+    await Promise.all(
+        entries
+            .filter((entry) => entry.isFile() && entry.name.startsWith(prefix))
+            .map((entry) =>
+                unlink(join(dir, entry.name)).catch(() => {
+                    // best-effort
+                }),
+            ),
+    );
 }
