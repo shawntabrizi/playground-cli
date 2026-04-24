@@ -1,7 +1,7 @@
 /**
- * Master funder account for E2E tests.
+ * E2E test funder account.
  *
- * The funder is the account whose seed is provided via MASTER_FUNDER_SEED.
+ * Uses a dedicated account whose seed is provided via E2E_FUNDER_SEED.
  * Falls back to Alice dev account for local runs.
  */
 
@@ -11,13 +11,16 @@ import { ALICE } from "./accounts.js";
 const FUNDER_LOW_THRESHOLD_DOT = BigInt(process.env.FUNDER_LOW_THRESHOLD_DOT ?? "10");
 const DOT = 10_000_000_000n; // 1 DOT = 10^10 planck
 
+/** Address of the dedicated E2E funder account (generated 2026-04-24). */
+const E2E_FUNDER_ADDRESS = "5GLMswFYUU1RgKaQDaqsT9XdGGh4kPbSo1NF7gLiZJZg8Hmx";
+
 /**
- * Get the master funder's free balance in planck.
+ * Get the E2E funder's free balance in planck.
+ * Uses the dedicated funder if E2E_FUNDER_SEED is set, otherwise falls back to Alice.
  */
-export async function getMasterFunderBalance(): Promise<bigint> {
-	// Uses Alice (dev account, pre-funded on Paseo). A dedicated funder account
-	// via MASTER_FUNDER_SEED can be added when testnet token management is needed.
-	return queryBalance(ALICE.address);
+export async function getE2eFunderBalance(): Promise<bigint> {
+	const address = process.env.E2E_FUNDER_SEED ? E2E_FUNDER_ADDRESS : ALICE.address;
+	return queryBalance(address);
 }
 
 /**
@@ -26,9 +29,12 @@ export async function getMasterFunderBalance(): Promise<bigint> {
  */
 export async function checkFunderAndWarn(): Promise<void> {
 	try {
-		const balance = await getMasterFunderBalance();
+		const balance = await getE2eFunderBalance();
 		const balanceDot = balance / DOT;
-		console.log(`[e2e setup] Funder balance: ${balanceDot} DOT (${balance} planck)`);
+		const usingDedicated = !!process.env.E2E_FUNDER_SEED;
+		console.log(
+			`[e2e setup] Funder balance: ${balanceDot} DOT (${usingDedicated ? "dedicated" : "Alice fallback"})`,
+		);
 
 		if (balanceDot < FUNDER_LOW_THRESHOLD_DOT) {
 			console.warn(
@@ -49,16 +55,17 @@ async function createLowBalanceIssue(balance: bigint): Promise<void> {
 		return;
 	}
 
-	const title = "⚠️ Playground CLI test funder account is low — please top up";
+	const title = "⚠️ E2E test funder account is low — please top up";
 
 	try {
-		// Check for existing open issue with the same title
 		const searchRes = await fetch(
 			`https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${ghRepo} is:open in:title "${title}"`)}`,
 			{ headers: { Authorization: `Bearer ${ghToken}` } },
 		);
 		if (!searchRes.ok) {
-			console.warn(`[e2e setup] GitHub search API returned ${searchRes.status} — skipping issue check`);
+			console.warn(
+				`[e2e setup] GitHub search API returned ${searchRes.status} — skipping issue check`,
+			);
 			return;
 		}
 		const searchData = (await searchRes.json()) as { total_count: number };
@@ -67,8 +74,8 @@ async function createLowBalanceIssue(balance: bigint): Promise<void> {
 			return;
 		}
 
-		// Create the issue
-		const body = `The E2E test funder account balance is **${balance / DOT} DOT** (${balance} planck), which is below the threshold of ${FUNDER_LOW_THRESHOLD_DOT} DOT.\n\nPlease top up the funder account (Alice on Paseo) to ensure E2E tests can run.\n\nFaucet: https://faucet.polkadot.io/?network=pah`;
+		const address = process.env.E2E_FUNDER_SEED ? E2E_FUNDER_ADDRESS : ALICE.address;
+		const body = `The E2E test funder account balance is **${balance / DOT} DOT** (${balance} planck), which is below the threshold of ${FUNDER_LOW_THRESHOLD_DOT} DOT.\n\nAddress: \`${address}\`\n\nPlease top up via the faucet: https://faucet.polkadot.io/?network=pah`;
 		const createRes = await fetch(`https://api.github.com/repos/${ghRepo}/issues`, {
 			method: "POST",
 			headers: {

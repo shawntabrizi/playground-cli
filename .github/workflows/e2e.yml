@@ -44,6 +44,6 @@ jobs:
               run: pnpm test:e2e
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  MASTER_FUNDER_SEED: ${{ secrets.MASTER_FUNDER_SEED }}
+                  E2E_FUNDER_SEED: ${{ secrets.E2E_FUNDER_SEED }}
                   TEST_TEMPLATE_DOMAIN: ${{ secrets.TEST_TEMPLATE_DOMAIN }}
                   TEST_TEMPLATE_REPO: ${{ secrets.TEST_TEMPLATE_REPO }}
