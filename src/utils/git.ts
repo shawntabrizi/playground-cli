@@ -63,6 +63,7 @@ export async function forkAndClone(
     const args = ["repo", "fork", repo, "--clone", "--fork-name", targetDir];
     if (options?.branch) args.push("--", "--branch", options.branch);
     await spawn("gh", args, { log: options?.log });
+    await spawn("git", ["remote", "remove", "upstream"], { cwd: targetDir, log: options?.log });
 }
 
 /** Clone a repo with fresh git history. Streams git output to log. */
