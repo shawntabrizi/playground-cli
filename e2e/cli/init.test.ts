@@ -28,7 +28,12 @@ describe("dot init — session detection", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tempHome, { recursive: true, force: true });
+		// dot init may install toolchains (rustup) into the temp HOME. Child
+		// processes can still be writing when cleanup runs, causing ENOTEMPTY.
+		// Best-effort cleanup — the OS cleans /tmp on its own.
+		try {
+			rmSync(tempHome, { recursive: true, force: true });
+		} catch { /* best-effort */ }
 	});
 
 	test("init with no session times out waiting for QR scan", async () => {
@@ -64,7 +69,9 @@ describe("dot init — dev signer bypass", () => {
 			expect(result.exitCode).toBe(0);
 			expect(result.stdout).toContain("deploy");
 		} finally {
-			rmSync(tempHome, { recursive: true, force: true });
+			try {
+				rmSync(tempHome, { recursive: true, force: true });
+			} catch { /* best-effort */ }
 		}
 	});
 });
