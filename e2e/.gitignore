@@ -1,0 +1,8 @@
+# Deploy artifacts generated during test runs
+*.car
+
+# Frontend-only dist is rebuilt by tests — don't track the output
+cli/fixtures/projects/frontend-only/dist/
+
+# Pre-committed fixture artifacts below ARE tracked (--no-build tests need them).
+# Do NOT add blanket dist/ or out/ ignores here.
