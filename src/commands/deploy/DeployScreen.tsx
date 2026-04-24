@@ -883,6 +883,9 @@ function FinalResult({
                     {outcome.metadataCid && (
                         <Row label="metadata cid" value={outcome.metadataCid} />
                     )}
+                    {outcome.contracts.map((c) => (
+                        <Row key={c.address} label={c.name} value={c.address} />
+                    ))}
                 </Section>
             </Box>
 

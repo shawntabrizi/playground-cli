@@ -57,8 +57,23 @@ Flags:
 - `--playground` — publish to the playground registry so the app appears under "my apps". Interactive prompt (default: no) if omitted.
 - `--suri <suri>` — override signer with a dev secret URI (e.g. `//Alice`). Useful for CI.
 - `--env <env>` — `testnet` (default) or `mainnet` (not yet supported).
+- `--manifest <path>` — on success, write a JSON manifest with the domain, app URL, CIDs, and deployed contract addresses to `<path>`. Directory is created if needed. Intended for CI / template generators / downstream tooling that needs the deployment output without parsing the TUI.
 
 Passing all four of `--signer`, `--domain`, `--buildDir`, and `--playground` runs in fully non-interactive mode. Any absent flag is filled in by the TUI prompt.
+
+The manifest format is versioned (`{ "version": 1, ... }`) — field names mirror the final TUI summary:
+
+```json
+{
+    "version": 1,
+    "fullDomain": "my-app.dot",
+    "appUrl": "https://my-app.dot.li",
+    "appCid": "bafy…",
+    "ipfsCid": "bafy…",
+    "metadataCid": "bafy…",
+    "contracts": [{ "name": "ProofOfExistence", "address": "0x…" }]
+}
+```
 
 **Requirement**: the `ipfs` CLI (Kubo) must be on `PATH`. `dot init` installs it; if you skipped init you can install it manually (`brew install ipfs` or follow [docs.ipfs.tech/install](https://docs.ipfs.tech/install/)). This is a temporary requirement while `bulletin-deploy`'s pure-JS merkleizer has a bug that makes the browser fallback unusable.
 

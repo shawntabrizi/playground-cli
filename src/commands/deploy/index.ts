@@ -28,6 +28,7 @@ import { loadDetectInput } from "../../utils/build/runner.js";
 import { readSessionAccount, SESSION_MIN_BALANCE } from "../../utils/deploy/session-account.js";
 import { checkBalance } from "../../utils/account/funding.js";
 import { DEFAULT_BUILD_DIR, type Env } from "../../config.js";
+import { buildManifest, writeManifest } from "../../utils/deploy/manifest.js";
 
 interface DeployOpts {
     suri?: string;
@@ -48,6 +49,12 @@ interface DeployOpts {
     env?: Env;
     /** Project root. Hidden — defaults to cwd. */
     dir?: string;
+    /**
+     * Write a machine-readable deploy manifest (JSON) to this path on success.
+     * Intended for downstream tooling (CIs, template generators) that needs
+     * the deployed contract addresses and CIDs without parsing the TUI.
+     */
+    manifest?: string;
 }
 
 export const deployCommand = new Command("deploy")
@@ -77,6 +84,10 @@ export const deployCommand = new Command("deploy")
             .default("testnet"),
     )
     .option("--dir <path>", "Project directory", process.cwd())
+    .option(
+        "--manifest <path>",
+        "Write a JSON deploy manifest (domain, CIDs, contract addresses) to this path on success",
+    )
     .action(async (opts: DeployOpts) => {
         const projectDir = resolve(opts.dir ?? process.cwd());
         const env: Env = (opts.env as Env) ?? "testnet";
@@ -128,10 +139,26 @@ export const deployCommand = new Command("deploy")
 
         try {
             const nonInteractive = isFullySpecified(opts);
-            if (nonInteractive) {
-                await runHeadless({ projectDir, env, userSigner, opts });
-            } else {
-                await runInteractive({ projectDir, env, userSigner, opts });
+            const outcome = nonInteractive
+                ? await runHeadless({ projectDir, env, userSigner, opts })
+                : await runInteractive({ projectDir, env, userSigner, opts });
+
+            // Emit the machine-readable manifest after a successful deploy.
+            // Done here (outside both dispatch branches) so the format is
+            // identical whether the user ran the TUI or passed every flag.
+            if (outcome && opts.manifest) {
+                const manifestPath = resolve(opts.manifest);
+                try {
+                    writeManifest(manifestPath, buildManifest(outcome));
+                    process.stdout.write(`  Manifest    ${manifestPath}\n\n`);
+                } catch (err) {
+                    // Don't fail the deploy just because we couldn't write the
+                    // manifest — the on-chain work is already done. Surface the
+                    // write failure clearly on stderr so callers notice.
+                    process.stderr.write(
+                        `\n⚠ Deploy succeeded but failed to write manifest to ${manifestPath}: ${formatError(err)}\n`,
+                    );
+                }
             }
         } catch (err) {
             process.stderr.write(`\n✖ ${formatError(err)}\n`);
@@ -234,7 +261,7 @@ async function runHeadless(ctx: {
     env: Env;
     userSigner: ResolvedSigner | null;
     opts: DeployOpts;
-}) {
+}): Promise<DeployOutcome> {
     const mode = ctx.opts.signer as SignerMode;
     const publishToPlayground = Boolean(ctx.opts.playground);
     const domain = ctx.opts.domain as string;
@@ -308,6 +335,7 @@ async function runHeadless(ctx: {
     });
 
     printFinalResult(outcome);
+    return outcome;
 }
 
 /** Best-effort contract-project detection; null on any I/O error. */
@@ -346,7 +374,7 @@ function runInteractive(ctx: {
     env: Env;
     userSigner: ResolvedSigner | null;
     opts: DeployOpts;
-}): Promise<void> {
+}): Promise<DeployOutcome> {
     const contractsType = safeDetectContractsType(ctx.projectDir);
     return new Promise((resolvePromise, rejectPromise) => {
         let settled = false;
@@ -373,7 +401,7 @@ function runInteractive(ctx: {
                         process.exitCode = 1;
                         rejectPromise(new Error("Deploy was cancelled or failed."));
                     } else {
-                        resolvePromise();
+                        resolvePromise(outcome);
                     }
                 },
             }),
@@ -428,6 +456,9 @@ function printFinalResult(outcome: DeployOutcome) {
     process.stdout.write(`  App CID     ${outcome.appCid}\n`);
     if (outcome.ipfsCid) process.stdout.write(`  IPFS CID    ${outcome.ipfsCid}\n`);
     if (outcome.metadataCid) process.stdout.write(`  Metadata CID ${outcome.metadataCid}\n`);
+    for (const contract of outcome.contracts) {
+        process.stdout.write(`  ${contract.name.padEnd(11)} ${contract.address}\n`);
+    }
     process.stdout.write("\n");
 }
 
