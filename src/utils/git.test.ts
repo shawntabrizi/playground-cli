@@ -7,7 +7,11 @@
  * mocked child_process is brittle and low-value.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runCommand } from "./git.js";
 
 // sanitize is not exported, so we test it indirectly by importing the module
 // and calling a function that uses it. Instead, let's extract the regex and
@@ -72,5 +76,48 @@ describe("sanitize", () => {
     it("strips compound SGR parameters", () => {
         // [38;5;196m = 256-color red
         expect(sanitize("\x1B[38;5;196mred\x1B[0m")).toBe("red");
+    });
+});
+
+describe("runCommand log-file tee", () => {
+    let dir: string;
+    beforeEach(() => {
+        dir = mkdtempSync(join(tmpdir(), "dot-runcmd-"));
+    });
+    afterEach(() => {
+        rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("writes stdout to logFile when provided", async () => {
+        const logFile = join(dir, "out.log");
+        await runCommand("printf 'hello\\nworld\\n'", { cwd: dir, logFile });
+        expect(readFileSync(logFile, "utf-8")).toBe("hello\nworld\n");
+    });
+
+    it("captures both stdout and stderr in order", async () => {
+        const logFile = join(dir, "out.log");
+        // Print one line to stdout, one to stderr. Order between streams isn't
+        // strictly guaranteed by the kernel, so we just assert both lines land.
+        await runCommand("printf 'on-out\\n'; printf 'on-err\\n' >&2", {
+            cwd: dir,
+            logFile,
+        });
+        const contents = readFileSync(logFile, "utf-8");
+        expect(contents).toContain("on-out");
+        expect(contents).toContain("on-err");
+    });
+
+    it("logFile is opt-in — no file is created when omitted", async () => {
+        await runCommand("printf 'silent\\n'", { cwd: dir });
+        // Directory should still be empty.
+        expect(() => readFileSync(join(dir, "out.log"), "utf-8")).toThrow();
+    });
+
+    it("captures output even when the command fails", async () => {
+        const logFile = join(dir, "out.log");
+        await expect(
+            runCommand("printf 'before-fail\\n'; exit 7", { cwd: dir, logFile }),
+        ).rejects.toThrow();
+        expect(readFileSync(logFile, "utf-8")).toContain("before-fail");
     });
 });

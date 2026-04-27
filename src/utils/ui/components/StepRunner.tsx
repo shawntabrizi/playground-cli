@@ -17,6 +17,14 @@ const LOG_LINE_MAX = 160;
 export interface Step {
     name: string;
     run: (log: (line: string) => void) => Promise<void>;
+    /**
+     * When true, the last RETAINED_LINES of this step's output stay rendered
+     * under the row after the step completes successfully. Use sparingly —
+     * this is for steps whose tail content carries lasting value to the user
+     * (e.g. a setup script's "next steps" footer). Bounded by RETAINED_LINES
+     * × LOG_LINE_MAX chars per step, so memory impact is trivial.
+     */
+    keepLogOnSuccess?: boolean;
 }
 
 type StepStatus = "pending" | "running" | "ok" | "failed" | "warning";
@@ -25,9 +33,14 @@ interface StepState {
     name: string;
     status: StepStatus;
     message?: string;
+    /** Snapshotted tail for completed steps with `keepLogOnSuccess: true`. */
+    retainedLog?: string[];
 }
 
-const LOG_LINES = 5;
+/** Live tail height while a step is running. */
+const LIVE_LOG_LINES = 5;
+/** Buffer cap and persisted-tail height for `keepLogOnSuccess` steps. */
+const RETAINED_LINES = 25;
 
 function toMark(status: StepStatus): MarkKind {
     switch (status) {
@@ -77,7 +90,7 @@ export function StepRunner({ title, steps, onDone }: Props) {
         const pushLine = (line: string) => {
             const truncated =
                 line.length > LOG_LINE_MAX ? `${line.slice(0, LOG_LINE_MAX - 1)}…` : line;
-            const next = [...bufferRef.current, truncated].slice(-LOG_LINES);
+            const next = [...bufferRef.current, truncated].slice(-RETAINED_LINES);
             bufferRef.current = next;
             scheduleFlush();
         };
@@ -100,7 +113,12 @@ export function StepRunner({ title, steps, onDone }: Props) {
 
                 try {
                     await steps[i].run(pushLine);
-                    setStates((prev) => prev.map((s, j) => (j === i ? { ...s, status: "ok" } : s)));
+                    const retainedLog = steps[i].keepLogOnSuccess
+                        ? [...bufferRef.current]
+                        : undefined;
+                    setStates((prev) =>
+                        prev.map((s, j) => (j === i ? { ...s, status: "ok", retainedLog } : s)),
+                    );
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     const isWarning = err instanceof Error && (err as any).isWarning === true;
@@ -135,21 +153,28 @@ export function StepRunner({ title, steps, onDone }: Props) {
     }, []);
 
     const running = states.some((s) => s.status === "running");
+    const liveOutput = output.slice(-LIVE_LOG_LINES);
 
     return (
         <Section title={title}>
             {states.map((step) => (
-                <Row
-                    key={step.name}
-                    mark={toMark(step.status)}
-                    label={step.name}
-                    value={step.message}
-                    tone={step.status === "failed" ? "danger" : "muted"}
-                />
+                <Box key={step.name} flexDirection="column">
+                    <Row
+                        mark={toMark(step.status)}
+                        label={step.name}
+                        value={step.message}
+                        tone={step.status === "failed" ? "danger" : "muted"}
+                    />
+                    {step.retainedLog && step.retainedLog.length > 0 && (
+                        <Box marginTop={1} marginBottom={1}>
+                            <LogTail lines={step.retainedLog} height={step.retainedLog.length} />
+                        </Box>
+                    )}
+                </Box>
             ))}
-            {running && output.length > 0 && (
+            {running && liveOutput.length > 0 && (
                 <Box marginTop={1}>
-                    <LogTail lines={output} height={LOG_LINES} />
+                    <LogTail lines={liveOutput} height={LIVE_LOG_LINES} />
                 </Box>
             )}
         </Section>

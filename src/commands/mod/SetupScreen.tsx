@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Box } from "ink";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -23,7 +23,7 @@ interface Props {
     registry: any;
     targetDir: string;
     canFork: boolean;
-    onDone: (ok: boolean) => void;
+    onDone: (result: { ok: boolean; setupRan: boolean }) => void;
 }
 
 export function SetupScreen({
@@ -36,6 +36,15 @@ export function SetupScreen({
 }: Props) {
     // Metadata is fetched in step 1 and shared with later steps via this ref
     let meta: AppMetadata = initial ?? {};
+    // Tracks whether `setup.sh` actually ran to completion in this session.
+    // Used by the parent to decide whether to print the generic "Next steps"
+    // fallback footer (only when there was no script-provided footer).
+    // Lives in a ref because StepRunner captures `onDone` once on mount —
+    // a useState value would be stale by the time the runner reports back.
+    // The matching `Hint` is driven off the state setter for re-render.
+    const setupRanRef = useRef(false);
+    const [setupRanVisible, setSetupRanVisible] = useState(false);
+    const logFile = resolve(targetDir, ".dot-mod-setup.log");
 
     const steps: Step[] = [
         {
@@ -70,11 +79,14 @@ export function SetupScreen({
         },
         {
             name: "run setup.sh",
+            keepLogOnSuccess: true,
             run: async (log) => {
                 if (!existsSync(resolve(targetDir, "setup.sh"))) {
                     throw new StepWarning("no setup.sh found");
                 }
-                await runCommand("bash setup.sh", { cwd: targetDir, log });
+                await runCommand("bash setup.sh", { cwd: targetDir, log, logFile });
+                setupRanRef.current = true;
+                setSetupRanVisible(true);
             },
         },
     ];
@@ -90,11 +102,12 @@ export function SetupScreen({
                 steps={steps}
                 onDone={(result) => {
                     if (result.error) setError(result.error);
-                    onDone(result.ok);
+                    onDone({ ok: result.ok, setupRan: setupRanRef.current });
                 }}
             />
 
             <Hint>→ {targetDir}</Hint>
+            {setupRanVisible && <Hint>full setup log: {logFile}</Hint>}
 
             {error && (
                 <Section>

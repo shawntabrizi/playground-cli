@@ -49,7 +49,7 @@ export const modCommand = new Command("mod")
                 });
                 if (!targetDir) return;
 
-                const ok = await runSetup({
+                const { ok, setupRan } = await runSetup({
                     domain,
                     metadata: metadata
                         ? {
@@ -64,7 +64,11 @@ export const modCommand = new Command("mod")
                 });
 
                 console.log();
-                if (ok) {
+                // When `setup.sh` ran, the StepRunner already showed the
+                // script's own "next steps" footer (and the path to the full
+                // log). Only emit the generic fallback when the app didn't
+                // ship a setup.sh.
+                if (ok && !setupRan) {
                     console.log("  Next steps:");
                     console.log(`  1. cd ${targetDir}`);
                     console.log("  2. edit with claude");
@@ -153,14 +157,14 @@ function runSetup(props: {
     registry: any;
     targetDir: string;
     canFork: boolean;
-}): Promise<boolean> {
+}): Promise<{ ok: boolean; setupRan: boolean }> {
     return new Promise((resolve) => {
         const app = render(
             React.createElement(SetupScreen, {
                 ...props,
-                onDone: (ok: boolean) => {
+                onDone: (result: { ok: boolean; setupRan: boolean }) => {
                     app.unmount();
-                    resolve(ok);
+                    resolve(result);
                 },
             }),
         );

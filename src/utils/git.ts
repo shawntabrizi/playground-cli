@@ -3,7 +3,7 @@
  */
 
 import { execFile, exec } from "node:child_process";
-import { rmSync } from "node:fs";
+import { createWriteStream, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
 type Log = (line: string) => void;
@@ -88,12 +88,24 @@ export async function cloneRepo(
     await spawn("git", ["init"], { cwd: targetDir, log: options?.log });
 }
 
-/** Run a shell command, streaming output to log. */
-export async function runCommand(cmd: string, options: { cwd?: string; log?: Log }): Promise<void> {
-    const { cwd, log } = options;
+/**
+ * Run a shell command, streaming output to log.
+ *
+ * If `logFile` is provided, both stdout and stderr are also tee'd to that file
+ * via createWriteStream — O(1) RAM regardless of total output volume. The file
+ * contains the raw bytes (no ANSI stripping) so it round-trips faithfully when
+ * `cat`ed back into a terminal.
+ */
+export async function runCommand(
+    cmd: string,
+    options: { cwd?: string; log?: Log; logFile?: string },
+): Promise<void> {
+    const { cwd, log, logFile } = options;
     return new Promise((resolve, reject) => {
         const proc = exec(cmd, { cwd, env: PLAIN_ENV });
+        const file = logFile ? createWriteStream(logFile) : null;
         const forward = (data: Buffer | string) => {
+            file?.write(data);
             for (const line of sanitize(String(data)).split("\n").filter(Boolean)) {
                 log?.(line);
             }
@@ -101,8 +113,14 @@ export async function runCommand(cmd: string, options: { cwd?: string; log?: Log
         proc.stdout?.on("data", forward);
         proc.stderr?.on("data", forward);
         proc.on("close", (code) => {
-            if (code === 0) resolve();
-            else reject(new Error(`Command failed (exit ${code})`));
+            file?.end(() => {
+                if (code === 0) resolve();
+                else reject(new Error(`Command failed (exit ${code})`));
+            });
+            if (!file) {
+                if (code === 0) resolve();
+                else reject(new Error(`Command failed (exit ${code})`));
+            }
         });
     });
 }
