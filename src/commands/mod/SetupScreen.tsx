@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Box } from "ink";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getGateway, fetchJson } from "@polkadot-apps/bulletin";
 import { StepRunner, type Step } from "../../utils/ui/components/StepRunner.js";
@@ -75,6 +75,7 @@ export function SetupScreen({
                 }
                 stripPostinstall(targetDir);
                 writeDotJson(targetDir, meta.name ?? domain.replace(/\.dot$/, ""), meta);
+                ignoreModSetupLog(targetDir);
             },
         },
         {
@@ -135,6 +136,27 @@ function stripPostinstall(dir: string) {
             writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
         }
     } catch {}
+}
+
+/**
+ * Append `.dot-mod-setup.log` to the cloned repo's `.gitignore` so the per-run
+ * setup log we tee for the user can't be accidentally committed. Idempotent —
+ * checks for an existing entry before writing, and creates the file if it
+ * doesn't yet exist.
+ */
+function ignoreModSetupLog(dir: string) {
+    const entry = ".dot-mod-setup.log";
+    const path = resolve(dir, ".gitignore");
+    try {
+        const existing = existsSync(path) ? readFileSync(path, "utf-8") : "";
+        const lines = existing.split("\n").map((l) => l.trim());
+        if (lines.includes(entry)) return;
+        const prefix = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
+        appendFileSync(path, `${prefix}${entry}\n`);
+    } catch {
+        // best-effort — if we can't write .gitignore (perms etc.) the log
+        // file still works, the user just needs to ignore it manually.
+    }
 }
 
 function writeDotJson(dir: string, name: string, meta: AppMetadata) {

@@ -103,7 +103,18 @@ export async function runCommand(
     const { cwd, log, logFile } = options;
     return new Promise((resolve, reject) => {
         const proc = exec(cmd, { cwd, env: PLAIN_ENV });
-        const file = logFile ? createWriteStream(logFile) : null;
+        let file: ReturnType<typeof createWriteStream> | null = null;
+        if (logFile) {
+            file = createWriteStream(logFile);
+            // The tee is best-effort — if the disk fills up or the path goes
+            // away mid-run, surface a notice via the log callback and detach
+            // so subsequent writes don't cascade. An unhandled 'error' event
+            // on a stream would otherwise crash the entire `dot` process.
+            file.on("error", (err) => {
+                log?.(`(log file write failed: ${err.message})`);
+                file = null;
+            });
+        }
         const forward = (data: Buffer | string) => {
             file?.write(data);
             for (const line of sanitize(String(data)).split("\n").filter(Boolean)) {
@@ -113,14 +124,10 @@ export async function runCommand(
         proc.stdout?.on("data", forward);
         proc.stderr?.on("data", forward);
         proc.on("close", (code) => {
-            file?.end(() => {
-                if (code === 0) resolve();
-                else reject(new Error(`Command failed (exit ${code})`));
-            });
-            if (!file) {
-                if (code === 0) resolve();
-                else reject(new Error(`Command failed (exit ${code})`));
-            }
+            const settle = () =>
+                code === 0 ? resolve() : reject(new Error(`Command failed (exit ${code})`));
+            if (file) file.end(settle);
+            else settle();
         });
     });
 }

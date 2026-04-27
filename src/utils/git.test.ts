@@ -120,4 +120,16 @@ describe("runCommand log-file tee", () => {
         ).rejects.toThrow();
         expect(readFileSync(logFile, "utf-8")).toContain("before-fail");
     });
+
+    it("still calls the log callback when logFile is provided", async () => {
+        const logFile = join(dir, "out.log");
+        const lines: string[] = [];
+        await runCommand("printf 'a\\nb\\n'", {
+            cwd: dir,
+            logFile,
+            log: (l) => lines.push(l),
+        });
+        expect(lines).toEqual(["a", "b"]);
+        expect(readFileSync(logFile, "utf-8")).toBe("a\nb\n");
+    });
 });
