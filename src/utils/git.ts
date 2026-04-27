@@ -63,7 +63,14 @@ export async function forkAndClone(
     const args = ["repo", "fork", repo, "--clone", "--fork-name", targetDir];
     if (options?.branch) args.push("--", "--branch", options.branch);
     await spawn("gh", args, { log: options?.log });
-    await spawn("git", ["remote", "remove", "upstream"], { cwd: targetDir, log: options?.log });
+    // gh repo fork --clone registers the upstream as a second remote, which makes
+    // `git checkout <branch>` ambiguous when the same branches exist on the fork.
+    // Tolerate a missing remote so a fork+clone that already succeeded isn't
+    // marked failed by a stray non-zero exit here.
+    await spawn("git", ["remote", "remove", "upstream"], {
+        cwd: targetDir,
+        log: options?.log,
+    }).catch(() => {});
 }
 
 /** Clone a repo with fresh git history. Streams git output to log. */
