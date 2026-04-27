@@ -16,7 +16,7 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { resolve } from "node:path";
 import { dot } from "./helpers/dot.js";
-import { ALICE, BOB, uniqueDomain } from "./fixtures/accounts.js";
+import { SIGNER, BOB, uniqueDomain } from "./fixtures/accounts.js";
 import { fixturePath } from "./fixtures/templates.js";
 
 const frontendOnly = fixturePath("frontend-only");
@@ -39,7 +39,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
 			"--env", "mainnet",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		]);
 		const output = result.stdout + result.stderr;
@@ -56,7 +56,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", foundry,
 		]);
 		const output = result.stdout + result.stderr;
@@ -75,7 +75,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", hardhat,
 		]);
 		const output = result.stdout + result.stderr;
@@ -92,7 +92,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", rustCdm,
 		]);
 		const output = result.stdout + result.stderr;
@@ -109,7 +109,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", multiContract,
 		]);
 		const output = result.stdout + result.stderr;
@@ -126,7 +126,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		]);
 		const output = result.stdout + result.stderr;
@@ -141,7 +141,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--domain", domain,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		]);
 		const output = result.stdout + result.stderr;
@@ -164,7 +164,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--domain", domain,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		]);
 
@@ -188,7 +188,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--domain", domain,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		]);
 
@@ -205,7 +205,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--buildDir", absBuildDir(frontendOnly),
 			"--no-build",
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		]);
 		expect(second.exitCode).toBe(0);
@@ -219,7 +219,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--domain", domain,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		]);
 

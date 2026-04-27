@@ -1,49 +1,49 @@
 /**
- * E2E test funder account.
+ * E2E test funder canary.
  *
- * Uses a dedicated account whose seed is provided via E2E_FUNDER_SEED.
- * Falls back to Alice dev account for local runs.
+ * Watches the SIGNER's h160 balance — that's the side that actually pays gas
+ * for Revive contract calls (deploy, registry.publish). Substrate-side balance
+ * is irrelevant because no e2e test signs with a substrate-only account.
+ *
+ * Logs a warning and opens a GitHub issue if the balance falls below the
+ * threshold. Does NOT fail the test run — funding is a manual ops task
+ * (faucet at https://faucet.polkadot.io/?network=pah).
  */
 
-import { queryBalance } from "../helpers/chain.js";
-import { ALICE } from "./accounts.js";
+import { queryH160Balance } from "../helpers/chain.js";
+import { SIGNER } from "./accounts.js";
 
 const FUNDER_LOW_THRESHOLD_DOT = BigInt(process.env.FUNDER_LOW_THRESHOLD_DOT ?? "10");
 const DOT = 10_000_000_000n; // 1 DOT = 10^10 planck
 
-/** Address of the dedicated E2E funder account (generated 2026-04-24). */
-const E2E_FUNDER_ADDRESS = "5GLMswFYUU1RgKaQDaqsT9XdGGh4kPbSo1NF7gLiZJZg8Hmx";
-
 /**
- * Get the E2E funder's free balance in planck.
- * Uses the dedicated funder if E2E_FUNDER_SEED is set, otherwise falls back to Alice.
+ * Get the SIGNER's h160 free balance in planck (the asset that gets drained
+ * by every Revive call).
  */
 export async function getE2eFunderBalance(): Promise<bigint> {
-	const address = process.env.E2E_FUNDER_SEED ? E2E_FUNDER_ADDRESS : ALICE.address;
-	return queryBalance(address);
+	return queryH160Balance(SIGNER.h160);
 }
 
 /**
- * Check the funder balance and create a GitHub issue if it's low.
+ * Check the SIGNER's h160 balance and create a GitHub issue if it's low.
  * Logs a warning but does NOT fail the test run.
  */
 export async function checkFunderAndWarn(): Promise<void> {
 	try {
 		const balance = await getE2eFunderBalance();
 		const balanceDot = balance / DOT;
-		const usingDedicated = !!process.env.E2E_FUNDER_SEED;
 		console.log(
-			`[e2e setup] Funder balance: ${balanceDot} DOT (${usingDedicated ? "dedicated" : "Alice fallback"})`,
+			`[e2e setup] SIGNER h160 balance: ${balanceDot} DOT (${SIGNER.name}, ${SIGNER.h160})`,
 		);
 
 		if (balanceDot < FUNDER_LOW_THRESHOLD_DOT) {
 			console.warn(
-				`[e2e setup] ⚠️ Funder balance is below ${FUNDER_LOW_THRESHOLD_DOT} DOT — tests may fail`,
+				`[e2e setup] ⚠️ SIGNER h160 balance is below ${FUNDER_LOW_THRESHOLD_DOT} DOT — tests may fail`,
 			);
 			await createLowBalanceIssue(balance);
 		}
 	} catch (err) {
-		console.warn(`[e2e setup] Could not check funder balance: ${err}`);
+		console.warn(`[e2e setup] Could not check SIGNER balance: ${err}`);
 	}
 }
 
@@ -74,8 +74,7 @@ async function createLowBalanceIssue(balance: bigint): Promise<void> {
 			return;
 		}
 
-		const address = process.env.E2E_FUNDER_SEED ? E2E_FUNDER_ADDRESS : ALICE.address;
-		const body = `The E2E test funder account balance is **${balance / DOT} DOT** (${balance} planck), which is below the threshold of ${FUNDER_LOW_THRESHOLD_DOT} DOT.\n\nAddress: \`${address}\`\n\nPlease top up via the faucet: https://faucet.polkadot.io/?network=pah`;
+		const body = `The E2E test signer's h160 balance is **${balance / DOT} DOT** (${balance} planck), which is below the threshold of ${FUNDER_LOW_THRESHOLD_DOT} DOT.\n\nAccount: \`${SIGNER.name}\`\nss58: \`${SIGNER.address}\`\nh160: \`${SIGNER.h160}\`\n\nPlease top up via the faucet: https://faucet.polkadot.io/?network=pah`;
 		const createRes = await fetch(`https://api.github.com/repos/${ghRepo}/issues`, {
 			method: "POST",
 			headers: {

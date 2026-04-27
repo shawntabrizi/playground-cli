@@ -9,12 +9,14 @@
 import { destroyTestClient } from "../helpers/chain.js";
 import { checkFunderAndWarn } from "../fixtures/funder.js";
 import { ensureTemplateRegistered } from "../fixtures/registry.js";
-import { ALICE, BOB } from "../fixtures/accounts.js";
+import { SIGNER, BOB } from "../fixtures/accounts.js";
 
 export async function setup() {
 	console.log("[e2e setup] Playground CLI E2E test suite starting…");
-	console.log(`[e2e setup] ALICE: ${ALICE.address}`);
-	console.log(`[e2e setup] BOB:   ${BOB.address}`);
+	console.log(`[e2e setup] SIGNER: ${SIGNER.name}`);
+	console.log(`[e2e setup]   ss58: ${SIGNER.address}`);
+	console.log(`[e2e setup]   h160: ${SIGNER.h160}`);
+	console.log(`[e2e setup] BOB:    ${BOB.address}`);
 
 	// These require chain connectivity — they'll log warnings if the chain
 	// is unreachable rather than failing the entire suite. This lets the

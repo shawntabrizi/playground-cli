@@ -7,7 +7,7 @@
 
 import { describe, test, expect } from "vitest";
 import { dot } from "./helpers/dot.js";
-import { ALICE } from "./fixtures/accounts.js";
+import { SIGNER } from "./fixtures/accounts.js";
 import { fixturePath } from "./fixtures/templates.js";
 
 const frontendOnly = fixturePath("frontend-only");
@@ -22,7 +22,7 @@ describe("diagnostic mode", () => {
 			"--domain", "diag-verbose-test",
 			"--buildDir", "dist",
 			"--playground",
-			"--suri", ALICE.suri,
+			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		], {
 			env: { DOT_DEPLOY_VERBOSE: "1" },
