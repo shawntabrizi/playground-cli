@@ -4,7 +4,7 @@ on:
     push:
         branches: [main]
     pull_request:
-    # Daily at 06:00 UTC — catches testnet regressions and funder depletion
+    # Daily at 06:00 UTC — catches testnet regressions and Alice h160 depletion
     schedule:
         - cron: "0 6 * * *"
     workflow_dispatch:
@@ -44,6 +44,5 @@ jobs:
               run: pnpm test:e2e
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  E2E_FUNDER_SEED: ${{ secrets.E2E_FUNDER_SEED }}
                   TEST_TEMPLATE_DOMAIN: rock-paper-scissors.dot
                   TEST_TEMPLATE_REPO: https://github.com/paritytech/Rock-Paper-Scissors

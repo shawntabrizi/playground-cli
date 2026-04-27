@@ -2,8 +2,7 @@
  * E2E tests for `dot mod` — fork/clone playground apps.
  *
  * Requires chain connectivity to query the registry.
- * Uses --suri SIGNER (dedicated funder account, or //Alice fallback) for dev signing,
- * --clone to avoid GitHub fork creation.
+ * Uses --suri //Alice for dev signing, --clone to avoid GitHub fork creation.
  */
 
 import { describe, test, expect, afterEach } from "vitest";
@@ -12,7 +11,7 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { dot } from "./helpers/dot.js";
-import { SIGNER } from "./fixtures/accounts.js";
+import { ALICE } from "./fixtures/accounts.js";
 import { TEST_DOMAIN } from "./fixtures/templates.js";
 
 const createdDirs: string[] = [];
@@ -33,7 +32,7 @@ describe("dot mod — non-interactive", () => {
 			const result = await dot([
 				"mod", TEST_DOMAIN,
 				"--clone",
-				"--suri", SIGNER.suri,
+				"--suri", ALICE.suri,
 				"-y",
 			]);
 
@@ -53,7 +52,7 @@ describe("dot mod — non-interactive", () => {
 		const result = await dot([
 			"mod", "nonexistent-domain-xyz-12345.dot",
 			"--clone",
-			"--suri", SIGNER.suri,
+			"--suri", ALICE.suri,
 			"-y",
 		]);
 		const output = result.stdout + result.stderr;
