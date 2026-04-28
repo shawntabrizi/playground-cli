@@ -1,6 +1,7 @@
 import React from "react";
 import { Command } from "commander";
 import { render } from "ink";
+import { withCommandTelemetry, withSpan } from "../../telemetry.js";
 import { findSession, type LogoutHandle } from "../../utils/auth.js";
 import { LogoutScreen } from "./LogoutScreen.js";
 
@@ -25,29 +26,32 @@ async function lookupSession(): Promise<LookupResult> {
 
 export const logoutCommand = new Command("logout")
     .description("Sign out of the account paired via `dot init`")
-    .action(async () => {
-        console.log();
+    .action(async () =>
+        withCommandTelemetry("logout", async () => {
+            console.log();
 
-        const result = await lookupSession();
+            const result = await withSpan("cli.logout.lookup", "lookup session", {}, lookupSession);
 
-        if (result.kind === "error") {
-            console.error(`  Could not reach the login service: ${result.message}\n`);
-            process.exit(1);
-        }
+            if (result.kind === "error") {
+                console.error(`  Could not reach the login service: ${result.message}\n`);
+                process.exitCode = 1;
+                throw new Error(result.message);
+            }
 
-        if (result.kind === "empty") {
-            console.log("  No account is signed in.\n");
-            process.exit(0);
-        }
+            if (result.kind === "empty") {
+                console.log("  No account is signed in.\n");
+                process.exitCode = 0;
+                return;
+            }
 
-        const app = render(
-            React.createElement(LogoutScreen, {
-                handle: result.handle,
-                onDone: () => app.unmount(),
-            }),
-        );
-        await app.waitUntilExit();
+            const app = render(
+                React.createElement(LogoutScreen, {
+                    handle: result.handle,
+                    onDone: () => app.unmount(),
+                }),
+            );
+            await withSpan("cli.logout.tui", "logout session", {}, () => app.waitUntilExit());
 
-        console.log();
-        process.exit(process.exitCode ?? 0);
-    });
+            console.log();
+        }),
+    );

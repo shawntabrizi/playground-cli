@@ -13,6 +13,7 @@ import { execSync } from "node:child_process";
 import { arch, platform } from "node:os";
 import { resolve } from "node:path";
 import pkg from "../../package.json" with { type: "json" };
+import { withCommandTelemetry, withSpan } from "../telemetry.js";
 
 const REPO = "paritytech/playground-cli";
 
@@ -98,69 +99,96 @@ export function atomicInstall(dest: string, bytes: Buffer, mode = 0o755): void {
 
 export const updateCommand = new Command("update")
     .description("Update dot to the latest version")
-    .action(async () => {
-        let installDir: string;
-        try {
-            installDir = resolveInstallDir();
-        } catch (err) {
-            console.error(err instanceof Error ? err.message : "Could not resolve install dir");
-            process.exit(1);
-        }
-
-        const current = `v${pkg.version}`;
-        process.stdout.write("Checking for updates... ");
-
-        let tag: string;
-        try {
-            tag = await fetchLatestTag();
-        } catch (err) {
-            console.log("failed");
-            console.error(
-                `Could not reach GitHub: ${err instanceof Error ? err.message : String(err)}`,
-            );
-            process.exit(1);
-        }
-
-        if (tag === current) {
-            console.log(`already on latest (${current})`);
-            return;
-        }
-
-        console.log(`${current} → ${tag}`);
-        process.stdout.write("Downloading... ");
-
-        const asset = detectAsset();
-        let binary: Buffer;
-        try {
-            binary = await downloadBinary(tag, asset);
-        } catch (err) {
-            console.log("failed");
-            console.error(err instanceof Error ? err.message : "Download failed");
-            process.exit(1);
-        }
-
-        const dest = resolve(installDir, "dot");
-        try {
-            atomicInstall(dest, binary);
-
-            if (platform() === "darwin") {
-                // Re-sign so Gatekeeper doesn't quarantine the fresh binary.
-                // Both calls are best-effort — an unsigned binary still runs.
-                try {
-                    execSync(`codesign --sign - --force "${dest}"`, { stdio: "ignore" });
-                } catch {}
-                try {
-                    execSync(`xattr -c "${dest}"`, { stdio: "ignore" });
-                } catch {}
+    .action(async () =>
+        withCommandTelemetry("update", async () => {
+            let installDir: string;
+            try {
+                installDir = await withSpan(
+                    "cli.update.resolve-install-dir",
+                    "resolve install dir",
+                    {},
+                    () => resolveInstallDir(),
+                );
+            } catch (err) {
+                console.error(err instanceof Error ? err.message : "Could not resolve install dir");
+                process.exitCode = 1;
+                throw err;
             }
-        } catch (err) {
-            console.log("failed");
-            console.error(
-                `Could not write to ${dest}: ${err instanceof Error ? err.message : String(err)}`,
-            );
-            process.exit(1);
-        }
 
-        console.log("done");
-        console.log(`Updated dot to ${tag}`);
-    });
+            const current = `v${pkg.version}`;
+            process.stdout.write("Checking for updates... ");
+
+            let tag: string;
+            try {
+                tag = await withSpan("cli.update.fetch-latest", "fetch latest release", {}, () =>
+                    fetchLatestTag(),
+                );
+            } catch (err) {
+                console.log("failed");
+                console.error(
+                    `Could not reach GitHub: ${err instanceof Error ? err.message : String(err)}`,
+                );
+                process.exitCode = 1;
+                throw err;
+            }
+
+            if (tag === current) {
+                console.log(`already on latest (${current})`);
+                return;
+            }
+
+            console.log(`${current} → ${tag}`);
+            process.stdout.write("Downloading... ");
+
+            const asset = detectAsset();
+            let binary: Buffer;
+            try {
+                binary = await withSpan(
+                    "cli.update.download",
+                    "download release asset",
+                    { "cli.update.asset": asset },
+                    () => downloadBinary(tag, asset),
+                );
+            } catch (err) {
+                console.log("failed");
+                console.error(err instanceof Error ? err.message : "Download failed");
+                process.exitCode = 1;
+                throw err;
+            }
+
+            const dest = resolve(installDir, "dot");
+            try {
+                await withSpan(
+                    "cli.update.install",
+                    "install update",
+                    { "cli.update.asset": asset },
+                    async () => {
+                        atomicInstall(dest, binary);
+
+                        if (platform() === "darwin") {
+                            // Re-sign so Gatekeeper doesn't quarantine the fresh binary.
+                            // Both calls are best-effort — an unsigned binary still runs.
+                            try {
+                                execSync(`codesign --sign - --force "${dest}"`, {
+                                    stdio: "ignore",
+                                });
+                            } catch {}
+                            try {
+                                execSync(`xattr -c "${dest}"`, { stdio: "ignore" });
+                            } catch {}
+                        }
+                    },
+                );
+            } catch (err) {
+                console.log("failed");
+                console.error(
+                    `Could not write to ${dest}: ${err instanceof Error ? err.message : String(err)}`,
+                );
+                process.exitCode = 1;
+                throw err;
+            }
+
+            console.log("done");
+            console.log(`Updated dot to ${tag}`);
+        }),
+    );

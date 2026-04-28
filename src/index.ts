@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // MUST be the first import — sets env vars that gate bulletin-deploy's
-// Sentry + memory-report paths before their modules evaluate. See
+// ambient Sentry handoff before its modules evaluate. See
 // `src/bootstrap.ts` for the rationale.
 import "./bootstrap.js";
 import { Command } from "commander";
@@ -12,7 +12,12 @@ import { buildCommand } from "./commands/build.js";
 import { deployCommand } from "./commands/deploy/index.js";
 import { logoutCommand } from "./commands/logout/index.js";
 import { updateCommand } from "./commands/update.js";
-import { installSignalHandlers, onProcessShutdown } from "./utils/process-guard.js";
+import { captureWarning, closeTelemetry, flushTelemetry, initTelemetry } from "./telemetry.js";
+import {
+    installSignalHandlers,
+    onProcessShutdown,
+    setProcessGuardWarningHandler,
+} from "./utils/process-guard.js";
 import { clearWindowTitle } from "./utils/ui/theme/window-title.js";
 
 // ── Bun compiled-binary stdin workaround ─────────────────────────────────────
@@ -35,6 +40,9 @@ if (process.stdin.isTTY) {
 // or a stray async error can't turn `dot` into a zombie that grows memory
 // indefinitely.
 installSignalHandlers();
+await initTelemetry();
+setProcessGuardWarningHandler(captureWarning);
+onProcessShutdown(() => closeTelemetry(2000));
 
 // Hand the terminal tab title back to the shell on exit. The shell usually
 // repaints its own title immediately, but being explicit avoids leaving
@@ -53,4 +61,15 @@ program.addCommand(deployCommand);
 program.addCommand(logoutCommand);
 program.addCommand(updateCommand);
 
-program.parseAsync().then(() => process.exit(0));
+try {
+    await program.parseAsync();
+} catch (err) {
+    if (process.exitCode === undefined || process.exitCode === 0) {
+        process.stderr.write(`\n${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    process.exitCode = 1;
+} finally {
+    await flushTelemetry();
+}
+
+process.exit(typeof process.exitCode === "number" ? process.exitCode : 0);

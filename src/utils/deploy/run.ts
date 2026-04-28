@@ -35,6 +35,7 @@ import { checkBalance, pickFunder, FUNDER_FEE_BUFFER } from "../account/funding.
 import { FAUCET_URL } from "../account/funder.js";
 import { Enum, type PolkadotSigner } from "polkadot-api";
 import { submitAndWatch } from "@polkadot-apps/tx";
+import { withSpan } from "../../telemetry.js";
 import type { ResolvedSigner } from "../signer.js";
 import { getConnection } from "../connection.js";
 import type { Env } from "../../config.js";
@@ -140,12 +141,14 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
         if (!options.skipBuild) {
             options.onEvent({ kind: "phase-start", phase: "build" });
             try {
-                const config = detectBuildConfig(loadDetectInput(options.projectDir));
-                options.onEvent({ kind: "build-detected", config });
-                await runBuild({
-                    cwd: options.projectDir,
-                    config,
-                    onData: (line) => options.onEvent({ kind: "build-log", line }),
+                await withSpan("cli.deploy.build", "build project", {}, async () => {
+                    const config = detectBuildConfig(loadDetectInput(options.projectDir));
+                    options.onEvent({ kind: "build-detected", config });
+                    await runBuild({
+                        cwd: options.projectDir,
+                        config,
+                        onData: (line) => options.onEvent({ kind: "build-log", line }),
+                    });
                 });
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
@@ -163,13 +166,19 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
             setup.approvals,
         );
         try {
-            const storageResult = await runStorageDeploy({
-                content: buildAbs,
-                domainName: label,
-                auth: storageAuth,
-                onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
-                env: options.env,
-            });
+            const storageResult = await withSpan(
+                "cli.deploy.storage-dotns",
+                "upload storage and register dotns",
+                { "cli.deploy.domain": label },
+                () =>
+                    runStorageDeploy({
+                        content: buildAbs,
+                        domainName: label,
+                        auth: storageAuth,
+                        onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
+                        env: options.env,
+                    }),
+            );
             options.onEvent({ kind: "phase-complete", phase: "storage-and-dotns" });
             return storageResult;
         } catch (err) {
@@ -196,15 +205,21 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
         );
 
         try {
-            const pub = await publishToPlayground({
-                domain: fullDomain,
-                publishSigner: wrappedPublishSigner,
-                repositoryUrl: options.repositoryUrl ?? null,
-                cwd: options.projectDir,
-                onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
-                env: options.env,
-                isPrivate: options.playgroundPrivate,
-            });
+            const pub = await withSpan(
+                "cli.deploy.playground",
+                "publish playground metadata",
+                { "cli.deploy.domain": fullDomain },
+                () =>
+                    publishToPlayground({
+                        domain: fullDomain,
+                        publishSigner: wrappedPublishSigner,
+                        repositoryUrl: options.repositoryUrl ?? null,
+                        cwd: options.projectDir,
+                        onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
+                        env: options.env,
+                        isPrivate: options.playgroundPrivate,
+                    }),
+            );
             metadataCid = pub.metadataCid;
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -262,34 +277,44 @@ async function maybeRunContracts(
     options.onEvent({ kind: "phase-start", phase: "contracts" });
 
     try {
-        const { info: session, created } = await getOrCreateSessionAccount();
-        const client = await getConnection();
+        return await withSpan(
+            "cli.deploy.contracts",
+            "deploy contracts",
+            { "cli.deploy.contracts_type": contractsType },
+            async () => {
+                const { info: session, created } = await getOrCreateSessionAccount();
+                const client = await getConnection();
 
-        await ensureSessionFunded({
-            client,
-            sessionAddress: session.account.ss58Address,
-            userSigner: options.userSigner,
-            counter,
-            onEvent: options.onEvent,
-        });
-        if (created) {
-            await submitAndWatch(client.assetHub.tx.Revive.map_account(), session.account.signer);
-        }
+                await ensureSessionFunded({
+                    client,
+                    sessionAddress: session.account.ss58Address,
+                    userSigner: options.userSigner,
+                    counter,
+                    onEvent: options.onEvent,
+                });
+                if (created) {
+                    await submitAndWatch(
+                        client.assetHub.tx.Revive.map_account(),
+                        session.account.signer,
+                    );
+                }
 
-        const result = await runContractsPhase({
-            projectDir: options.projectDir,
-            contractsType,
-            // cdm's PipelineChainClient is a structural subset of our
-            // ChainClient — cast keeps the extra `individuality` field out
-            // of the SDK-surface type without affecting runtime behaviour.
-            client: client as unknown as Parameters<typeof runContractsPhase>[0]["client"],
-            signer: session.account.signer,
-            origin: session.account.ss58Address,
-            onEvent: (event) => options.onEvent({ kind: "contracts-event", event }),
-        });
+                const result = await runContractsPhase({
+                    projectDir: options.projectDir,
+                    contractsType,
+                    // cdm's PipelineChainClient is a structural subset of our
+                    // ChainClient — cast keeps the extra `individuality` field out
+                    // of the SDK-surface type without affecting runtime behaviour.
+                    client: client as unknown as Parameters<typeof runContractsPhase>[0]["client"],
+                    signer: session.account.signer,
+                    origin: session.account.ss58Address,
+                    onEvent: (event) => options.onEvent({ kind: "contracts-event", event }),
+                });
 
-        options.onEvent({ kind: "phase-complete", phase: "contracts" });
-        return result.deployed;
+                options.onEvent({ kind: "phase-complete", phase: "contracts" });
+                return result.deployed;
+            },
+        );
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         options.onEvent({ kind: "error", phase: "contracts", message });

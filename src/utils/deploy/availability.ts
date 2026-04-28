@@ -3,7 +3,7 @@
  *
  * Hits two view-only DotNS calls via bulletin-deploy's `DotNS` class:
  *
- *   - `classifyName(label)` — PopOracle classification
+ *   - `classifyDotnsLabel(label)` — PopOracle classification
  *       - `Reserved` → hard block (nobody can register).
  *       - `PoP Lite/Full` → advisory note; bulletin-deploy self-attests
  *         during register on testnet.
@@ -27,6 +27,46 @@ const POP_STATUS_RESERVED = 3;
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+function countTrailingDigits(label: string): number {
+    const match = label.match(/\d+$/);
+    return match ? match[0].length : 0;
+}
+
+/**
+ * Mirror of `classifyDotnsLabel` from bulletin-deploy. It is intentionally
+ * local because bulletin-deploy@0.7.6 exports the helper from its internal
+ * `dotns.js` build artifact but not from the package root.
+ */
+function classifyLabel(label: string): { status: number; message: string } {
+    const trailingDigits = countTrailingDigits(label);
+    if (trailingDigits > 2) {
+        return {
+            status: POP_STATUS_RESERVED,
+            message: `Name has ${trailingDigits} trailing digits; DotNS allows at most 2 trailing digits. Use a base name with 0-2 trailing digits.`,
+        };
+    }
+
+    const baseLength = label.length - trailingDigits;
+    if (baseLength <= 5) {
+        return {
+            status: POP_STATUS_RESERVED,
+            message: `Base name is ${baseLength} char${
+                baseLength === 1 ? "" : "s"
+            }; DotNS reserves base names of 5 chars or fewer for governance (PopRules). Use a base name of 6+ chars — role prefixes like 'rc<N>pool' / 'rc<N>dir' / 'nightly-<role>' work well.`,
+        };
+    }
+
+    if (baseLength >= 6 && baseLength <= 8) {
+        return trailingDigits === 2
+            ? { status: POP_STATUS_LITE, message: "Requires Light personhood verification" }
+            : { status: POP_STATUS_FULL, message: "Requires Full personhood verification" };
+    }
+
+    return trailingDigits === 2
+        ? { status: POP_STATUS_NO_STATUS, message: "Available to all" }
+        : { status: POP_STATUS_FULL, message: "Requires Full personhood verification" };
+}
+
 /**
  * Mirror of `simulateUserStatus` from bulletin-deploy. Reproduced (not
  * imported) because the helper isn't exported from the package root and we
@@ -43,8 +83,12 @@ function predictPostRegisterPopStatus(
     currentStatus: number,
     requiredStatus: number,
     isTestnet: boolean,
+    explicitStatus?: number,
 ): number {
     const max = (a: number, b: number) => (a > b ? a : b);
+    if (explicitStatus !== undefined) {
+        return max(currentStatus, explicitStatus);
+    }
     if (requiredStatus === POP_STATUS_NO_STATUS && currentStatus === POP_STATUS_LITE && isTestnet) {
         // Paseo auto-escape: Lite signer on a NoStatus label gets bumped to
         // Full so `PopRules.priceWithCheck` accepts the signer. Mainnet path
@@ -55,6 +99,15 @@ function predictPostRegisterPopStatus(
         return max(currentStatus, requiredStatus);
     }
     return currentStatus;
+}
+
+function parseExplicitPopStatus(status: string | undefined): number | undefined {
+    if (!status) return undefined;
+    const value = status.toLowerCase();
+    if (value === "none" || value === "nostatus") return POP_STATUS_NO_STATUS;
+    if (value === "lite" || value === "poplite") return POP_STATUS_LITE;
+    if (value === "full" || value === "popfull") return POP_STATUS_FULL;
+    throw new Error("Invalid status. Use none, lite, or full");
 }
 
 /**
@@ -129,8 +182,8 @@ export async function checkDomainAvailability(
             "DotNS connect",
         );
 
-        const classification = await dotns.classifyName(label);
-        if (classification.requiredStatus === POP_STATUS_RESERVED) {
+        const classification = classifyLabel(label);
+        if (classification.status === POP_STATUS_RESERVED) {
             return {
                 status: "reserved",
                 label,
@@ -176,8 +229,9 @@ export async function checkDomainAvailability(
                 ]);
                 const target = predictPostRegisterPopStatus(
                     userStatus,
-                    classification.requiredStatus,
+                    classification.status,
                     isTestnet,
+                    parseExplicitPopStatus(process.env.DOTNS_STATUS),
                 );
                 needsPopUpgrade = target !== userStatus && target !== POP_STATUS_NO_STATUS;
             } catch {
@@ -193,10 +247,10 @@ export async function checkDomainAvailability(
         // testnet — bulletin-deploy self-attests during `register()` via
         // `setUserPopStatus`. Surface it as an advisory note, not a blocker.
         if (
-            classification.requiredStatus === POP_STATUS_LITE ||
-            classification.requiredStatus === POP_STATUS_FULL
+            classification.status === POP_STATUS_LITE ||
+            classification.status === POP_STATUS_FULL
         ) {
-            const requirement = classification.requiredStatus === POP_STATUS_FULL ? "Full" : "Lite";
+            const requirement = classification.status === POP_STATUS_FULL ? "Full" : "Lite";
             return {
                 status: "available",
                 label,

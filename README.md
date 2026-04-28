@@ -81,6 +81,17 @@ The local directory name is auto-generated as `<slug>-<6 hex chars>` so repeated
 
 ## Troubleshooting
 
+### Telemetry
+
+Telemetry is off by default for unknown external users. It is enabled automatically in known internal Parity contexts and can be controlled explicitly:
+
+- `DOT_TELEMETRY=1` opts in.
+- `DOT_TELEMETRY=0` opts out.
+- `DOT_TAG=e2e-local-smoke` marks a synthetic run; use the same `e2e-*`, `load-*`, or `canary-*` naming families for other synthetic traffic.
+- `SENTRY_DSN` overrides the bundled Sentry DSN for local testing.
+
+Telemetry scrubs local home-directory paths and avoids sending raw command arguments.
+
 ### Reporting a memory issue
 
 If `dot deploy` gets killed with `✖ Memory use exceeded 4 GB` (the watchdog's abort) or you see RSS climb unexpectedly, re-run with both of:
@@ -150,7 +161,7 @@ pnpm format:check  # check only
 
 - `@polkadot-apps/*` are pinned to `latest` intentionally — they are our own packages and we want the lockfile to track head.
 - `@polkadot-api/sdk-ink` is pinned to `^0.6.2` and `polkadot-api` to `^1.23.3` because `chain-client` currently embeds an internal `PolkadotClient` shape that breaks with newer versions. Bump together with `chain-client` only.
-- `bulletin-deploy` is pinned to an explicit version — not `latest`. Currently `0.6.9`. Previously `latest` pointed at 0.6.8 which had a WebSocket heartbeat bug (40s default < 60s chunk timeout) that tore chunk uploads down as `WS halt (3)`; keeping the pin explicit avoids ever sliding back onto that. When bumping, check the release notes for any changes to `deploy()` / `DotNS` APIs we rely on.
+- `bulletin-deploy` is pinned to an explicit version — not `latest`. Currently `0.7.6`. Previously `latest` pointed at 0.6.8 which had a WebSocket heartbeat bug (40s default < 60s chunk timeout) that tore chunk uploads down as `WS halt (3)`; keeping the pin explicit avoids ever sliding back onto that. When bumping, check the release notes for any changes to `deploy()` / `DotNS` APIs we rely on.
 
 ## Architecture Highlights
 

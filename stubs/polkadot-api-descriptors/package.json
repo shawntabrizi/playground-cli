@@ -1,0 +1,9 @@
+{
+    "name": "@polkadot-api/descriptors",
+    "version": "0.0.0",
+    "type": "module",
+    "private": true,
+    "exports": {
+        ".": "./index.js"
+    }
+}

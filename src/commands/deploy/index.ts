@@ -4,6 +4,7 @@ import { Command, Option } from "commander";
 import { render } from "ink";
 import { DeployScreen } from "./DeployScreen.js";
 import { renderSummaryText } from "./summary.js";
+import { withCommandTelemetry, withSpan } from "../../telemetry.js";
 import { resolveSigner, SignerNotAvailableError, type ResolvedSigner } from "../../utils/signer.js";
 import { getConnection, destroyConnection } from "../../utils/connection.js";
 import { checkMapping } from "../../utils/account/mapping.js";
@@ -94,73 +95,83 @@ export const deployCommand = new Command("deploy")
     )
     .option("--dir <path>", "Project directory", process.cwd())
     .action(async (opts: DeployOpts) => {
-        const projectDir = resolve(opts.dir ?? process.cwd());
-        const env: Env = (opts.env as Env) ?? "testnet";
-
-        // Start the memory watchdog FIRST so it's in place even if a preflight
-        // path starts leaking. It'll abort the process with a clear error if
-        // RSS crosses 2 GB, protecting the machine from swap-death.
-        const stopWatchdog = startMemoryWatchdog();
-
-        let userSigner: ResolvedSigner | null = null;
-
-        // Guarantee cleanup runs even if the main flow never returns — e.g.,
-        // a leaked WebSocket keeps the event loop alive. The signal handlers
-        // in process-guard will invoke this on SIGINT/TERM/HUP too.
-        const cleanupOnce = (() => {
-            let ran = false;
-            return () => {
-                if (ran) return;
-                ran = true;
-                try {
-                    userSigner?.destroy();
-                } catch {}
-                try {
-                    destroyConnection();
-                } catch {}
-                stopWatchdog();
-            };
-        })();
-        onProcessShutdown(cleanupOnce);
-
         try {
-            userSigner = await preflight({ env, suri: opts.suri, mode: opts.signer });
-        } catch (err) {
-            process.stderr.write(`\n✖ ${formatError(err)}\n`);
-            cleanupOnce();
-            scheduleHardExit(1);
-            return;
-        }
+            await withCommandTelemetry("deploy", async () => {
+                const projectDir = resolve(opts.dir ?? process.cwd());
+                const env: Env = (opts.env as Env) ?? "testnet";
 
-        // Release the Asset Hub client we opened for preflight mapping +
-        // allowance checks. Nothing else in the deploy path (build, chunk
-        // upload, bulletin-deploy's own DotNS preflight + registration)
-        // touches `getConnection()` — and holding an idle polkadot-api client
-        // with a live best-block subscription for the entire deploy window
-        // was a measurable contributor to background memory pressure. The
-        // playground publish step calls `getConnection()` which auto-creates
-        // a fresh client at that point.
-        destroyConnection();
+                // Start the memory watchdog FIRST so it's in place even if a preflight
+                // path starts leaking. It'll abort the process with a clear error if
+                // RSS crosses 2 GB, protecting the machine from swap-death.
+                const stopWatchdog = startMemoryWatchdog();
 
-        try {
-            const nonInteractive = isFullySpecified(opts);
-            if (nonInteractive) {
-                await runHeadless({ projectDir, env, userSigner, opts });
-            } else {
-                await runInteractive({ projectDir, env, userSigner, opts });
-            }
-        } catch (err) {
-            process.stderr.write(`\n✖ ${formatError(err)}\n`);
-            process.exitCode = 1;
+                let userSigner: ResolvedSigner | null = null;
+
+                // Guarantee cleanup runs even if the main flow never returns — e.g.,
+                // a leaked WebSocket keeps the event loop alive. The signal handlers
+                // in process-guard will invoke this on SIGINT/TERM/HUP too.
+                const cleanupOnce = (() => {
+                    let ran = false;
+                    return () => {
+                        if (ran) return;
+                        ran = true;
+                        try {
+                            userSigner?.destroy();
+                        } catch {}
+                        try {
+                            destroyConnection();
+                        } catch {}
+                        stopWatchdog();
+                    };
+                })();
+                onProcessShutdown(cleanupOnce);
+
+                try {
+                    userSigner = await withSpan(
+                        "cli.deploy.preflight",
+                        "deploy preflight",
+                        { "cli.deploy.env": env },
+                        () => preflight({ env, suri: opts.suri, mode: opts.signer }),
+                    );
+                } catch (err) {
+                    process.stderr.write(`\n✖ ${formatError(err)}\n`);
+                    cleanupOnce();
+                    process.exitCode = 1;
+                    throw err;
+                }
+
+                // Release the Asset Hub client we opened for preflight mapping +
+                // allowance checks. Nothing else in the deploy path (build, chunk
+                // upload, bulletin-deploy's own DotNS preflight + registration)
+                // touches `getConnection()` — and holding an idle polkadot-api client
+                // with a live best-block subscription for the entire deploy window
+                // was a measurable contributor to background memory pressure. The
+                // playground publish step calls `getConnection()` which auto-creates
+                // a fresh client at that point.
+                destroyConnection();
+
+                try {
+                    const nonInteractive = isFullySpecified(opts);
+                    if (nonInteractive) {
+                        await runHeadless({ projectDir, env, userSigner, opts });
+                    } else {
+                        await runInteractive({ projectDir, env, userSigner, opts });
+                    }
+                } catch (err) {
+                    process.stderr.write(`\n✖ ${formatError(err)}\n`);
+                    process.exitCode = 1;
+                    throw err;
+                } finally {
+                    cleanupOnce();
+                }
+            });
         } finally {
-            cleanupOnce();
+            // Hard-exit safety net: after telemetry flush + cleanup, if a
+            // stray WebSocket or subscription is still keeping the event loop
+            // alive, we exit anyway rather than hanging with a giant heap.
+            const exitCode = typeof process.exitCode === "number" ? process.exitCode : 0;
+            scheduleHardExit(exitCode);
         }
-
-        // Hard-exit safety net: after cleanup, if a stray WebSocket or
-        // subscription is still keeping the event loop alive, we exit anyway
-        // rather than hanging with a giant heap.
-        const exitCode = typeof process.exitCode === "number" ? process.exitCode : 0;
-        scheduleHardExit(exitCode);
     });
 
 // ── Preflight ────────────────────────────────────────────────────────────────
@@ -276,10 +287,16 @@ async function runHeadless(ctx: {
     // bulletin-deploy's own preflight (run with the right signer during
     // `deploy()`) do the comparison.
     process.stdout.write(`\nChecking availability of ${domain.replace(/\.dot$/, "") + ".dot"}…\n`);
-    const availability = await checkDomainAvailability(domain, {
-        env: ctx.env,
-        ownerSs58Address: mode === "phone" ? ctx.userSigner?.address : undefined,
-    });
+    const availability = await withSpan(
+        "cli.deploy.availability",
+        "check domain availability",
+        { "cli.deploy.domain": domain.replace(/\.dot$/, "") },
+        () =>
+            checkDomainAvailability(domain, {
+                env: ctx.env,
+                ownerSs58Address: mode === "phone" ? ctx.userSigner?.address : undefined,
+            }),
+    );
     if (availability.status !== "available") {
         throw new Error(formatAvailability(availability));
     }
@@ -294,19 +311,32 @@ async function runHeadless(ctx: {
                 "--modable requires --playground (no metadata is published without it).",
             );
         }
-        await ensureGitInstalled();
-        await ensureGhInstalled();
-        await ensureGhAuthed();
-        repositoryUrl = await resolveRepositoryUrl({
-            cwd: ctx.projectDir,
-            repoName: ctx.opts.repoName ?? null,
-        });
+        repositoryUrl = await withSpan(
+            "cli.deploy.modable",
+            "prepare modable repository",
+            {},
+            async () => {
+                await ensureGitInstalled();
+                await ensureGhInstalled();
+                await ensureGhAuthed();
+                return resolveRepositoryUrl({
+                    cwd: ctx.projectDir,
+                    repoName: ctx.opts.repoName ?? null,
+                });
+            },
+        );
     }
 
-    const contractsFundingNeeded = await computeContractsFundingNeeded({
-        deployContracts,
-        userSigner: ctx.userSigner,
-    });
+    const contractsFundingNeeded = await withSpan(
+        "cli.deploy.contracts-funding-check",
+        "check contracts session funding",
+        { "cli.deploy.contracts": deployContracts ? "true" : "false" },
+        () =>
+            computeContractsFundingNeeded({
+                deployContracts,
+                userSigner: ctx.userSigner,
+            }),
+    );
 
     const setup = resolveSignerSetup({
         mode,
@@ -327,23 +357,34 @@ async function runHeadless(ctx: {
     });
     process.stdout.write("\n" + renderSummaryText(view) + "\n");
 
-    const outcome = await runDeploy({
-        projectDir: ctx.projectDir,
-        buildDir,
-        skipBuild,
-        domain,
-        mode,
-        publishToPlayground,
-        playgroundPrivate: Boolean(ctx.opts.private),
-        modable,
-        repositoryUrl,
-        deployContracts,
-        contractsFundingNeeded,
-        userSigner: ctx.userSigner,
-        plan: availability.plan,
-        env: ctx.env,
-        onEvent: (event) => logHeadlessEvent(event),
-    });
+    const outcome = await withSpan(
+        "cli.deploy.orchestrator",
+        "run deploy orchestrator",
+        {
+            "cli.deploy.mode": mode,
+            "cli.deploy.playground": publishToPlayground ? "true" : "false",
+            "cli.deploy.modable": modable ? "true" : "false",
+            "cli.deploy.contracts": deployContracts ? "true" : "false",
+        },
+        () =>
+            runDeploy({
+                projectDir: ctx.projectDir,
+                buildDir,
+                skipBuild,
+                domain,
+                mode,
+                publishToPlayground,
+                playgroundPrivate: Boolean(ctx.opts.private),
+                modable,
+                repositoryUrl,
+                deployContracts,
+                contractsFundingNeeded,
+                userSigner: ctx.userSigner,
+                plan: availability.plan,
+                env: ctx.env,
+                onEvent: (event) => logHeadlessEvent(event),
+            }),
+    );
 
     printFinalResult(outcome);
 }

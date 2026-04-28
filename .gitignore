@@ -2,3 +2,5 @@ node_modules/
 dist/
 
 .cdm/
+docs-internal/
+.worktrees/
