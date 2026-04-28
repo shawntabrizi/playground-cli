@@ -14,7 +14,7 @@ function run(cmd: string, opts?: { shell?: string }): Promise<string> {
     });
 }
 
-async function commandExists(cmd: string): Promise<boolean> {
+export async function commandExists(cmd: string): Promise<boolean> {
     if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) {
         throw new Error(`Invalid command name: ${cmd}`);
     }

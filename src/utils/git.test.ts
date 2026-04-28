@@ -1,10 +1,7 @@
 /**
  * Tests for git.ts — focused on sanitize() since it handles tricky
- * ANSI/cursor output from child processes (pnpm, cdm, Ink programs).
- *
- * The exec wrappers (forkAndClone, cloneRepo) are thin and tested
- * more effectively via integration. Testing arg construction via
- * mocked child_process is brittle and low-value.
+ * ANSI/cursor output from child processes (pnpm, cdm, Ink programs),
+ * and runCommand's log-file tee behaviour.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";

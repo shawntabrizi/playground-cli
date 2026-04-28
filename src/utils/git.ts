@@ -2,9 +2,8 @@
  * Git and GitHub CLI utilities.
  */
 
-import { execFile, exec } from "node:child_process";
-import { createWriteStream, rmSync } from "node:fs";
-import { resolve } from "node:path";
+import { exec } from "node:child_process";
+import { createWriteStream } from "node:fs";
 
 type Log = (line: string) => void;
 
@@ -18,75 +17,6 @@ function sanitize(s: string): string {
 
 /** Env vars that tell child processes to skip interactive/color output. */
 const PLAIN_ENV = { ...process.env, TERM: "dumb", NO_COLOR: "1", CI: "1" };
-
-/** Run a command, streaming stdout+stderr to a log callback. */
-function spawn(cmd: string, args: string[], options?: { cwd?: string; log?: Log }): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const proc = execFile(cmd, args, { cwd: options?.cwd, env: PLAIN_ENV });
-        const stderr: string[] = [];
-        const forward = (data: Buffer | string) => {
-            for (const line of sanitize(String(data)).split("\n").filter(Boolean)) {
-                options?.log?.(line);
-            }
-        };
-        proc.stdout?.on("data", forward);
-        proc.stderr?.on("data", (data: Buffer | string) => {
-            forward(data);
-            stderr.push(String(data));
-        });
-        proc.on("close", (code) => {
-            if (code === 0) resolve();
-            else {
-                const detail = stderr.join("").trim().split("\n").pop() ?? "";
-                reject(new Error(detail || `${cmd} failed (exit ${code})`));
-            }
-        });
-    });
-}
-
-/** Check if the GitHub CLI is authenticated. */
-export function isGhAuthenticated(): boolean {
-    try {
-        require("node:child_process").execSync("gh auth status", { stdio: "pipe" });
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-/** Fork a repo on GitHub and clone it locally (SSH). Streams git output to log. */
-export async function forkAndClone(
-    repo: string,
-    targetDir: string,
-    options?: { branch?: string; log?: Log },
-): Promise<void> {
-    const args = ["repo", "fork", repo, "--clone", "--fork-name", targetDir];
-    if (options?.branch) args.push("--", "--branch", options.branch);
-    await spawn("gh", args, { log: options?.log });
-    // gh repo fork --clone registers the upstream as a second remote, which makes
-    // `git checkout <branch>` ambiguous when the same branches exist on the fork.
-    // Tolerate a missing remote so a fork+clone that already succeeded isn't
-    // marked failed by a stray non-zero exit here.
-    await spawn("git", ["remote", "remove", "upstream"], {
-        cwd: targetDir,
-        log: options?.log,
-    }).catch(() => {});
-}
-
-/** Clone a repo with fresh git history. Streams git output to log. */
-export async function cloneRepo(
-    repo: string,
-    targetDir: string,
-    options?: { branch?: string; log?: Log },
-): Promise<void> {
-    const args = ["clone"];
-    if (options?.branch) args.push("--branch", options.branch);
-    args.push(repo, targetDir);
-    await spawn("git", args, { log: options?.log });
-    rmSync(resolve(targetDir, ".git"), { recursive: true, force: true });
-    options?.log?.("Initializing fresh git history...");
-    await spawn("git", ["init"], { cwd: targetDir, log: options?.log });
-}
 
 /**
  * Run a shell command, streaming output to log.
@@ -106,10 +36,6 @@ export async function runCommand(
         let file: ReturnType<typeof createWriteStream> | null = null;
         if (logFile) {
             file = createWriteStream(logFile);
-            // The tee is best-effort — if the disk fills up or the path goes
-            // away mid-run, surface a notice via the log callback and detach
-            // so subsequent writes don't cascade. An unhandled 'error' event
-            // on a stream would otherwise crash the entire `dot` process.
             file.on("error", (err) => {
                 log?.(`(log file write failed: ${err.message})`);
                 file = null;
