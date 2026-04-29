@@ -200,7 +200,10 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		], { timeout: 400_000 });
-		expect(second.exitCode).toBe(0);
+		expect(
+			second.exitCode,
+			`re-deploy failed: ${second.stdout}\n${second.stderr}`,
+		).toBe(0);
 		expect(second.stdout).toContain("Deploy complete");
 	});
 
@@ -229,8 +232,11 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--dir", frontendOnly,
 		], { timeout: 400_000 });
 		// Must fail — domain is owned by SIGNER, not Bob.
-		expect(bobDeploy.exitCode).not.toBe(0);
 		const output = bobDeploy.stdout + bobDeploy.stderr;
+		expect(
+			bobDeploy.exitCode,
+			`bob deploy unexpectedly succeeded: ${bobDeploy.stdout}\n${bobDeploy.stderr}`,
+		).not.toBe(0);
 		expect(output.toLowerCase()).toMatch(/revert|taken|registered|owned|unavailable|already/);
 	});
 });
