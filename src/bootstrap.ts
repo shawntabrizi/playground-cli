@@ -1,25 +1,20 @@
-// Env-var opt-outs that MUST be applied before any `bulletin-deploy` module
+// Env-var wiring that MUST be applied before any `bulletin-deploy` module
 // evaluates. ES-module top-level evaluation is dependency-first + ordered
 // across siblings of the same parent, so importing this module as the very
 // first statement in `src/index.ts` guarantees its side effects run before
-// the `bulletin-deploy` import chain initialises its Sentry / memory-report
-// gates. Plain `process.env.X = "0"` later in `index.ts` is too late —
-// import hoisting would have already loaded Sentry and wired up the
-// threshold-triggered memory report.
+// bulletin-deploy initialises its telemetry gates. Plain `process.env.X`
+// assignments later in `index.ts` are too late because import hoisting would
+// have already evaluated the bulletin-deploy import chain.
 //
-// Why we opt out by default:
-//   1. Sentry buffers breadcrumbs + spans in-memory while it tries to reach
-//      its endpoint; on a flaky or long-running deploy this has been seen to
-//      balloon `dot`'s RSS.
-//   2. bulletin-deploy's memory-report path calls `v8.getHeapSpaceStatistics()`,
-//      which Bun has not implemented. Our CLI ships as a Bun-compiled binary,
-//      so reaching that code path kills the deploy with
-//      "node:v8 getHeapSpaceStatistics is not yet implemented in Bun."
-//
-// Both gates honour an explicit user override: if the caller sets either
-// env var before invoking `dot`, we leave their choice alone. That lets
-// Parity folks opt back in with `BULLETIN_DEPLOY_TELEMETRY=1 dot deploy`
-// when they want to help debug a deploy.
+// The CLI owns the Sentry SDK and hands the active client to bulletin-deploy
+// through ambient mode. `DOT_TELEMETRY` remains the privacy gate for both apps:
+// unknown external users stay off by default, while known internal contexts
+// and explicit `DOT_TELEMETRY=1` opt in. Do not set
+// `BULLETIN_DEPLOY_HOST_APP=playground-cli` without also setting an explicit
+// `BULLETIN_DEPLOY_TELEMETRY` value; bulletin-deploy treats this host app as
+// internal.
+
+import { configureBulletinTelemetryEnv } from "./telemetry-config.js";
 
 // Forces ESM module semantics on this otherwise-import-free file. Without it,
 // TS classifies the file as a script and `await import("./bootstrap.js")`
@@ -27,15 +22,4 @@
 // every callsite in `bootstrap.test.ts`. Keep.
 export {};
 
-if (process.env.BULLETIN_DEPLOY_TELEMETRY === undefined) {
-    process.env.BULLETIN_DEPLOY_TELEMETRY = "0";
-}
-
-// Defence-in-depth: the memory-report env gate lives inside
-// `maybeWriteMemoryReport`, checked at call time rather than module load.
-// Even if a user explicitly opts telemetry back in, this stops the
-// Bun-incompatible `v8.getHeapSpaceStatistics` call from firing in our
-// Bun-compiled binary.
-if (process.env.BULLETIN_DEPLOY_MEM_REPORT === undefined) {
-    process.env.BULLETIN_DEPLOY_MEM_REPORT = "0";
-}
+configureBulletinTelemetryEnv();

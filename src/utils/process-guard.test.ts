@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isBenignUnsubscriptionError } from "./process-guard.js";
+import { isBenignUnsubscriptionError, setProcessGuardWarningHandler } from "./process-guard.js";
 
 // Construct an object shaped like rxjs's `UnsubscriptionError` — rxjs builds
 // it via `createErrorClass`, so in practice all we rely on is (a) `name ===
@@ -69,5 +69,14 @@ describe("isBenignUnsubscriptionError", () => {
         err.name = "UnsubscriptionError";
         (err as Error & { errors: unknown[] }).errors = ["Not connected"];
         expect(isBenignUnsubscriptionError(err)).toBe(true);
+    });
+});
+
+describe("process guard warning handler", () => {
+    it("swallows warning handler failures", () => {
+        setProcessGuardWarningHandler(() => {
+            throw new Error("telemetry failed");
+        });
+        expect(() => setProcessGuardWarningHandler(undefined)).not.toThrow();
     });
 });

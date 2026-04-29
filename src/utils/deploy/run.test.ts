@@ -16,6 +16,7 @@ const {
     checkBalanceMock,
     pickFunderMock,
     submitAndWatchMock,
+    withSpanMock,
 } = vi.hoisted(() => ({
     runStorageDeploy: vi.fn<
         (arg: any) => Promise<{
@@ -83,6 +84,7 @@ const {
             required: bigint,
         ) => Promise<{ name: string; address: string; signer: unknown } | null>
     >(async () => ({ name: "Alice", address: "5Alice", signer: { __funder: "Alice" } })),
+    withSpanMock: vi.fn(async (_op: string, _name: string, _attrs: any, fn: any) => fn()),
 }));
 
 vi.mock("./storage.js", () => ({ runStorageDeploy }));
@@ -120,6 +122,10 @@ vi.mock("../account/funder.js", () => ({
 }));
 vi.mock("@polkadot-apps/tx", () => ({
     submitAndWatch: (...args: unknown[]) => submitAndWatchMock(args[0], args[1]),
+}));
+vi.mock("../../telemetry.js", () => ({
+    withSpan: (...args: unknown[]) =>
+        withSpanMock(args[0] as string, args[1] as string, args[2], args[3]),
 }));
 
 import { runDeploy, type DeployEvent } from "./run.js";
@@ -187,6 +193,7 @@ beforeEach(() => {
     checkBalanceMock.mockReset();
     checkBalanceMock.mockResolvedValue({ free: 100_000_000_000n, sufficient: true });
     submitAndWatchMock.mockClear();
+    withSpanMock.mockClear();
     pickFunderMock.mockReset();
     pickFunderMock.mockResolvedValue({
         name: "Alice",
@@ -393,6 +400,24 @@ describe("runDeploy", () => {
 
         const err = events.find((e) => e.kind === "error");
         expect(err).toMatchObject({ phase: "storage-and-dotns", message: "bulletin rpc down" });
+    });
+
+    it("wraps build, storage, and playground phases in telemetry spans", async () => {
+        const { push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: true,
+            userSigner: fakeUserSigner,
+            onEvent: push,
+        });
+
+        const ops = withSpanMock.mock.calls.map((call) => call[0]);
+        expect(ops).toContain("cli.deploy.build");
+        expect(ops).toContain("cli.deploy.storage-dotns");
+        expect(ops).toContain("cli.deploy.playground");
     });
 });
 

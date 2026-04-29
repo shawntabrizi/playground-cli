@@ -50,6 +50,7 @@ const RESERVED_SHORT_LABEL = "abc"; // baseLength=3 → Reserved
 import { checkDomainAvailability, formatAvailability } from "./availability.js";
 
 beforeEach(() => {
+    delete process.env.DOTNS_STATUS;
     checkOwnership.mockReset();
     getUserPopStatus.mockReset();
     getUserPopStatus.mockResolvedValue(2); // default: Full PoP → no upgrade
@@ -220,6 +221,21 @@ describe("checkDomainAvailability", () => {
         expect(result.status).toBe("available");
         if (result.status === "available") {
             expect(result.plan).toEqual({ action: "register", needsPopUpgrade: false });
+        }
+    });
+
+    it("includes explicit DOTNS_STATUS in the PoP upgrade prediction", async () => {
+        process.env.DOTNS_STATUS = "full";
+        checkOwnership.mockResolvedValue({ owned: false, owner: null });
+        getUserPopStatus.mockResolvedValue(0);
+
+        const result = await checkDomainAvailability("my-application12", {
+            ownerSs58Address: ALICE_SS58,
+        });
+
+        expect(result.status).toBe("available");
+        if (result.status === "available") {
+            expect(result.plan).toEqual({ action: "register", needsPopUpgrade: true });
         }
     });
 

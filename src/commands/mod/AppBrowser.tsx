@@ -9,6 +9,7 @@ export type { AppEntry };
 interface Props {
     registry: any;
     onSelect: (app: AppEntry) => void;
+    onCancel?: () => void;
     modableOnly?: boolean;
 }
 
@@ -19,7 +20,7 @@ function pad(s: string, w: number): string {
     return s.length > w ? s.slice(0, w - 1) + "…" : s.padEnd(w);
 }
 
-export function AppBrowser({ registry, onSelect, modableOnly }: Props) {
+export function AppBrowser({ registry, onSelect, onCancel, modableOnly }: Props) {
     const { stdout } = useStdout();
     const viewH = Math.max((stdout?.rows ?? 24) - 6, 5);
 
@@ -120,7 +121,7 @@ export function AppBrowser({ registry, onSelect, modableOnly }: Props) {
             if (next >= scroll + viewH) setScroll(next - viewH + 1);
         }
         if (key.return && filtered.length > 0) onSelect(filtered[cursor]);
-        if (input === "q") process.exit(0);
+        if (input === "q") onCancel?.();
     });
 
     const visible = filtered.slice(scroll, scroll + viewH);

@@ -6,12 +6,12 @@ import { getGateway, fetchJson } from "@polkadot-apps/bulletin";
 import { StepRunner, type Step } from "../../utils/ui/components/StepRunner.js";
 import { Header, Hint, Row, Section } from "../../utils/ui/theme/index.js";
 import { runCommand } from "../../utils/git.js";
+import { createOptionalGitBaseline } from "../../utils/mod/git-baseline.js";
 import {
     downloadGitHubTarball,
     parseGitHubRepoUrl,
     resolveDefaultBranch,
 } from "../../utils/mod/source.js";
-import { commandExists } from "../../utils/toolchain.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 
 interface AppMetadata {
@@ -42,7 +42,8 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
     // The matching `Hint` is driven off the state setter for re-render.
     const setupRanRef = useRef(false);
     const [setupRanVisible, setSetupRanVisible] = useState(false);
-    const logFile = resolve(targetDir, ".dot-mod-setup.log");
+    const setupLogFile = resolve(targetDir, ".dot-mod-setup.log");
+    const sourceLogFile = resolve(targetDir, ".dot-mod-source.log");
 
     const steps: Step[] = [
         {
@@ -85,23 +86,11 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                     targetDir,
                 });
 
-                if (await commandExists("git")) {
-                    log("initializing fresh git history…");
-                    await runCommand("git init", { cwd: targetDir, log });
-                    await runCommand("git add -A", { cwd: targetDir, log });
-                    await runCommand(`git commit -m "Initial commit from ${domain}"`, {
-                        cwd: targetDir,
-                        log,
-                    });
-                } else {
-                    log(
-                        "git not on PATH — skipping git init (mod still works, you can init later)",
-                    );
-                }
+                await createOptionalGitBaseline(targetDir, domain, log, sourceLogFile);
 
                 stripPostinstall(targetDir);
                 writeDotJson(targetDir, meta.name ?? domain.replace(/\.dot$/, ""), meta);
-                ignoreModSetupLog(targetDir);
+                ignoreModLogs(targetDir);
             },
         },
         {
@@ -111,7 +100,7 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                 if (!existsSync(resolve(targetDir, "setup.sh"))) {
                     throw new StepWarning("no setup.sh found");
                 }
-                await runCommand("bash setup.sh", { cwd: targetDir, log, logFile });
+                await runCommand("bash setup.sh", { cwd: targetDir, log, logFile: setupLogFile });
                 setupRanRef.current = true;
                 setSetupRanVisible(true);
             },
@@ -134,7 +123,7 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
             />
 
             <Hint>→ {targetDir}</Hint>
-            {setupRanVisible && <Hint>full setup log: {logFile}</Hint>}
+            {setupRanVisible && <Hint>full setup log: {setupLogFile}</Hint>}
 
             {error && (
                 <Section>
@@ -165,23 +154,24 @@ function stripPostinstall(dir: string) {
 }
 
 /**
- * Append `.dot-mod-setup.log` to the cloned repo's `.gitignore` so the per-run
+ * Append dot mod logs to the cloned repo's `.gitignore` so the per-run
  * setup log we tee for the user can't be accidentally committed. Idempotent —
  * checks for an existing entry before writing, and creates the file if it
  * doesn't yet exist.
  */
-function ignoreModSetupLog(dir: string) {
-    const entry = ".dot-mod-setup.log";
+function ignoreModLogs(dir: string) {
+    const entries = [".dot-mod-setup.log", ".dot-mod-source.log"];
     const path = resolve(dir, ".gitignore");
     try {
         const existing = existsSync(path) ? readFileSync(path, "utf-8") : "";
         const lines = existing.split("\n").map((l) => l.trim());
-        if (lines.includes(entry)) return;
+        const missing = entries.filter((entry) => !lines.includes(entry));
+        if (missing.length === 0) return;
         const prefix = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
-        appendFileSync(path, `${prefix}${entry}\n`);
+        appendFileSync(path, `${prefix}${missing.join("\n")}\n`);
     } catch {
-        // best-effort — if we can't write .gitignore (perms etc.) the log
-        // file still works, the user just needs to ignore it manually.
+        // best-effort — if we can't write .gitignore (perms etc.) the logs
+        // still work, the user just needs to ignore them manually.
     }
 }
 

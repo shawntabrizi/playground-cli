@@ -25,6 +25,7 @@ import { upload } from "@polkadot-apps/bulletin";
 import { getRegistryContract } from "../registry.js";
 import { getConnection } from "../connection.js";
 import { getChainConfig, type Env } from "../../config.js";
+import { captureWarning, withSpan } from "../../telemetry.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { DeployLogEvent } from "./progress.js";
 
@@ -158,49 +159,70 @@ export async function publishToPlayground(
     // than reusing the shared one from `getConnection()`. The shared client
     // uses polkadot-api's 40 s default which is shorter than a single-tx
     // submission and manifests as `WS halt (3)` mid-upload.
-    const cfg = getChainConfig(options.env);
-    const bulletinClient = createClient(
-        withPolkadotSdkCompat(
-            getWsProvider({
-                endpoints: [cfg.bulletinRpc],
-                heartbeatTimeout: BULLETIN_WS_HEARTBEAT_MS,
-            }),
-        ),
+    const metadataCid = await withSpan(
+        "cli.deploy.playground.metadata-upload",
+        "upload playground metadata",
+        { "cli.deploy.domain": fullDomain },
+        async () => {
+            const cfg = getChainConfig(options.env);
+            const bulletinClient = createClient(
+                withPolkadotSdkCompat(
+                    getWsProvider({
+                        endpoints: [cfg.bulletinRpc],
+                        heartbeatTimeout: BULLETIN_WS_HEARTBEAT_MS,
+                    }),
+                ),
+            );
+            try {
+                const bulletinApi = bulletinClient.getTypedApi(bulletin);
+                const result = await upload(bulletinApi, metadataBytes);
+                return result.cid;
+            } finally {
+                bulletinClient.destroy();
+            }
+        },
     );
-    let metadataCid: string;
-    try {
-        const bulletinApi = bulletinClient.getTypedApi(bulletin);
-        const result = await upload(bulletinApi, metadataBytes);
-        metadataCid = result.cid;
-    } finally {
-        bulletinClient.destroy();
-    }
     options.onLogEvent?.({ kind: "info", message: `Metadata CID: ${metadataCid}` });
 
     const client = await getConnection();
     const registry = await getRegistryContract(client.raw.assetHub, options.publishSigner);
 
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= MAX_REGISTRY_RETRIES; attempt++) {
-        try {
-            const visibility = options.isPrivate ? 0 : 1;
-            const result = await registry.publish.tx(fullDomain, metadataCid, visibility);
-            if (result && result.ok === false) {
-                throw new Error("Registry publish transaction reverted");
+    return await withSpan(
+        "cli.deploy.playground.registry-publish",
+        "publish playground registry entry",
+        { "cli.deploy.domain": fullDomain },
+        async () => {
+            let lastError: unknown;
+            for (let attempt = 1; attempt <= MAX_REGISTRY_RETRIES; attempt++) {
+                try {
+                    const visibility = options.isPrivate ? 0 : 1;
+                    const result = await registry.publish.tx(fullDomain, metadataCid, visibility);
+                    if (result && result.ok === false) {
+                        throw new Error("Registry publish transaction reverted");
+                    }
+                    return { metadataCid, fullDomain, metadata };
+                } catch (err) {
+                    lastError = err;
+                    if (attempt >= MAX_REGISTRY_RETRIES) break;
+                    captureWarning("Playground registry publish failed, retrying", {
+                        attempt,
+                        maxAttempts: MAX_REGISTRY_RETRIES,
+                        error:
+                            err instanceof Error
+                                ? err.message.slice(0, 200)
+                                : String(err).slice(0, 200),
+                    });
+                    await new Promise((r) => setTimeout(r, REGISTRY_RETRY_DELAY_MS));
+                }
             }
-            return { metadataCid, fullDomain, metadata };
-        } catch (err) {
-            lastError = err;
-            if (attempt >= MAX_REGISTRY_RETRIES) break;
-            await new Promise((r) => setTimeout(r, REGISTRY_RETRY_DELAY_MS));
-        }
-    }
 
-    const msg = lastError instanceof Error ? lastError.message : String(lastError);
-    throw new Error(
-        `Failed to publish to Playground registry after ${MAX_REGISTRY_RETRIES} attempts: ${msg}`,
-        {
-            cause: lastError instanceof Error ? lastError : undefined,
+            const msg = lastError instanceof Error ? lastError.message : String(lastError);
+            throw new Error(
+                `Failed to publish to Playground registry after ${MAX_REGISTRY_RETRIES} attempts: ${msg}`,
+                {
+                    cause: lastError instanceof Error ? lastError : undefined,
+                },
+            );
         },
     );
 }

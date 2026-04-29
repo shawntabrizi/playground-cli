@@ -62,6 +62,23 @@ export type CleanupHook = () => void | Promise<void>;
 
 const cleanupHooks: CleanupHook[] = [];
 let signalHandlersInstalled = false;
+let processGuardWarningHandler:
+    | ((message: string, context?: Record<string, unknown>) => void)
+    | undefined;
+
+export function setProcessGuardWarningHandler(
+    handler: ((message: string, context?: Record<string, unknown>) => void) | undefined,
+): void {
+    processGuardWarningHandler = handler;
+}
+
+function warnProcessGuard(message: string, context?: Record<string, unknown>): void {
+    try {
+        processGuardWarningHandler?.(message, context);
+    } catch {
+        // Telemetry must never interfere with shutdown.
+    }
+}
 
 /** Register a best-effort cleanup callback that fires on SIGINT/TERM/HUP. */
 export function onProcessShutdown(hook: CleanupHook): void {
@@ -287,7 +304,13 @@ async function runAllCleanupAndExit(code: number): Promise<never> {
         for (const hook of cleanupHooks) {
             try {
                 await hook();
-            } catch {
+            } catch (err) {
+                warnProcessGuard("Process cleanup hook failed", {
+                    error:
+                        err instanceof Error
+                            ? err.message.slice(0, 200)
+                            : String(err).slice(0, 200),
+                });
                 // Best-effort: don't let one bad hook block the others.
             }
         }

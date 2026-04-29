@@ -3,7 +3,7 @@
  *
  * Hits two view-only DotNS calls via bulletin-deploy's `DotNS` class:
  *
- *   - `classifyName(label)` — PopOracle classification
+ *   - `classifyDotnsLabel(label)` — PopOracle classification
  *       - `Reserved` → hard block (nobody can register).
  *       - `PoP Lite/Full` → advisory note; bulletin-deploy self-attests
  *         during register on testnet.
@@ -88,8 +88,12 @@ function predictPostRegisterPopStatus(
     currentStatus: number,
     requiredStatus: number,
     isTestnet: boolean,
+    explicitStatus?: number,
 ): number {
     const max = (a: number, b: number) => (a > b ? a : b);
+    if (explicitStatus !== undefined) {
+        return max(currentStatus, explicitStatus);
+    }
     if (requiredStatus === POP_STATUS_NO_STATUS && currentStatus === POP_STATUS_LITE && isTestnet) {
         // Paseo auto-escape: Lite signer on a NoStatus label gets bumped to
         // Full so `PopRules.priceWithCheck` accepts the signer. Mainnet path
@@ -100,6 +104,15 @@ function predictPostRegisterPopStatus(
         return max(currentStatus, requiredStatus);
     }
     return currentStatus;
+}
+
+function parseExplicitPopStatus(status: string | undefined): number | undefined {
+    if (!status) return undefined;
+    const value = status.toLowerCase();
+    if (value === "none" || value === "nostatus") return POP_STATUS_NO_STATUS;
+    if (value === "lite" || value === "poplite") return POP_STATUS_LITE;
+    if (value === "full" || value === "popfull") return POP_STATUS_FULL;
+    throw new Error("Invalid status. Use none, lite, or full");
 }
 
 /**
@@ -228,6 +241,7 @@ export async function checkDomainAvailability(
                     userStatus,
                     classification.status,
                     isTestnet,
+                    parseExplicitPopStatus(process.env.DOTNS_STATUS),
                 );
                 needsPopUpgrade = target !== userStatus && target !== POP_STATUS_NO_STATUS;
             } catch {

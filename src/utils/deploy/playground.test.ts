@@ -3,10 +3,27 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+const { captureWarningMock, withSpanMock } = vi.hoisted(() => ({
+    captureWarningMock: vi.fn(),
+    withSpanMock: vi.fn(async (_op: string, _name: string, _attrs: any, fn: any) => fn()),
+}));
+
 // Mock the metadata upload path so we never actually touch the network.
 // The mock returns a fake CID that publish() treats as the metadata CID.
 vi.mock("@polkadot-apps/bulletin", () => ({
     upload: vi.fn(async () => ({ cid: "bafymeta", blockHash: "0x0" })),
+}));
+vi.mock("polkadot-api", () => ({
+    createClient: vi.fn(() => ({
+        getTypedApi: vi.fn(() => ({})),
+        destroy: vi.fn(),
+    })),
+}));
+vi.mock("polkadot-api/ws-provider/web", () => ({
+    getWsProvider: vi.fn(() => ({})),
+}));
+vi.mock("polkadot-api/polkadot-sdk-compat", () => ({
+    withPolkadotSdkCompat: vi.fn((provider) => provider),
 }));
 
 // Likewise stub the connection + registry helpers. We capture the publish
@@ -19,6 +36,11 @@ vi.mock("../registry.js", () => ({
     getRegistryContract: vi.fn(async () => ({
         publish: { tx: publishTx },
     })),
+}));
+vi.mock("../../telemetry.js", () => ({
+    captureWarning: (...args: unknown[]) => captureWarningMock(...args),
+    withSpan: (...args: unknown[]) =>
+        withSpanMock(args[0] as string, args[1] as string, args[2], args[3]),
 }));
 
 import {
@@ -42,6 +64,8 @@ const fakeSigner: ResolvedSigner = {
 beforeEach(() => {
     publishTx.mockClear();
     publishTx.mockImplementation(async () => ({ ok: true, txHash: "0xdead" }));
+    captureWarningMock.mockClear();
+    withSpanMock.mockClear();
 });
 
 describe("normalizeDomain", () => {
@@ -258,6 +282,41 @@ describe("publishToPlayground", () => {
         expect(publishTx).toHaveBeenCalledTimes(3);
         expect(result.fullDomain).toBe("flaky.dot");
     }, 30_000);
+
+    it("captures a warning when registry publish retries", async () => {
+        publishTx
+            .mockRejectedValueOnce(new Error("temporary registry failure"))
+            .mockResolvedValueOnce({ ok: true, txHash: "0xdead" });
+
+        await publishToPlayground({
+            domain: "my-app.dot",
+            publishSigner: fakeSigner,
+            repositoryUrl: null,
+            cwd: undefined,
+        });
+
+        expect(captureWarningMock).toHaveBeenCalledWith(
+            "Playground registry publish failed, retrying",
+            expect.objectContaining({
+                attempt: 1,
+                maxAttempts: 3,
+                error: "temporary registry failure",
+            }),
+        );
+    }, 30_000);
+
+    it("wraps metadata upload and registry publish in spans", async () => {
+        await publishToPlayground({
+            domain: "my-app.dot",
+            publishSigner: fakeSigner,
+            repositoryUrl: null,
+            cwd: undefined,
+        });
+
+        const ops = withSpanMock.mock.calls.map((call) => call[0]);
+        expect(ops).toContain("cli.deploy.playground.metadata-upload");
+        expect(ops).toContain("cli.deploy.playground.registry-publish");
+    });
 
     it("surfaces the last error after exhausting retries", async () => {
         publishTx.mockImplementation(async () => {
