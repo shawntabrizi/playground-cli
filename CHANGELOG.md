@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.14.0
+
+### Minor Changes
+
+- 1349115: Add privacy-gated Sentry telemetry for `dot` commands and route `bulletin-deploy` spans through the CLI's ambient Sentry client.
+
 ## 0.13.2
 
 ### Patch Changes
