@@ -44,6 +44,15 @@ import type { ResolvedSigner } from "../../utils/signer.js";
 import type { ContractsType } from "../../utils/build/detect.js";
 import { DEFAULT_BUILD_DIR } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
+import {
+    ensureGitInstalled,
+    ensureGhInstalled,
+    ensureGhAuthed,
+    readOrigin,
+    resolveRepositoryUrl,
+} from "../../utils/deploy/modable.js";
+import { basename } from "node:path";
+import { validateRepoName } from "../../utils/git/repoName.js";
 
 export interface DeployScreenInputs {
     projectDir: string;
@@ -58,6 +67,10 @@ export interface DeployScreenInputs {
     contractsType: ContractsType | null;
     /** Whether to deploy the project's contracts. null = ask the user. */
     deployContracts: boolean | null;
+    /** Pre-set modable from `--modable` / `--no-modable`. null = ask. */
+    modable: boolean | null;
+    /** Pre-set repo name from `--repo-name`. null = use cwd basename / prompt when needed. */
+    repoName: string | null;
     userSigner: ResolvedSigner | null;
     onDone: (outcome: DeployOutcome | null) => void;
 }
@@ -69,6 +82,8 @@ type Stage =
     | { kind: "prompt-domain" }
     | { kind: "validate-domain"; domain: string }
     | { kind: "prompt-publish" }
+    | { kind: "prompt-modable" }
+    | { kind: "modable-preflight" }
     | { kind: "prompt-contracts" }
     | { kind: "confirm" }
     | { kind: "running" }
@@ -82,6 +97,8 @@ interface Resolved {
     publishToPlayground: boolean;
     skipBuild: boolean;
     deployContracts: boolean;
+    modable: boolean;
+    repositoryUrl: string | null;
 }
 
 export function DeployScreen({
@@ -94,6 +111,8 @@ export function DeployScreen({
     skipBuild: initialSkipBuild,
     contractsType,
     deployContracts: initialDeployContracts,
+    modable: initialModable,
+    repoName: initialRepoName,
     userSigner,
     onDone,
 }: DeployScreenInputs) {
@@ -106,6 +125,8 @@ export function DeployScreen({
     const [deployContracts, setDeployContracts] = useState<boolean | null>(
         contractsType === null ? false : initialDeployContracts,
     );
+    const [modable, setModable] = useState<boolean | null>(initialModable);
+    const [repositoryUrl, setRepositoryUrl] = useState<string | null>(null);
     const [domainError, setDomainError] = useState<string | null>(null);
     // Captured from the availability check; feeds `resolveSignerSetup` so
     // the summary card shows the correct phone-approval count (register +
@@ -119,6 +140,8 @@ export function DeployScreen({
             initialDomain,
             initialPublish,
             contractsType === null ? false : initialDeployContracts,
+            initialModable,
+            null,
         ),
     );
 
@@ -134,6 +157,8 @@ export function DeployScreen({
         nextDomain: string | null = domain,
         nextPublish: boolean | null = publishToPlayground,
         nextDeployContracts: boolean | null = deployContracts,
+        nextModable: boolean | null = modable,
+        nextRepoUrl: string | null = repositoryUrl,
     ) => {
         const s = pickNextStage(
             nextSkipBuild,
@@ -142,6 +167,8 @@ export function DeployScreen({
             nextDomain,
             nextPublish,
             nextDeployContracts,
+            nextModable,
+            nextRepoUrl,
         );
         setStage(s);
     };
@@ -153,11 +180,30 @@ export function DeployScreen({
             domain === null ||
             publishToPlayground === null ||
             skipBuild === null ||
-            deployContracts === null
+            deployContracts === null ||
+            modable === null
         )
             return null;
-        return { mode, buildDir, domain, publishToPlayground, skipBuild, deployContracts };
-    }, [mode, buildDir, domain, publishToPlayground, skipBuild, deployContracts]);
+        return {
+            mode,
+            buildDir,
+            domain,
+            publishToPlayground,
+            skipBuild,
+            deployContracts,
+            modable,
+            repositoryUrl,
+        };
+    }, [
+        mode,
+        buildDir,
+        domain,
+        publishToPlayground,
+        skipBuild,
+        deployContracts,
+        modable,
+        repositoryUrl,
+    ]);
 
     // Dynamic terminal tab title: subtitle becomes the domain once we know it.
     const headerSubtitle = resolved?.domain ?? domain ?? undefined;
@@ -270,7 +316,71 @@ export function DeployScreen({
                     initialIndex={0}
                     onSelect={(yes) => {
                         setPublishToPlayground(yes);
-                        advance(skipBuild, mode, buildDir, domain, yes);
+                        if (!yes) setModable(false);
+                        advance(
+                            skipBuild,
+                            mode,
+                            buildDir,
+                            domain,
+                            yes,
+                            deployContracts,
+                            yes ? modable : false,
+                        );
+                    }}
+                />
+            )}
+
+            {stage.kind === "prompt-modable" && (
+                <Select<boolean>
+                    label="make this app modable? (anyone in the playground can dot mod it)"
+                    options={[
+                        {
+                            value: false,
+                            label: "no",
+                            hint: "metadata will not include a source repo",
+                        },
+                        { value: true, label: "yes", hint: "publishes your source repo URL" },
+                    ]}
+                    initialIndex={0}
+                    onSelect={(yes) => {
+                        setModable(yes);
+                        if (yes) {
+                            // ModablePreflightStage probes origin internally
+                            // and only asks for a repo name when one is needed.
+                            setStage({ kind: "modable-preflight" });
+                        } else {
+                            advance(
+                                skipBuild,
+                                mode,
+                                buildDir,
+                                domain,
+                                publishToPlayground,
+                                deployContracts,
+                                false,
+                            );
+                        }
+                    }}
+                />
+            )}
+
+            {stage.kind === "modable-preflight" && (
+                <ModablePreflightStage
+                    projectDir={projectDir}
+                    repoName={initialRepoName}
+                    onResolved={(url) => {
+                        setRepositoryUrl(url);
+                        advance(
+                            skipBuild,
+                            mode,
+                            buildDir,
+                            domain,
+                            publishToPlayground,
+                            deployContracts,
+                            true,
+                        );
+                    }}
+                    onError={(msg) => {
+                        setStage({ kind: "error", message: msg });
                     }}
                 />
             )}
@@ -354,8 +464,19 @@ function pickInitialStage(
     domain: string | null,
     publish: boolean | null,
     deployContracts: boolean | null,
+    modable: boolean | null,
+    repositoryUrl: string | null,
 ): Stage {
-    return pickNextStage(skipBuild, mode, buildDir, domain, publish, deployContracts);
+    return pickNextStage(
+        skipBuild,
+        mode,
+        buildDir,
+        domain,
+        publish,
+        deployContracts,
+        modable,
+        repositoryUrl,
+    );
 }
 
 function pickNextStage(
@@ -365,14 +486,114 @@ function pickNextStage(
     domain: string | null,
     publish: boolean | null,
     deployContracts: boolean | null,
+    modable: boolean | null,
+    repositoryUrl: string | null,
 ): Stage {
     if (skipBuild === null) return { kind: "prompt-build" };
     if (mode === null) return { kind: "prompt-signer" };
     if (buildDir === null) return { kind: "prompt-buildDir" };
     if (domain === null) return { kind: "prompt-domain" };
     if (publish === null) return { kind: "prompt-publish" };
+    if (publish && modable === null) return { kind: "prompt-modable" };
+    // --modable=true via flag: skip the prompt and drive into the preflight.
+    if (publish && modable === true && repositoryUrl === null) {
+        return { kind: "modable-preflight" };
+    }
     if (deployContracts === null) return { kind: "prompt-contracts" };
     return { kind: "confirm" };
+}
+
+// ── Modable preflight ────────────────────────────────────────────────────────
+
+function ModablePreflightStage({
+    projectDir,
+    repoName: initialRepoName,
+    onResolved,
+    onError,
+}: {
+    projectDir: string;
+    repoName: string | null;
+    onResolved: (url: string) => void;
+    onError: (message: string) => void;
+}) {
+    type Phase = "preparing" | "needs-repo-name" | "resolving";
+    const [phase, setPhase] = useState<Phase>("preparing");
+    const [status, setStatus] = useState<string>("checking git…");
+
+    // Run install/auth checks once, then either prompt for a repo name (when
+    // origin is missing AND no `--repo-name` was supplied) or proceed directly
+    // to resolving the URL. Wrapping in a single effect keeps the cancel
+    // semantics simple — we only have one effect to clean up.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                setStatus("ensuring git is installed…");
+                await ensureGitInstalled();
+                if (cancelled) return;
+
+                setStatus("ensuring gh is installed…");
+                await ensureGhInstalled();
+                if (cancelled) return;
+
+                setStatus("checking gh authentication…");
+                await ensureGhAuthed();
+                if (cancelled) return;
+
+                // Decide whether to prompt for a repo name. We prompt only
+                // when origin doesn't already point somewhere AND the caller
+                // didn't pre-supply one via --repo-name.
+                const origin = readOrigin(projectDir);
+                if (origin === null && initialRepoName === null) {
+                    setPhase("needs-repo-name");
+                    return;
+                }
+                runResolve(initialRepoName);
+            } catch (err) {
+                if (cancelled) return;
+                const msg = err instanceof Error ? err.message : String(err);
+                onError(msg);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+        // We deliberately exclude `runResolve` from deps — it closes over
+        // `cancelled` via the effect's lexical scope, and we want the same
+        // closure to fire whether the user supplied a name up front or via
+        // the prompt below.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projectDir, initialRepoName]);
+
+    function runResolve(repoName: string | null) {
+        setPhase("resolving");
+        setStatus("resolving repository…");
+        resolveRepositoryUrl({ cwd: projectDir, repoName })
+            .then((url) => onResolved(url))
+            .catch((err) => onError(err instanceof Error ? err.message : String(err)));
+    }
+
+    if (phase === "needs-repo-name") {
+        return (
+            <Box flexDirection="column">
+                <Section>
+                    <Row mark="ok" label="git + gh ready" tone="muted" />
+                </Section>
+                <Input
+                    label="github repo name"
+                    initial={basename(projectDir)}
+                    validate={validateRepoName}
+                    onSubmit={(name) => runResolve(name)}
+                />
+            </Box>
+        );
+    }
+
+    return (
+        <Section>
+            <Row mark="run" label={status} tone="muted" />
+        </Section>
+    );
 }
 
 // ── Domain validation ────────────────────────────────────────────────────────
@@ -519,6 +740,8 @@ function ConfirmStage({
         buildDir: inputs.buildDir,
         skipBuild: inputs.skipBuild,
         publishToPlayground: inputs.publishToPlayground,
+        modable: inputs.modable,
+        repositoryUrl: inputs.repositoryUrl,
         approvals: "approvals" in setup ? setup.approvals : [],
         contracts: contractsType
             ? { type: contractsType, deploy: inputs.deployContracts }
@@ -691,6 +914,8 @@ function RunningStage({
                     mode: inputs.mode,
                     publishToPlayground: inputs.publishToPlayground,
                     playgroundPrivate,
+                    modable: inputs.modable,
+                    repositoryUrl: inputs.repositoryUrl,
                     deployContracts: inputs.deployContracts,
                     contractsFundingNeeded:
                         inputs.deployContracts && userSigner?.source === "session",

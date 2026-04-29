@@ -3,16 +3,13 @@ import { Box, Text, useInput, useStdout } from "ink";
 import { getGateway, fetchJson } from "@polkadot-apps/bulletin";
 import { Mark, Hint, COLOR } from "../../utils/ui/theme/index.js";
 
-export interface AppEntry {
-    domain: string;
-    name: string | null;
-    description: string | null;
-    repository: string | null;
-}
+import { filterModable, type AppEntry } from "./browserFilter.js";
+export type { AppEntry };
 
 interface Props {
     registry: any;
     onSelect: (app: AppEntry) => void;
+    modableOnly?: boolean;
 }
 
 const BATCH = 10;
@@ -22,7 +19,7 @@ function pad(s: string, w: number): string {
     return s.length > w ? s.slice(0, w - 1) + "…" : s.padEnd(w);
 }
 
-export function AppBrowser({ registry, onSelect }: Props) {
+export function AppBrowser({ registry, onSelect, modableOnly }: Props) {
     const { stdout } = useStdout();
     const viewH = Math.max((stdout?.rows ?? 24) - 6, 5);
 
@@ -103,11 +100,13 @@ export function AppBrowser({ registry, onSelect }: Props) {
         loadBatch(0);
     }, [loadBatch]);
 
+    const filtered = filterModable(apps, Boolean(modableOnly));
+
     useEffect(() => {
-        if (cursor >= apps.length - 3 && nextStart.current !== null && !fetching) {
+        if (cursor >= filtered.length - 3 && nextStart.current !== null && !fetching) {
             loadBatch(nextStart.current);
         }
-    }, [cursor, apps.length, fetching, loadBatch]);
+    }, [cursor, filtered.length, fetching, loadBatch]);
 
     useInput((input, key) => {
         if (key.upArrow && cursor > 0) {
@@ -115,16 +114,16 @@ export function AppBrowser({ registry, onSelect }: Props) {
             setCursor(next);
             if (next < scroll) setScroll(next);
         }
-        if (key.downArrow && cursor < apps.length - 1) {
+        if (key.downArrow && cursor < filtered.length - 1) {
             const next = cursor + 1;
             setCursor(next);
             if (next >= scroll + viewH) setScroll(next - viewH + 1);
         }
-        if (key.return && apps.length > 0) onSelect(apps[cursor]);
+        if (key.return && filtered.length > 0) onSelect(filtered[cursor]);
         if (input === "q") process.exit(0);
     });
 
-    const visible = apps.slice(scroll, scroll + viewH);
+    const visible = filtered.slice(scroll, scroll + viewH);
     const descW = Math.max((stdout?.columns ?? 80) - COL.num - COL.domain - COL.name - 10, 10);
 
     return (
@@ -165,8 +164,17 @@ export function AppBrowser({ registry, onSelect }: Props) {
                     <Text dimColor>loading apps…</Text>
                 </Box>
             )}
+            {!fetching && filtered.length === 0 && nextStart.current === null && (
+                <Box marginTop={1}>
+                    <Text dimColor>No modable apps in the registry yet.</Text>
+                </Box>
+            )}
             <Box marginTop={fetching ? 0 : 1}>
-                <Hint>{`↑↓ navigate  ·  ⏎ select  ·  q quit  ·  (${apps.length}/${total})`}</Hint>
+                <Hint>{`↑↓ navigate  ·  ⏎ select  ·  q quit  ·  ${
+                    modableOnly
+                        ? `(${filtered.length} modable, ${apps.length}/${total} scanned)`
+                        : `(${apps.length}/${total})`
+                }`}</Hint>
             </Box>
         </Box>
     );

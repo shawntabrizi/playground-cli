@@ -23,8 +23,8 @@ vi.mock("../registry.js", () => ({
 
 import {
     publishToPlayground,
+    buildMetadata,
     normalizeDomain,
-    normalizeGitRemote,
     readReadme,
     README_CAP_BYTES,
 } from "./playground.js";
@@ -139,21 +139,23 @@ describe("readReadme", () => {
     });
 });
 
-describe("normalizeGitRemote", () => {
-    it("converts SSH URLs to HTTPS and strips .git", () => {
-        expect(normalizeGitRemote("git@github.com:paritytech/playground-cli.git\n")).toBe(
-            "https://github.com/paritytech/playground-cli",
-        );
+describe("buildMetadata", () => {
+    it("includes repository when repositoryUrl is non-null", () => {
+        const meta = buildMetadata({ repositoryUrl: "https://github.com/x/y", readme: null });
+        expect(meta).toEqual({ repository: "https://github.com/x/y" });
     });
 
-    it("strips .git from HTTPS URLs", () => {
-        expect(normalizeGitRemote("https://github.com/foo/bar.git")).toBe(
-            "https://github.com/foo/bar",
-        );
+    it("omits repository entirely when repositoryUrl is null", () => {
+        const meta = buildMetadata({ repositoryUrl: null, readme: null });
+        expect(meta.repository).toBeUndefined();
     });
 
-    it("leaves non-.git URLs unchanged", () => {
-        expect(normalizeGitRemote("https://example.com/app")).toBe("https://example.com/app");
+    it("includes README when present", () => {
+        const meta = buildMetadata({
+            repositoryUrl: null,
+            readme: { kind: "ok", content: "hello", size: 5 },
+        });
+        expect(meta).toEqual({ readme: "hello" });
     });
 });
 
@@ -182,12 +184,11 @@ describe("publishToPlayground", () => {
         }
     });
 
-    it("omits the repository field when no git remote is available", async () => {
+    it("omits the repository field when repositoryUrl is null", async () => {
         const result = await publishToPlayground({
             domain: "my-app.dot",
             publishSigner: fakeSigner,
-            repositoryUrl: undefined,
-            // Force the git probe to return null without touching the user's real repo.
+            repositoryUrl: null,
             cwd: "/definitely/not/a/repo",
         });
         expect(result.metadata).toEqual({});

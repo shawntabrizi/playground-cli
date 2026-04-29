@@ -5,136 +5,86 @@ import { existsSync } from "node:fs";
 import { resolveSigner } from "../../utils/signer.js";
 import { getConnection, destroyConnection } from "../../utils/connection.js";
 import { getRegistryContract } from "../../utils/registry.js";
-import { isGhAuthenticated } from "../../utils/git.js";
-import { Input } from "../../utils/ui/theme/index.js";
 import { AppBrowser, type AppEntry } from "./AppBrowser.js";
 import { SetupScreen } from "./SetupScreen.js";
-import { defaultRepoName, validateRepoName } from "./repoName.js";
+import { defaultRepoName } from "../../utils/git/repoName.js";
+import {
+    onProcessShutdown,
+    scheduleHardExit,
+    startMemoryWatchdog,
+} from "../../utils/process-guard.js";
 
 export const modCommand = new Command("mod")
-    .description("Fork a playground app to customize")
+    .description("Mod a playground app — clone the source as a fresh project to customise")
     .argument("[domain]", "App domain (interactive picker if omitted)")
     .option("--suri <suri>", "Signer secret URI (e.g. //Alice for dev)")
-    .option("--clone", "Clone instead of forking (no GitHub fork created)")
-    .option("-y, --yes", "Skip interactive prompts (use default repo name)")
-    .option("--repo-name <name>", "Repository / directory name (skips the prompt)")
-    .action(
-        async (
-            rawDomain: string | undefined,
-            opts: { suri?: string; clone?: boolean; yes?: boolean; repoName?: string },
-        ) => {
-            const resolved = await resolveSigner({ suri: opts.suri });
-            const client = await getConnection();
-            const registry = await getRegistryContract(client.raw.assetHub, resolved);
+    .action(async (rawDomain: string | undefined, opts: { suri?: string }) => {
+        // Same defense-in-depth as `dot deploy`: a leaky tar/gzip stream or a
+        // stuck IPFS gateway request can climb into GB territory if left
+        // unattended. Cap RSS at 4 GB and force-exit cleanly otherwise.
+        const stopWatchdog = startMemoryWatchdog();
+        onProcessShutdown(stopWatchdog);
 
-            try {
-                // Interactive: browse and pick. Direct: use domain as-is.
-                let domain: string;
-                let metadata: AppEntry | null = null;
+        const resolved = await resolveSigner({ suri: opts.suri });
+        const client = await getConnection();
+        const registry = await getRegistryContract(client.raw.assetHub, resolved);
 
-                if (rawDomain) {
-                    domain = rawDomain.endsWith(".dot") ? rawDomain : `${rawDomain}.dot`;
-                } else {
-                    const picked = await browseAndPick(registry);
-                    domain = picked.domain;
-                    metadata = picked;
-                }
+        try {
+            let domain: string;
+            let metadata: AppEntry | null = null;
 
-                const canFork = !opts.clone && isGhAuthenticated();
-                const targetDir = await resolveTargetDir({
-                    domain,
-                    canFork,
-                    repoName: opts.repoName,
-                    yes: !!opts.yes,
-                });
-                if (!targetDir) return;
-
-                const { ok, setupRan } = await runSetup({
-                    domain,
-                    metadata: metadata
-                        ? {
-                              name: metadata.name ?? undefined,
-                              description: metadata.description ?? undefined,
-                              repository: metadata.repository ?? undefined,
-                          }
-                        : null,
-                    registry,
-                    targetDir,
-                    canFork,
-                });
-
-                console.log();
-                // When `setup.sh` ran, the StepRunner already showed the
-                // script's own "next steps" footer (and the path to the full
-                // log). Only emit the generic fallback when the app didn't
-                // ship a setup.sh.
-                if (ok && !setupRan) {
-                    console.log("  Next steps:");
-                    console.log(`  1. cd ${targetDir}`);
-                    console.log("  2. edit with claude");
-                    console.log("  3. dot deploy --playground");
-                }
-            } finally {
-                resolved.destroy();
-                destroyConnection();
+            if (rawDomain) {
+                domain = rawDomain.endsWith(".dot") ? rawDomain : `${rawDomain}.dot`;
+            } else {
+                const picked = await browseAndPick(registry);
+                domain = picked.domain;
+                metadata = picked;
             }
-        },
-    );
 
-/**
- * Decide the fork / local-directory name, honouring (in order): an explicit
- * `--repo-name`, a `-y` suppression of the prompt, `--clone` skipping the
- * prompt since the name is only a throwaway local dir, and otherwise an
- * interactive prompt with the auto-generated name prefilled as the default.
- * Returns `null` if a supplied name is invalid — the action logs and bails
- * in that case.
- */
-async function resolveTargetDir(args: {
-    domain: string;
-    canFork: boolean;
-    repoName: string | undefined;
-    yes: boolean;
-}): Promise<string | null> {
-    const fallback = defaultRepoName(args.domain);
+            const targetDir = await resolveTargetDir({ domain });
+            if (!targetDir) return;
 
-    if (args.repoName) {
-        const err = validateRepoName(args.repoName);
-        if (err) {
-            console.error(`  ${err}`);
-            process.exitCode = 1;
-            return null;
+            const { ok, setupRan } = await runSetup({
+                domain,
+                metadata: metadata
+                    ? {
+                          name: metadata.name ?? undefined,
+                          description: metadata.description ?? undefined,
+                          repository: metadata.repository ?? undefined,
+                      }
+                    : null,
+                registry,
+                targetDir,
+            });
+
+            console.log();
+            if (ok && !setupRan) {
+                console.log("  Next steps:");
+                console.log(`  1. cd ${targetDir}`);
+                console.log("  2. edit with claude");
+                console.log("  3. dot deploy --playground");
+            }
+        } finally {
+            resolved.destroy();
+            destroyConnection();
+            stopWatchdog();
+            // Same hard-exit safety net as deploy — mod opens an IPFS HTTP
+            // fetch + a polkadot-api WebSocket, either of which can stay
+            // ref'd past the visible work and turn the process into a
+            // zombie.
+            const exitCode = typeof process.exitCode === "number" ? process.exitCode : 0;
+            scheduleHardExit(exitCode);
         }
-        return args.repoName;
-    }
-
-    // We only prompt when forking: the clone path produces a throwaway local
-    // dir, so the random-suffixed default is fine and matches prior behaviour.
-    if (args.yes || !args.canFork) {
-        if (existsSync(fallback)) {
-            console.error(`  Directory "${fallback}" already exists.`);
-            process.exitCode = 1;
-            return null;
-        }
-        return fallback;
-    }
-
-    return promptRepoName(fallback);
-}
-
-function promptRepoName(defaultName: string): Promise<string> {
-    return new Promise((resolve) => {
-        const app = render(
-            React.createElement(Input, {
-                label: "repository name",
-                initial: defaultName,
-                validate: validateRepoName,
-                onSubmit: (name: string) => {
-                    app.unmount();
-                    resolve(name);
-                },
-            }),
-        );
     });
+
+async function resolveTargetDir(args: { domain: string }): Promise<string | null> {
+    const fallback = defaultRepoName(args.domain);
+    if (existsSync(fallback)) {
+        console.error(`  Directory "${fallback}" already exists.`);
+        process.exitCode = 1;
+        return null;
+    }
+    return fallback;
 }
 
 function browseAndPick(registry: any): Promise<AppEntry> {
@@ -142,6 +92,7 @@ function browseAndPick(registry: any): Promise<AppEntry> {
         const app = render(
             React.createElement(AppBrowser, {
                 registry,
+                modableOnly: true,
                 onSelect: (selected: AppEntry) => {
                     app.unmount();
                     resolve(selected);
@@ -156,7 +107,6 @@ function runSetup(props: {
     metadata: Record<string, string | undefined> | null;
     registry: any;
     targetDir: string;
-    canFork: boolean;
 }): Promise<{ ok: boolean; setupRan: boolean }> {
     return new Promise((resolve) => {
         const app = render(

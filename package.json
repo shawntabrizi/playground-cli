@@ -1,7 +1,7 @@
 {
     "name": "playground-cli",
     "description": "CLI for Polkadot Playground",
-    "version": "0.12.0",
+    "version": "0.13.2",
     "private": true,
     "type": "module",
     "packageManager": "pnpm@10.32.1",
@@ -31,12 +31,13 @@
         "@polkadot-apps/terminal": "latest",
         "@polkadot-apps/tx": "latest",
         "@polkadot-apps/utils": "latest",
-        "bulletin-deploy": "0.7.2",
+        "bulletin-deploy": "0.7.6",
         "commander": "^12.0.0",
         "ink": "^5.2.1",
         "polkadot-api": "^1.23.3",
         "react": "^18.3.1",
-        "react-devtools-core": "file:stubs/react-devtools-core"
+        "react-devtools-core": "file:stubs/react-devtools-core",
+        "tar": "^7.5.13"
     },
     "devDependencies": {
         "@biomejs/biome": "^1.9.4",
@@ -44,12 +45,16 @@
         "@types/node": "^22.15.3",
         "@types/react": "^18.3.18",
         "execa": "^9.6.1",
+        "@types/tar": "^7.0.87",
         "typescript": "^5.9.3",
         "vitest": "^3.2.1"
     },
     "pnpm": {
         "onlyBuiltDependencies": [
             "@biomejs/biome"
-        ]
+        ],
+        "overrides": {
+            "@parity/dotns-cli>@polkadot-api/descriptors": "file:./stubs/papi-descriptors-stub"
+        }
     }
 }

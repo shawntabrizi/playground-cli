@@ -15,7 +15,6 @@
  * `storeFile` directly is the scalpel we want.
  */
 
-import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "polkadot-api";
@@ -46,13 +45,9 @@ export interface PublishToPlaygroundOptions {
     domain: string;
     /** Signer that will be recorded as the app owner in the registry. */
     publishSigner: ResolvedSigner;
-    /** Explicit repository URL. If omitted we probe `git remote get-url origin`. */
-    repositoryUrl?: string;
-    /**
-     * Project root. Used both to probe the git remote (when `repositoryUrl`
-     * is absent) and to look for a `README.md` to inline into the metadata.
-     * If omitted, both probes are skipped.
-     */
+    /** Repository URL to record in metadata. `null` = omit the field entirely. */
+    repositoryUrl: string | null;
+    /** Project root. Used to look for a `README.md` to inline into metadata. */
     cwd?: string;
     /** Progress sink for the metadata-upload sub-step. */
     onLogEvent?: (event: DeployLogEvent) => void;
@@ -133,27 +128,14 @@ export function normalizeDomain(domain: string): { label: string; fullDomain: st
     return { label, fullDomain: `${label}.dot` };
 }
 
-/** Normalize `git remote get-url origin` output the same way bulletin-deploy does. */
-export function normalizeGitRemote(raw: string): string {
-    const trimmed = raw.trim();
-    if (trimmed.startsWith("git@")) {
-        return trimmed.replace(/^git@([^:]+):/, "https://$1/").replace(/\.git$/, "");
-    }
-    return trimmed.replace(/\.git$/, "");
-}
-
-/** Try to read the `origin` git remote. Swallow errors — deploy still works without it. */
-export function readGitRemote(cwd?: string): string | null {
-    try {
-        const raw = execFileSync("git", ["remote", "get-url", "origin"], {
-            encoding: "utf8",
-            stdio: ["pipe", "pipe", "pipe"],
-            cwd,
-        });
-        return normalizeGitRemote(raw);
-    } catch {
-        return null;
-    }
+export function buildMetadata(input: {
+    repositoryUrl: string | null;
+    readme: ReadmeStatus | null;
+}): Record<string, string> {
+    const meta: Record<string, string> = {};
+    if (input.repositoryUrl) meta.repository = input.repositoryUrl;
+    if (input.readme && input.readme.kind === "ok") meta.readme = input.readme.content;
+    return meta;
 }
 
 export async function publishToPlayground(
@@ -161,17 +143,8 @@ export async function publishToPlayground(
 ): Promise<PublishToPlaygroundResult> {
     const { label, fullDomain } = normalizeDomain(options.domain);
 
-    const repoUrl = options.repositoryUrl ?? readGitRemote(options.cwd);
-    const metadata: Record<string, string> = {};
-    if (repoUrl) metadata.repository = repoUrl;
-
-    // Inline README.md from the project root when present and within the cap.
-    // Oversized READMEs are deliberately dropped — the UI surfaces a warning
-    // in the confirm stage so the user can bail before we get this far.
-    if (options.cwd) {
-        const readme = readReadme(options.cwd);
-        if (readme.kind === "ok") metadata.readme = readme.content;
-    }
+    const readme = options.cwd ? readReadme(options.cwd) : null;
+    const metadata = buildMetadata({ repositoryUrl: options.repositoryUrl, readme });
 
     const metadataBytes = new Uint8Array(Buffer.from(JSON.stringify(metadata), "utf8"));
 

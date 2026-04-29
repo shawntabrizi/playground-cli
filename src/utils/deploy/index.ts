@@ -15,9 +15,8 @@ export {
 } from "./run.js";
 export {
     publishToPlayground,
+    buildMetadata,
     normalizeDomain,
-    normalizeGitRemote,
-    readGitRemote,
     readReadme,
     README_CAP_BYTES,
     type PublishToPlaygroundOptions,

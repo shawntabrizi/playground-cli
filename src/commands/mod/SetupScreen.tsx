@@ -5,7 +5,13 @@ import { resolve } from "node:path";
 import { getGateway, fetchJson } from "@polkadot-apps/bulletin";
 import { StepRunner, type Step } from "../../utils/ui/components/StepRunner.js";
 import { Header, Hint, Row, Section } from "../../utils/ui/theme/index.js";
-import { forkAndClone, cloneRepo, runCommand } from "../../utils/git.js";
+import { runCommand } from "../../utils/git.js";
+import {
+    downloadGitHubTarball,
+    parseGitHubRepoUrl,
+    resolveDefaultBranch,
+} from "../../utils/mod/source.js";
+import { commandExists } from "../../utils/toolchain.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 
 interface AppMetadata {
@@ -22,18 +28,10 @@ interface Props {
     metadata: AppMetadata | null;
     registry: any;
     targetDir: string;
-    canFork: boolean;
     onDone: (result: { ok: boolean; setupRan: boolean }) => void;
 }
 
-export function SetupScreen({
-    domain,
-    metadata: initial,
-    registry,
-    targetDir,
-    canFork,
-    onDone,
-}: Props) {
+export function SetupScreen({ domain, metadata: initial, registry, targetDir, onDone }: Props) {
     // Metadata is fetched in step 1 and shared with later steps via this ref
     let meta: AppMetadata = initial ?? {};
     // Tracks whether `setup.sh` actually ran to completion in this session.
@@ -65,14 +63,42 @@ export function SetupScreen({
             },
         },
         {
-            name: canFork ? "fork & clone" : "clone",
+            name: "download source",
             run: async (log) => {
-                const repo = meta.repository!;
-                if (canFork) {
-                    await forkAndClone(repo, targetDir, { branch: meta.branch, log });
-                } else {
-                    await cloneRepo(repo, targetDir, { branch: meta.branch, log });
+                const repoUrl = meta.repository;
+                if (!repoUrl)
+                    throw new Error(
+                        `App "${domain}" is not modable — no source repository published.`,
+                    );
+                const ref = parseGitHubRepoUrl(repoUrl);
+                if (!ref) {
+                    throw new Error(
+                        `Only GitHub-hosted source is supported for dot mod today (got ${repoUrl}).`,
+                    );
                 }
+                const branch = meta.branch ?? (await resolveDefaultBranch(ref));
+                log(`downloading github.com/${ref.owner}/${ref.repo} (${branch})…`);
+                await downloadGitHubTarball({
+                    owner: ref.owner,
+                    repo: ref.repo,
+                    branch,
+                    targetDir,
+                });
+
+                if (await commandExists("git")) {
+                    log("initializing fresh git history…");
+                    await runCommand("git init", { cwd: targetDir, log });
+                    await runCommand("git add -A", { cwd: targetDir, log });
+                    await runCommand(`git commit -m "Initial commit from ${domain}"`, {
+                        cwd: targetDir,
+                        log,
+                    });
+                } else {
+                    log(
+                        "git not on PATH — skipping git init (mod still works, you can init later)",
+                    );
+                }
+
                 stripPostinstall(targetDir);
                 writeDotJson(targetDir, meta.name ?? domain.replace(/\.dot$/, ""), meta);
                 ignoreModSetupLog(targetDir);

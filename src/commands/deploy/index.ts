@@ -28,6 +28,12 @@ import { loadDetectInput } from "../../utils/build/runner.js";
 import { readSessionAccount, SESSION_MIN_BALANCE } from "../../utils/deploy/session-account.js";
 import { checkBalance } from "../../utils/account/funding.js";
 import { DEFAULT_BUILD_DIR, type Env } from "../../config.js";
+import {
+    ensureGitInstalled,
+    ensureGhInstalled,
+    ensureGhAuthed,
+    resolveRepositoryUrl,
+} from "../../utils/deploy/modable.js";
 
 interface DeployOpts {
     suri?: string;
@@ -45,6 +51,10 @@ interface DeployOpts {
     build?: boolean;
     /** Deploy the project's contracts alongside the frontend. Defaults to false. */
     contracts?: boolean;
+    /** Publish the source repo so others can `dot mod` it. Commander auto-negates: `--no-modable` ⇒ false. */
+    modable?: boolean;
+    /** Repo name to use when `--modable` creates a new GitHub repo. */
+    repoName?: string;
     env?: Env;
     /** Project root. Hidden — defaults to cwd. */
     dir?: string;
@@ -70,6 +80,12 @@ export const deployCommand = new Command("deploy")
         "--private",
         "Publish to the playground with private visibility (owner-only). Requires --playground.",
     )
+    .option(
+        "--modable",
+        "Publish the source repo so others can `dot mod` it. Requires --playground and a public GitHub remote.",
+    )
+    .option("--no-modable", "Explicitly skip publishing source (the default).")
+    .option("--repo-name <name>", "Repo name to use if --modable creates a new GitHub repo")
     .option("--suri <suri>", "Secret URI for the user signer (e.g. //Alice for dev)")
     .addOption(
         new Option("--env <env>", "Target environment")
@@ -269,6 +285,24 @@ async function runHeadless(ctx: {
     }
     process.stdout.write(`✔ ${formatAvailability(availability)}\n`);
 
+    const modable = ctx.opts.modable === true;
+
+    let repositoryUrl: string | null = null;
+    if (modable) {
+        if (!publishToPlayground) {
+            throw new Error(
+                "--modable requires --playground (no metadata is published without it).",
+            );
+        }
+        await ensureGitInstalled();
+        await ensureGhInstalled();
+        await ensureGhAuthed();
+        repositoryUrl = await resolveRepositoryUrl({
+            cwd: ctx.projectDir,
+            repoName: ctx.opts.repoName ?? null,
+        });
+    }
+
     const contractsFundingNeeded = await computeContractsFundingNeeded({
         deployContracts,
         userSigner: ctx.userSigner,
@@ -287,6 +321,8 @@ async function runHeadless(ctx: {
         buildDir,
         skipBuild,
         publishToPlayground,
+        modable,
+        repositoryUrl,
         approvals: setup.approvals,
     });
     process.stdout.write("\n" + renderSummaryText(view) + "\n");
@@ -299,6 +335,8 @@ async function runHeadless(ctx: {
         mode,
         publishToPlayground,
         playgroundPrivate: Boolean(ctx.opts.private),
+        modable,
+        repositoryUrl,
         deployContracts,
         contractsFundingNeeded,
         userSigner: ctx.userSigner,
@@ -364,6 +402,9 @@ function runInteractive(ctx: {
                 skipBuild: ctx.opts.build === false ? true : null,
                 contractsType,
                 deployContracts: ctx.opts.contracts !== undefined ? ctx.opts.contracts : null,
+                modable:
+                    ctx.opts.modable === true ? true : ctx.opts.modable === false ? false : null,
+                repoName: ctx.opts.repoName ?? null,
                 userSigner: ctx.userSigner,
                 onDone: (outcome: DeployOutcome | null) => {
                     if (settled) return;

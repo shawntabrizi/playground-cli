@@ -13,6 +13,8 @@ export interface SummaryInputs {
     buildDir: string;
     skipBuild: boolean;
     publishToPlayground: boolean;
+    modable?: boolean;
+    repositoryUrl?: string | null;
     approvals: DeployApproval[];
     /** Contract project kind + user's yes/no. Omit when no contracts were detected. */
     contracts?: { type: ContractsType; deploy: boolean };
@@ -40,6 +42,12 @@ export function buildSummaryView(input: SummaryInputs): SummaryView {
             value: input.publishToPlayground ? "Playground + your apps" : "DotNS only",
         },
     ];
+    if (input.publishToPlayground) {
+        rows.push({
+            label: "Modable",
+            value: input.modable ? `yes — ${input.repositoryUrl}` : "no",
+        });
+    }
     if (input.contracts) {
         rows.push({
             label: "Contracts",

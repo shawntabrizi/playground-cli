@@ -14,7 +14,7 @@ function run(cmd: string, opts?: { shell?: string }): Promise<string> {
     });
 }
 
-async function commandExists(cmd: string): Promise<boolean> {
+export async function commandExists(cmd: string): Promise<boolean> {
     if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) {
         throw new Error(`Invalid command name: ${cmd}`);
     }
@@ -140,6 +140,22 @@ export const TOOL_STEPS: ToolStep[] = [
             ),
         manualHint:
             "curl -L https://raw.githubusercontent.com/paritytech/foundry-polkadot/refs/heads/master/foundryup/install | bash && ~/.foundry/bin/foundryup-polkadot",
+    },
+    {
+        name: "git",
+        check: () => commandExists("git"),
+        install: async (onData) => {
+            if (platform() === "darwin" && (await commandExists("brew"))) {
+                await runPiped("brew install git", onData);
+            } else if (platform() === "linux") {
+                await runPiped("sudo apt update && sudo apt install -y git", onData);
+            } else {
+                throw new Error(
+                    "Cannot install git automatically on this platform — install manually.",
+                );
+            }
+        },
+        manualHint: "https://git-scm.com/downloads",
     },
     {
         name: "GitHub CLI",

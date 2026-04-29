@@ -74,6 +74,10 @@ export interface RunDeployOptions {
     publishToPlayground: boolean;
     /** Publish to the playground with private visibility (owner-only). Ignored when `publishToPlayground` is false. */
     playgroundPrivate?: boolean;
+    /** Whether the deploy should publish source as modable. */
+    modable?: boolean;
+    /** Resolved public repository URL to record in metadata (modable=true) or `null` (modable=false). */
+    repositoryUrl?: string | null;
     /** Compile + deploy foundry/hardhat/cdm contracts alongside the frontend. */
     deployContracts?: boolean;
     /** The logged-in phone signer. Required for `mode === "phone"` or `publishToPlayground`. */
@@ -195,6 +199,7 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
             const pub = await publishToPlayground({
                 domain: fullDomain,
                 publishSigner: wrappedPublishSigner,
+                repositoryUrl: options.repositoryUrl ?? null,
                 cwd: options.projectDir,
                 onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
                 env: options.env,

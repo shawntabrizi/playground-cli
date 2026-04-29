@@ -55,10 +55,12 @@ Flags:
 - `--domain <name>` — DotNS label (with or without the `.dot` suffix). Interactive prompt if omitted.
 - `--buildDir <path>` — directory holding the built artifacts (default `dist/`). Interactive prompt if omitted.
 - `--playground` — publish to the playground registry so the app appears under "my apps". Interactive prompt (default: no) if omitted.
+- `--modable` / `--no-modable` — publish the source repo URL alongside the deploy so others can `dot mod` it. Requires `--playground`. Interactive prompt (default: no) if omitted. When set, `dot deploy` ensures `git` and `gh` are installed (auto-installs if missing), confirms `gh` is authenticated (run `gh auth login` first if not — the deploy will fail with a hint otherwise), then either pushes `HEAD` to the existing `origin` or runs `gh repo create --public --push` to set one up. The resulting URL is recorded in the Bulletin metadata.
+- `--repo-name <name>` — repo name to use when `--modable` needs to create a new GitHub repo (no existing `origin`). Defaults to the basename of the project directory; validated against GitHub's repository-name rules.
 - `--suri <suri>` — override signer with a dev secret URI (e.g. `//Alice`). Useful for CI.
 - `--env <env>` — `testnet` (default) or `mainnet` (not yet supported).
 
-Passing all four of `--signer`, `--domain`, `--buildDir`, and `--playground` runs in fully non-interactive mode. Any absent flag is filled in by the TUI prompt.
+Passing all four of `--signer`, `--domain`, `--buildDir`, and `--playground` runs in fully non-interactive mode. Any absent flag is filled in by the TUI prompt. `--modable` is independently optional in both modes — its absence means a non-modable deploy.
 
 **Requirement**: the `ipfs` CLI (Kubo) must be on `PATH`. `dot init` installs it; if you skipped init you can install it manually (`brew install ipfs` or follow [docs.ipfs.tech/install](https://docs.ipfs.tech/install/)). This is a temporary requirement while `bulletin-deploy`'s pure-JS merkleizer has a bug that makes the browser fallback unusable.
 
@@ -66,17 +68,16 @@ The publish step is always signed by the user so the registry contract records t
 
 ### `dot mod`
 
-Fork (or clone) a playground app into a local directory so you can customise and re-deploy it. Fetches the app's metadata from the registry, forks the underlying GitHub repo into your account (falling back to a fresh-history clone if `gh` isn't authenticated or `--clone` is passed), runs its `setup.sh`, and prints next steps.
+Pull a modable playground app's source into a fresh local project so you can customise and re-deploy it. The interactive picker only shows apps that opted into modable at deploy time; non-modable apps surface a clear "this app is not modable" error if you target them by domain.
+
+The implementation is GitHub-only and **requires no CLI tooling** — neither `git` nor `gh` is needed. Source is downloaded as a tarball over HTTPS from `codeload.github.com` (no auth needed for public repos), extracted into the target dir, then `git init`'d as a fresh history *if* `git` happens to be on `PATH`. With `git` absent, the directory still works — you just don't get version control until you install git yourself.
 
 Flags:
 
-- `[domain]` — positional; interactive picker over the registry if omitted. `.dot` suffix optional.
-- `--clone` — clone instead of forking. Skips the repo-name prompt (the target is only a throwaway local directory).
+- `[domain]` — positional; interactive picker over the registry if omitted. `.dot` suffix optional. The picker is filtered to modable apps only.
 - `--suri <suri>` — dev signer secret URI (e.g. `//Alice`).
-- `-y, --yes` — skip interactive prompts; use the auto-generated default repo name.
-- `--repo-name <name>` — repo / directory name; skips the prompt. Validated against GitHub's repository-name rules (letters, digits, `.`, `-`, `_`, not leading with `.` or `-`) and rejected if the directory already exists.
 
-When forking, you're prompted for the repo name after picking an app; the default is `<slug>-<6 hex chars>` and Enter keeps it. Pass `--repo-name` or `-y` to run non-interactively.
+The local directory name is auto-generated as `<slug>-<6 hex chars>` so repeated mods of the same starter never collide (unlike GitHub forks, which were limited to one per account per repo).
 
 ## Troubleshooting
 
