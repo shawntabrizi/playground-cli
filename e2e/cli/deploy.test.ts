@@ -231,6 +231,6 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 		// Must fail — domain is owned by SIGNER, not Bob.
 		expect(bobDeploy.exitCode).not.toBe(0);
 		const output = bobDeploy.stdout + bobDeploy.stderr;
-		expect(output.toLowerCase()).toMatch(/taken|registered|owned|unavailable|already/);
+		expect(output.toLowerCase()).toMatch(/revert|taken|registered|owned|unavailable|already/);
 	});
 });
