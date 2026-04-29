@@ -24,6 +24,8 @@ describe("DotNS CLI runtime dependency", () => {
         );
         expect(dispatcherSource).toContain("pathToFileURL(dotnsCliPath)");
         expect(dispatcherSource).toContain('[process.argv[0] ?? "dot", scriptPath, ...argv]');
+        expect(dispatcherSource).toContain("process.exit =");
         expect(dispatcherSource).not.toContain('"dotns", ...argv');
+        expect(dispatcherSource).not.toContain(".main(");
     });
 });

@@ -7,12 +7,25 @@ export function buildDotnsCliArgv(argv: string[], scriptPath = dotnsCliPath): st
 }
 
 export async function runDotnsCliSubprocess(argv: string[]): Promise<number> {
+    const originalExit = process.exit;
+    let resolved = false;
+    const exitCode = new Promise<number>((resolve) => {
+        process.exit = ((code?: string | number | null | undefined) => {
+            const numericCode = typeof code === "number" ? code : 0;
+            if (!resolved) {
+                resolved = true;
+                resolve(numericCode);
+            }
+            return originalExit(numericCode);
+        }) as typeof process.exit;
+    });
+
     process.argv = buildDotnsCliArgv(argv);
-    const mod = (await import(pathToFileURL(dotnsCliPath).href)) as {
-        main?: (argv?: string[]) => Promise<number>;
-    };
-    if (typeof mod.main !== "function") {
-        throw new Error("Embedded DotNS CLI did not export main()");
+    try {
+        // The bundled DotNS CLI auto-runs on import under Bun's compiled binary.
+        await import(pathToFileURL(dotnsCliPath).href);
+        return await exitCode;
+    } finally {
+        process.exit = originalExit;
     }
-    return await mod.main(process.argv);
 }
