@@ -103,6 +103,7 @@ async function runModCommand(
             console.log("  2. edit with claude");
             console.log("  3. dot deploy --playground");
         }
+        if (!ok) process.exitCode = 1;
     } finally {
         resolved?.destroy();
         destroyConnection();

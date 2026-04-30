@@ -1,0 +1,7 @@
+[package]
+name = "e2e-flipper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pvm-contract = "0.1"

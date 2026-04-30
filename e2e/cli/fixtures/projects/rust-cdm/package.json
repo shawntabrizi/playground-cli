@@ -1,0 +1,8 @@
+{
+	"name": "e2e-rust-cdm",
+	"version": "0.0.1",
+	"private": true,
+	"scripts": {
+		"build": "mkdir -p dist && echo '<h1>rust cdm app</h1>' > dist/index.html"
+	}
+}

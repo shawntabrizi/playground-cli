@@ -15,7 +15,8 @@
         "build": "bun build --compile src/index.ts --outfile ./dist/dot",
         "cli:install": "bun build --compile src/index.ts --outfile ~/.polkadot/bin/dot",
         "test": "vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "test:e2e": "vitest run --config e2e/vitest.config.ts"
     },
     "dependencies": {
         "@dotdm/contracts": "latest",
@@ -45,6 +46,7 @@
         "@changesets/cli": "^2.29.8",
         "@types/node": "^22.15.3",
         "@types/react": "^18.3.18",
+        "execa": "^9.6.1",
         "@types/tar": "^7.0.87",
         "typescript": "^5.9.3",
         "vitest": "^3.2.1"

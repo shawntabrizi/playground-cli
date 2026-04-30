@@ -1,0 +1,4 @@
+{
+	"abi": [{"type":"function","name":"unlock","inputs":[],"outputs":[],"stateMutability":"nonpayable"}],
+	"bytecode": "0x6080604052"
+}
