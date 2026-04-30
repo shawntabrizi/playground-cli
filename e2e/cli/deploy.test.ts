@@ -13,10 +13,10 @@
  * - The --contracts flag
  */
 
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect } from "vitest";
 import { resolve } from "node:path";
 import { dot } from "./helpers/dot.js";
-import { SIGNER, BOB, uniqueDomain } from "./fixtures/accounts.js";
+import { SIGNER, BOB, E2E_DOMAINS } from "./fixtures/accounts.js";
 import { fixturePath } from "./fixtures/templates.js";
 
 const frontendOnly = fixturePath("frontend-only");
@@ -35,7 +35,7 @@ describe("dot deploy — preflight and validation", () => {
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
-			"--domain", "test",
+			"--domain", E2E_DOMAINS.preflight,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
 			"--env", "mainnet",
@@ -51,7 +51,7 @@ describe("dot deploy — preflight and validation", () => {
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
-			"--domain", uniqueDomain(),
+			"--domain", E2E_DOMAINS.preflight,
 			"--buildDir", absBuildDir(foundry),
 			"--no-build",
 			"--contracts",
@@ -70,7 +70,7 @@ describe("dot deploy — preflight and validation", () => {
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
-			"--domain", uniqueDomain(),
+			"--domain", E2E_DOMAINS.preflight,
 			"--buildDir", absBuildDir(hardhat),
 			"--no-build",
 			"--contracts",
@@ -87,7 +87,7 @@ describe("dot deploy — preflight and validation", () => {
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
-			"--domain", uniqueDomain(),
+			"--domain", E2E_DOMAINS.preflight,
 			"--buildDir", absBuildDir(rustCdm),
 			"--no-build",
 			"--contracts",
@@ -104,7 +104,7 @@ describe("dot deploy — preflight and validation", () => {
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
-			"--domain", uniqueDomain(),
+			"--domain", E2E_DOMAINS.preflight,
 			"--buildDir", absBuildDir(multiContract),
 			"--no-build",
 			"--contracts",
@@ -121,7 +121,7 @@ describe("dot deploy — preflight and validation", () => {
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
-			"--domain", uniqueDomain(),
+			"--domain", E2E_DOMAINS.preflight,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--no-build",
 			"--contracts",
@@ -134,7 +134,7 @@ describe("dot deploy — preflight and validation", () => {
 	});
 
 	test("domain availability check runs before build/upload", { timeout: 300_000 }, async () => {
-		const domain = uniqueDomain();
+		const domain = E2E_DOMAINS.preflight;
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
@@ -151,13 +151,8 @@ describe("dot deploy — preflight and validation", () => {
 });
 
 describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", () => {
-	let domain: string;
-
-	beforeEach(() => {
-		domain = uniqueDomain();
-	});
-
 	test("frontend-only deploy completes end-to-end", { timeout: 450_000 }, async () => {
+		const domain = E2E_DOMAINS.storage;
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
@@ -178,6 +173,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 	});
 
 	test("re-deploy same domain succeeds for same owner", { timeout: 900_000 }, async () => {
+		const domain = E2E_DOMAINS.redeploy;
 		const first = await dot([
 			"deploy",
 			"--signer", "dev",
@@ -208,6 +204,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 	});
 
 	test("domain taken by another account shows unavailable", { timeout: 900_000 }, async () => {
+		const domain = E2E_DOMAINS.collision;
 		const ownerDeploy = await dot([
 			"deploy",
 			"--signer", "dev",

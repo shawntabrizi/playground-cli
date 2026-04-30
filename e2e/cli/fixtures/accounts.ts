@@ -65,11 +65,32 @@ export const ALICE: TestAccount = devAccount("Alice");
 export const BOB: TestAccount = devAccount("Bob");
 
 /**
- * Generate a unique .dot domain name for deploy tests.
- * Format mirrors `<word>-dev<NN>`.
+ * Fixed `.dot` domain names for deploy tests. SIGNER owns all of these after
+ * the first CI run; subsequent runs re-publish to the same domains, which the
+ * registry contract permits for the same owner. This keeps the playground
+ * registry from accumulating a new entry on every CI run.
+ *
+ * Use a separate domain per test that exercises a meaningfully different
+ * publish path (storage / re-deploy / cross-owner collision); reuse a single
+ * domain for the preflight / validation tests.
+ *
+ * NOTE: do not assert on the registry state of `preflight` — it's shared by
+ * six tests in the same file and the metadata at any moment reflects whichever
+ * one ran last. Stdout assertions are fine. If you need to assert on registry
+ * state for a new test, give it its own dedicated domain here.
  */
-export function uniqueDomain(): string {
-	const rand = Math.random().toString(36).slice(2, 6);
-	const suffix = String(Date.now()).slice(-2);
-	return `e2e${rand}-dev${suffix}`;
-}
+export const E2E_DOMAINS = {
+	/**
+	 * Shared by the validation tests in `dot deploy — preflight and validation`.
+	 * `--no-build` only skips the build step, not the publish — so some of these
+	 * tests do reach `registry.publish`. SIGNER ends up owning this domain
+	 * regardless; subsequent runs are same-owner re-publishes.
+	 */
+	preflight: "e2e-cli-preflight",
+	/** Used by the storage-phase happy path. */
+	storage: "e2e-cli-storage",
+	/** Used by the same-owner re-deploy test. */
+	redeploy: "e2e-cli-redeploy",
+	/** Used by the cross-owner collision test (BOB tries to take SIGNER's). */
+	collision: "e2e-cli-collision",
+} as const;
