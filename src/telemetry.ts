@@ -78,7 +78,12 @@ export function isExpectedCliError(message: string): boolean {
     );
 }
 
-export async function initTelemetry(): Promise<void> {
+export interface TelemetryInitOptions {
+    /** Override the default Sentry transport. Used by tests to capture envelopes. */
+    transport?: (options: unknown) => unknown;
+}
+
+export async function initTelemetry(options: TelemetryInitOptions = {}): Promise<void> {
     if (initStarted || !isTelemetryEnabled()) return;
     initStarted = true;
 
@@ -106,6 +111,7 @@ export async function initTelemetry(): Promise<void> {
                     event as unknown as Record<string, unknown>,
                 ) as unknown as typeof event;
             },
+            transport: options.transport as never,
         });
         Sentry.setTag("cli.tool_version", VERSION);
         Sentry.setContext("playground-cli", {
@@ -201,11 +207,7 @@ export async function withCommandTelemetry<T>(
     return withRootSpan(`cli.${command}`, `dot ${command}`, getCliRootAttributes(command), fn);
 }
 
-export async function withSpan<T>(
-    op: string,
-    name: string,
-    fn: () => Promise<T> | T,
-): Promise<T>;
+export async function withSpan<T>(op: string, name: string, fn: () => Promise<T> | T): Promise<T>;
 export async function withSpan<T>(
     op: string,
     name: string,
@@ -221,8 +223,7 @@ export async function withSpan<T>(
     const fn = (typeof attributesOrFn === "function" ? attributesOrFn : maybeFn) as () =>
         | Promise<T>
         | T;
-    const attributes =
-        typeof attributesOrFn === "function" ? {} : (attributesOrFn ?? {});
+    const attributes = typeof attributesOrFn === "function" ? {} : (attributesOrFn ?? {});
     if (!Sentry) return await fn();
     return await Sentry.startSpan(
         { op, name, attributes: sanitizeAttributes(attributes) },
@@ -306,6 +307,11 @@ export async function closeTelemetry(timeoutMs: number): Promise<void> {
     } catch {
         // ignore
     }
+}
+
+export function _resetTelemetryForTesting(): void {
+    Sentry = null;
+    initStarted = false;
 }
 
 export function getRuntimeTelemetryContext(): Record<string, string> {
