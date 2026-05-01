@@ -22,7 +22,26 @@ vi.mock("../../utils/connection.js", () => ({
     destroyConnection: vi.fn(),
 }));
 
-const { safeDetectContractsType, computeContractsFundingNeeded } = await import("./index.js");
+const { safeDetectContractsType, computeContractsFundingNeeded, shouldResolveUserSigner } =
+    await import("./index.js");
+
+describe("shouldResolveUserSigner", () => {
+    it("skips signer lookup for pure dev deploys", () => {
+        expect(shouldResolveUserSigner({ mode: "dev" })).toBe(false);
+    });
+
+    it("loads the logged-in signer for dev deploys that publish to playground", () => {
+        expect(shouldResolveUserSigner({ mode: "dev", publishToPlayground: true })).toBe(true);
+    });
+
+    it("loads a signer for phone mode", () => {
+        expect(shouldResolveUserSigner({ mode: "phone" })).toBe(true);
+    });
+
+    it("loads a signer when a suri is supplied", () => {
+        expect(shouldResolveUserSigner({ mode: "dev", suri: "//Alice" })).toBe(true);
+    });
+});
 
 describe("safeDetectContractsType", () => {
     let tmp: string;
