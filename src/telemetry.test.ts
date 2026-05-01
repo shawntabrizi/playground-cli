@@ -136,11 +136,18 @@ describe("error helpers", () => {
         expect(errorMessage(undefined)).toBe("undefined");
     });
 
-    it("sanitisedErrorMessage scrubs paths and truncates to 200 chars", async () => {
-        const { sanitisedErrorMessage } = await import("./telemetry.js");
-        const long = "x".repeat(500) + " /Users/alice/repo/file.ts";
-        const out = sanitisedErrorMessage(new Error(long));
-        expect(out.length).toBe(200);
-        expect(out).not.toContain("alice");
+    it("sanitizedErrorMessage scrubs paths and truncates to 200 chars", async () => {
+        const { sanitizedErrorMessage } = await import("./telemetry.js");
+
+        // Scrubbing: path within the first 200 chars must be redacted.
+        const withPath = "/Users/alice/repo/file.ts failed";
+        const scrubbed = sanitizedErrorMessage(new Error(withPath));
+        expect(scrubbed).not.toContain("alice");
+        expect(scrubbed).toContain("/Users/<redacted>");
+
+        // Truncation: output must never exceed 200 chars.
+        const long = "x".repeat(500);
+        const truncated = sanitizedErrorMessage(new Error(long));
+        expect(truncated.length).toBe(200);
     });
 });

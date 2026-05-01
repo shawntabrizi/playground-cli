@@ -29,7 +29,7 @@ export function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-export function sanitisedErrorMessage(error: unknown): string {
+export function sanitizedErrorMessage(error: unknown): string {
     return truncateString(scrubPaths(errorMessage(error)));
 }
 
