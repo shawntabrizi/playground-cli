@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.15.2
+
+### Patch Changes
+
+- f2f43c4: Suppress the non-fatal `ReviveApi_trace_call` compatibility stack during Playground registry contract dry-runs.
+
 ## 0.15.1
 
 ### Patch Changes
