@@ -65,14 +65,18 @@ describe("runCliCommand", () => {
         expect(stopWatchdog).toHaveBeenCalledTimes(1);
     });
 
-    it("defaults exit code to 1 when the action throws without setting process.exitCode", async () => {
-        // process.exitCode is reset to 0 in beforeEach
+    it("does NOT schedule hard exit when the action throws without setting process.exitCode", async () => {
+        // process.exitCode is reset to 0 in beforeEach. The throw without explicit
+        // exit code means runCliCommand should let the error propagate naturally to
+        // src/index.ts's outer catch (which prints + sets exitCode + exits). If
+        // runCliCommand pre-set exitCode here, index.ts's gated printer would skip
+        // the user-visible message and the process would exit silently.
         await expect(
             runCliCommand("deploy", { watchdog: false, hardExit: true }, async () => {
                 throw new Error("boom");
             }),
         ).rejects.toThrow("boom");
-        expect(scheduleHardExit).toHaveBeenCalledWith(1);
+        expect(scheduleHardExit).not.toHaveBeenCalled();
     });
 
     it("preserves an explicit non-zero exit code set before throw", async () => {

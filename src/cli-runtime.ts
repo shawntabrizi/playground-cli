@@ -53,8 +53,21 @@ export async function runCliCommand(
                 typeof process.exitCode === "number" && process.exitCode !== 0
                     ? process.exitCode
                     : null;
-            const fallback = caughtError ? 1 : 0;
-            scheduleHardExit(explicit ?? fallback);
+            if (explicit !== null) {
+                // Caller set an explicit exit code (e.g. via inner catch).
+                // Preserve it and install the hard-exit safety net.
+                scheduleHardExit(explicit);
+            } else if (!caughtError) {
+                // Clean success path — install the safety net at exit code 0.
+                scheduleHardExit(0);
+            }
+            // Else (uncaught error, no explicit exit code): do NOT schedule hard exit.
+            // `scheduleHardExit` would pre-set process.exitCode=1, which suppresses the
+            // outer error printer in `src/index.ts`. Letting the rethrow propagate
+            // naturally lets index.ts print the error message AND set the exit code
+            // before its own `process.exit(...)` fires. The hard-exit safety net is
+            // not needed on this path because the index.ts catch is short and ends in
+            // a synchronous `process.exit`.
         }
     }
     if (caughtError) throw caughtError;
