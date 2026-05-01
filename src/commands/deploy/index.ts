@@ -126,7 +126,13 @@ export const deployCommand = new Command("deploy")
                         "cli.deploy.preflight",
                         "deploy preflight",
                         { "cli.deploy.env": env },
-                        () => preflight({ env, suri: opts.suri, mode: opts.signer }),
+                        () =>
+                            preflight({
+                                env,
+                                suri: opts.suri,
+                                mode: opts.signer,
+                                publishToPlayground: opts.playground === true,
+                            }),
                     );
                 } catch (err) {
                     process.stderr.write(`\n✖ ${formatError(err)}\n`);
@@ -185,20 +191,21 @@ async function preflight(opts: {
     env: Env;
     suri?: string;
     mode?: SignerMode;
+    publishToPlayground?: boolean;
 }): Promise<ResolvedSigner | null> {
     // If the user explicitly asked for dev mode with no --playground and no
     // --suri, we don't need a signer at all.
-    const mayNeedSigner = opts.mode !== "dev" || opts.suri !== undefined;
-    if (!mayNeedSigner) return null;
+    if (!shouldResolveUserSigner(opts)) return null;
 
     let signer: ResolvedSigner;
     try {
         signer = await resolveSigner({ suri: opts.suri });
     } catch (err) {
         if (err instanceof SignerNotAvailableError) {
-            // Dev mode: we can still run without a signer as long as --playground
-            // wasn't asked for. The caller validates that separately.
-            if (opts.mode === "dev") return null;
+            // Pure dev mode can still run without a signer, but playground
+            // publish needs the logged-in account so registry ownership lands
+            // on the user instead of a shared dev key.
+            if (opts.mode === "dev" && !opts.publishToPlayground) return null;
             throw err;
         }
         throw err;
@@ -238,6 +245,14 @@ async function preflight(opts: {
     }
 
     return signer;
+}
+
+export function shouldResolveUserSigner(opts: {
+    suri?: string;
+    mode?: SignerMode;
+    publishToPlayground?: boolean;
+}): boolean {
+    return opts.mode !== "dev" || opts.suri !== undefined || opts.publishToPlayground === true;
 }
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────

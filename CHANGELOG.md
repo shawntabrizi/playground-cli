@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.15.3
+
+### Patch Changes
+
+- 9d0a0ba: Load the logged-in account for `dot deploy --signer dev --playground` so Playground registry publishes can be signed by the app owner.
+
 ## 0.15.2
 
 ### Patch Changes
