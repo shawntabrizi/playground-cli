@@ -29,12 +29,7 @@ import { loadDetectInput } from "../../utils/build/runner.js";
 import { readSessionAccount, SESSION_MIN_BALANCE } from "../../utils/deploy/session-account.js";
 import { checkBalance } from "../../utils/account/funding.js";
 import { DEFAULT_BUILD_DIR, type Env } from "../../config.js";
-import {
-    ensureGitInstalled,
-    ensureGhInstalled,
-    ensureGhAuthed,
-    resolveRepositoryUrl,
-} from "../../utils/deploy/modable.js";
+import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/modable.js";
 
 interface DeployOpts {
     suri?: string;
@@ -317,11 +312,10 @@ async function runHeadless(ctx: {
             {},
             async () => {
                 await ensureGitInstalled();
-                await ensureGhInstalled();
-                await ensureGhAuthed();
                 return resolveRepositoryUrl({
                     cwd: ctx.projectDir,
                     repoName: ctx.opts.repoName ?? null,
+                    onLog: (line) => process.stdout.write(`${line}\n`),
                 });
             },
         );

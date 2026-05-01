@@ -1,7 +1,7 @@
 /**
- * `dot deploy --modable` preflight: ensures git+gh are installed and
- * authenticated, then resolves the public GitHub URL we'll record in the
- * Bulletin metadata.
+ * `dot deploy --modable` preflight: resolves the public GitHub URL we'll
+ * record in the Bulletin metadata. Existing origins are used as-is; gh auth
+ * is only needed when we have to create and push a new public repo.
  *
  * The pure `decideRepositoryAction` separates the decision from the I/O so
  * the branching logic is unit-testable without mocking child_process.
@@ -52,10 +52,10 @@ export async function ensureGhInstalled(onLog?: (line: string) => void): Promise
  * Ensure `gh` is authenticated. We deliberately do NOT shell out to
  * `gh auth login` from here — even when called from the interactive deploy,
  * Ink owns stdout/stdin and a `stdio: "inherit"` child would race Ink for
- * keystrokes and produce a garbled UI. Instead, both interactive and
- * non-interactive paths fail with the same actionable message: run
- * `gh auth login` once outside `dot`, then retry. The auth persists across
- * runs, so this is a one-time speedbump per machine.
+ * keystrokes and produce a garbled UI. Instead, repo-creation paths fail with
+ * the same actionable message: run `gh auth login` once outside `dot`, then
+ * retry. The auth persists across runs, so this is a one-time speedbump per
+ * machine.
  */
 export async function ensureGhAuthed(): Promise<void> {
     try {
@@ -98,17 +98,13 @@ export async function resolveRepositoryUrl(opts: ResolveRepoOptions): Promise<st
         );
     }
     if (action.kind === "use-origin") {
-        opts.onLog?.(`pushing HEAD to existing origin (${action.url})…`);
-        try {
-            await execFileAsync("git", ["push", "origin", "HEAD"], { cwd: opts.cwd });
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            throw new ModablePreflightError(
-                `Push to origin failed: ${msg}. Resolve and retry, or pass --no-modable.`,
-            );
-        }
+        opts.onLog?.(`using existing origin (${action.url})…`);
         return action.url;
     }
+
+    await ensureGhInstalled(opts.onLog);
+    await ensureGhAuthed();
+
     opts.onLog?.(`creating public github repo "${action.repoName}" and pushing…`);
     try {
         await execFileAsync(

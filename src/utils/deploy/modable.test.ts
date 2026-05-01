@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { decideRepositoryAction } from "./modable.js";
+import { describe, it, expect, afterEach } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { decideRepositoryAction, resolveRepositoryUrl } from "./modable.js";
 
 describe("decideRepositoryAction", () => {
     it("uses the existing origin when present", () => {
@@ -28,5 +32,27 @@ describe("decideRepositoryAction", () => {
                 repoName: null,
             }),
         ).toEqual({ kind: "use-origin", url: "https://github.com/foo/bar" });
+    });
+});
+
+describe("resolveRepositoryUrl", () => {
+    let tmp: string | null = null;
+
+    afterEach(() => {
+        if (tmp) rmSync(tmp, { recursive: true, force: true });
+        tmp = null;
+    });
+
+    it("uses an existing origin without pushing", async () => {
+        tmp = mkdtempSync(join(tmpdir(), "pg-modable-origin-"));
+        execFileSync("git", ["init"], { cwd: tmp, stdio: "ignore" });
+        execFileSync("git", ["remote", "add", "origin", "git@github.com:foo/bar.git"], {
+            cwd: tmp,
+            stdio: "ignore",
+        });
+
+        await expect(resolveRepositoryUrl({ cwd: tmp, repoName: null })).resolves.toBe(
+            "git@github.com:foo/bar",
+        );
     });
 });
