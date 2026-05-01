@@ -19,8 +19,6 @@ export interface ChainConfig {
     bulletinRpc: string;
     /** WebSocket endpoints for the People chain (SSO / session discovery). */
     peopleEndpoints: string[];
-    /** Playground registry contract on Asset Hub. Backing store for myApps. */
-    playgroundRegistryAddress: `0x${string}`;
     /** Viewer URL shown to users after a successful deploy. */
     appViewerOrigin: string;
 }
@@ -29,7 +27,6 @@ const TESTNET: ChainConfig = {
     assetHubRpc: "wss://asset-hub-paseo-rpc.n.dwellir.com",
     bulletinRpc: "wss://paseo-bulletin-rpc.polkadot.io",
     peopleEndpoints: ["wss://paseo-people-next-rpc.polkadot.io"],
-    playgroundRegistryAddress: "0x279585Cb8E8971e34520A3ebbda3E0C4D77C3d97",
     appViewerOrigin: "https://dot.li",
 };
 
@@ -41,6 +38,9 @@ export function getChainConfig(env: Env = DEFAULT_ENV): ChainConfig {
     }
     return TESTNET;
 }
+
+/** Fixed CDM meta-registry contract on Asset Hub. Source: @dotdm/utils REGISTRY_ADDRESS. */
+export const CDM_REGISTRY_ADDRESS = "0xae344f7f0f91d3a2176032af2990abcc7606c7d4";
 
 /** Identifier the terminal adapter reports during SSO. Kept stable so mobile pairings persist across releases. */
 export const DAPP_ID = "dot-cli";
