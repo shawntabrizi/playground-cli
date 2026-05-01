@@ -1,10 +1,6 @@
 import { withCommandTelemetry } from "./telemetry.js";
 import type { CliCommandName } from "./telemetry-config.js";
-import {
-    onProcessShutdown,
-    scheduleHardExit,
-    startMemoryWatchdog,
-} from "./utils/process-guard.js";
+import { onProcessShutdown, scheduleHardExit, startMemoryWatchdog } from "./utils/process-guard.js";
 
 export interface RunCliCommandOptions {
     /** Start the memory watchdog and stop it on exit. Defaults to false. */
@@ -37,8 +33,11 @@ export async function runCliCommand(
         onProcessShutdown(stopWatchdog);
     }
 
+    let caughtError: unknown = null;
     try {
         await withCommandTelemetry(name, action);
+    } catch (err) {
+        caughtError = err;
     } finally {
         try {
             stopWatchdog?.();
@@ -47,8 +46,16 @@ export async function runCliCommand(
             // internally. This guards against an unexpected throw from the worker handle.
         }
         if (hardExit) {
-            const exitCode = typeof process.exitCode === "number" ? process.exitCode : 0;
-            scheduleHardExit(exitCode);
+            // Treat process.exitCode=0 as "not explicitly set" (0 is the default and
+            // cannot be distinguished from "never written"). Only a non-zero value
+            // written by the action is treated as an explicit override.
+            const explicit =
+                typeof process.exitCode === "number" && process.exitCode !== 0
+                    ? process.exitCode
+                    : null;
+            const fallback = caughtError ? 1 : 0;
+            scheduleHardExit(explicit ?? fallback);
         }
     }
+    if (caughtError) throw caughtError;
 }

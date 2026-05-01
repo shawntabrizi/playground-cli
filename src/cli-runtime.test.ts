@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { stopWatchdog, startMemoryWatchdog, scheduleHardExit, onProcessShutdown } =
-    vi.hoisted(() => {
+const { stopWatchdog, startMemoryWatchdog, scheduleHardExit, onProcessShutdown } = vi.hoisted(
+    () => {
         const stopWatchdog = vi.fn();
         return {
             stopWatchdog,
@@ -9,7 +9,8 @@ const { stopWatchdog, startMemoryWatchdog, scheduleHardExit, onProcessShutdown }
             scheduleHardExit: vi.fn(),
             onProcessShutdown: vi.fn(),
         };
-    });
+    },
+);
 
 vi.mock("./utils/process-guard.js", () => ({
     startMemoryWatchdog,
@@ -62,5 +63,15 @@ describe("runCliCommand", () => {
             }),
         ).rejects.toThrow("boom");
         expect(stopWatchdog).toHaveBeenCalledTimes(1);
+    });
+
+    it("defaults exit code to 1 when the action throws without setting process.exitCode", async () => {
+        // process.exitCode is reset to 0 in beforeEach
+        await expect(
+            runCliCommand("deploy", { watchdog: false, hardExit: true }, async () => {
+                throw new Error("boom");
+            }),
+        ).rejects.toThrow("boom");
+        expect(scheduleHardExit).toHaveBeenCalledWith(1);
     });
 });
