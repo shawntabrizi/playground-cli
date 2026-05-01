@@ -890,7 +890,7 @@
                         "title"
                     ],
                     "fieldAliases": [],
-                    "conditions": "level:warning",
+                    "conditions": "project:playground-cli level:warning !cli.tag:e2e-*",
                     "orderby": "-count()",
                     "widgetId": "451747",
                     "onDemand": [],
@@ -915,7 +915,7 @@
         },
         {
             "id": "451748",
-            "title": "Warnings Over Time",
+            "title": "Warnings Over Time (by title)",
             "description": null,
             "displayType": "line",
             "thresholds": null,
@@ -925,74 +925,20 @@
             "queries": [
                 {
                     "id": "697285",
-                    "name": "registry publish retry",
+                    "name": "",
                     "fields": [
+                        "title",
                         "count()"
                     ],
                     "aggregates": [
                         "count()"
                     ],
-                    "columns": [],
+                    "columns": [
+                        "title"
+                    ],
                     "fieldAliases": [],
-                    "conditions": "level:warning title:\"Playground registry publish failed, retrying\"",
-                    "orderby": "",
-                    "widgetId": "451748",
-                    "onDemand": [],
-                    "isHidden": false,
-                    "selectedAggregate": null,
-                    "linkedDashboards": []
-                },
-                {
-                    "id": "697286",
-                    "name": "chunk retry failed",
-                    "fields": [
-                        "count()"
-                    ],
-                    "aggregates": [
-                        "count()"
-                    ],
-                    "columns": [],
-                    "fieldAliases": [],
-                    "conditions": "level:warning title:\"Chunk retry failed\"",
-                    "orderby": "",
-                    "widgetId": "451748",
-                    "onDemand": [],
-                    "isHidden": false,
-                    "selectedAggregate": null,
-                    "linkedDashboards": []
-                },
-                {
-                    "id": "697287",
-                    "name": "ws reconnect",
-                    "fields": [
-                        "count()"
-                    ],
-                    "aggregates": [
-                        "count()"
-                    ],
-                    "columns": [],
-                    "fieldAliases": [],
-                    "conditions": "level:warning title:\"WebSocket connection lost, reconnecting\"",
-                    "orderby": "",
-                    "widgetId": "451748",
-                    "onDemand": [],
-                    "isHidden": false,
-                    "selectedAggregate": null,
-                    "linkedDashboards": []
-                },
-                {
-                    "id": "697288",
-                    "name": "chunk upload retry",
-                    "fields": [
-                        "count()"
-                    ],
-                    "aggregates": [
-                        "count()"
-                    ],
-                    "columns": [],
-                    "fieldAliases": [],
-                    "conditions": "level:warning title:\"Chunk upload failed, retrying\"",
-                    "orderby": "",
+                    "conditions": "project:playground-cli level:warning !cli.tag:e2e-*",
+                    "orderby": "-count()",
                     "widgetId": "451748",
                     "onDemand": [],
                     "isHidden": false,
@@ -1000,7 +946,7 @@
                     "linkedDashboards": []
                 }
             ],
-            "limit": null,
+            "limit": 10,
             "widgetType": "error-events",
             "layout": {
                 "x": 2,
@@ -1036,7 +982,7 @@
                         "cli.status",
                         "cli.expected",
                         "span.duration",
-                        "deploy.branch"
+                        "cli.branch"
                     ],
                     "aggregates": [],
                     "columns": [
@@ -1048,7 +994,7 @@
                         "cli.status",
                         "cli.expected",
                         "span.duration",
-                        "deploy.branch"
+                        "cli.branch"
                     ],
                     "fieldAliases": [
                         "when",
@@ -1059,7 +1005,7 @@
                         "status",
                         "expected",
                         "duration",
-                        ""
+                        "branch"
                     ],
                     "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-*",
                     "orderby": "-timestamp",
