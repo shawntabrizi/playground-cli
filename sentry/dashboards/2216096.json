@@ -1,7 +1,7 @@
 {
-    "id": "2216067",
-    "title": "Playground CLI Failures",
-    "dateCreated": "2026-05-01T17:59:35.463164Z",
+    "id": "2216096",
+    "title": "Playground CLI E2E Health",
+    "dateCreated": "2026-05-01T18:02:23.551793Z",
     "createdBy": {
         "id": "4441470",
         "name": "Ionut",
@@ -9,7 +9,6 @@
         "email": "ionut@parity.io",
         "avatarUrl": "https://gravatar.com/avatar/aa4182266e7ce720e29e841ef51d3673fd5b007f0a892fdd38b99a435c8ea618?s=32&d=mm",
         "isActive": true,
-        "isSuspended": false,
         "hasPasswordAuth": true,
         "isManaged": false,
         "dateJoined": "2026-04-15T16:06:03.281704Z",
@@ -28,17 +27,17 @@
     },
     "widgets": [
         {
-            "id": "452434",
-            "title": "Total Failures",
-            "description": "All hard failures (cli.status:error) excluding e2e-* runs.",
+            "id": "452443",
+            "title": "E2E Runs",
+            "description": "All runs tagged cli.tag:e2e-*. Use this to confirm the e2e suite is actually running and emitting telemetry.",
             "displayType": "big_number",
             "thresholds": null,
             "interval": "5m",
-            "dateCreated": "2026-05-01T17:59:35.468922Z",
-            "dashboardId": "2216067",
+            "dateCreated": "2026-05-01T18:02:23.577372Z",
+            "dashboardId": "2216096",
             "queries": [
                 {
-                    "id": "698212",
+                    "id": "698221",
                     "name": "",
                     "fields": [
                         "count()"
@@ -48,9 +47,9 @@
                     ],
                     "columns": [],
                     "fieldAliases": [],
-                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
                     "orderby": "",
-                    "widgetId": "452434",
+                    "widgetId": "452443",
                     "onDemand": [],
                     "isHidden": false,
                     "selectedAggregate": null,
@@ -72,17 +71,17 @@
             "changedReason": null
         },
         {
-            "id": "452435",
-            "title": "Failure Rate (%)",
-            "description": "Sentry's built-in failure_rate(): transactions with transaction.status != ok. Compare against %SAD on the Health dashboard.",
+            "id": "452444",
+            "title": "E2E Failure Rate",
+            "description": "Sentry's built-in failure_rate() over e2e-* traffic. Watch alongside %SAD.",
             "displayType": "big_number",
             "thresholds": null,
             "interval": "5m",
-            "dateCreated": "2026-05-01T17:59:35.474057Z",
-            "dashboardId": "2216067",
+            "dateCreated": "2026-05-01T18:02:23.616370Z",
+            "dashboardId": "2216096",
             "queries": [
                 {
-                    "id": "698213",
+                    "id": "698222",
                     "name": "",
                     "fields": [
                         "failure_rate()"
@@ -92,9 +91,9 @@
                     ],
                     "columns": [],
                     "fieldAliases": [],
-                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-*",
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
                     "orderby": "",
-                    "widgetId": "452435",
+                    "widgetId": "452444",
                     "onDemand": [],
                     "isHidden": false,
                     "selectedAggregate": null,
@@ -116,32 +115,36 @@
             "changedReason": null
         },
         {
-            "id": "452436",
-            "title": "Affected Repos",
-            "description": "count_unique(cli.repo) among failed runs.",
+            "id": "452445",
+            "title": "E2E %SAD",
+            "description": "Custom SAD%: succeeded-with-friction + outright-failure / total. Gap to failure_rate() is the retry recovery signal.",
             "displayType": "big_number",
             "thresholds": null,
             "interval": "5m",
-            "dateCreated": "2026-05-01T17:59:35.478283Z",
-            "dashboardId": "2216067",
+            "dateCreated": "2026-05-01T18:02:23.656040Z",
+            "dashboardId": "2216096",
             "queries": [
                 {
-                    "id": "698214",
+                    "id": "698223",
                     "name": "",
                     "fields": [
-                        "count_unique(cli.repo)"
+                        "count_if(cli.sad,equals,true)",
+                        "count()",
+                        "equation|count_if(cli.sad,equals,true) * 100 / count()"
                     ],
                     "aggregates": [
-                        "count_unique(cli.repo)"
+                        "count_if(cli.sad,equals,true)",
+                        "count()",
+                        "equation|count_if(cli.sad,equals,true) * 100 / count()"
                     ],
                     "columns": [],
                     "fieldAliases": [],
-                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
                     "orderby": "",
-                    "widgetId": "452436",
+                    "widgetId": "452445",
                     "onDemand": [],
                     "isHidden": false,
-                    "selectedAggregate": null,
+                    "selectedAggregate": 2,
                     "linkedDashboards": []
                 }
             ],
@@ -160,39 +163,99 @@
             "changedReason": null
         },
         {
-            "id": "452437",
-            "title": "Failures Over Time",
-            "description": "Per-command failure counts over time. Spikes correlated to a release date usually mean a regression.",
-            "displayType": "line",
+            "id": "452446",
+            "title": "Affected E2E Repos",
+            "description": "count_unique(cli.repo) among e2e-* runs.",
+            "displayType": "big_number",
             "thresholds": null,
-            "interval": "1h",
-            "dateCreated": "2026-05-01T17:59:35.482541Z",
-            "dashboardId": "2216067",
+            "interval": "5m",
+            "dateCreated": "2026-05-01T18:02:23.686002Z",
+            "dashboardId": "2216096",
             "queries": [
                 {
-                    "id": "698215",
+                    "id": "698224",
                     "name": "",
                     "fields": [
-                        "cli.command",
-                        "count()"
+                        "count_unique(cli.repo)"
                     ],
                     "aggregates": [
-                        "count()"
+                        "count_unique(cli.repo)"
                     ],
-                    "columns": [
-                        "cli.command"
-                    ],
+                    "columns": [],
                     "fieldAliases": [],
-                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
-                    "orderby": "-count()",
-                    "widgetId": "452437",
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
+                    "orderby": "",
+                    "widgetId": "452446",
                     "onDemand": [],
                     "isHidden": false,
                     "selectedAggregate": null,
                     "linkedDashboards": []
                 }
             ],
-            "limit": 10,
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 3,
+                "y": 0,
+                "w": 1,
+                "h": 1,
+                "minH": 1
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452447",
+            "title": "Success vs Friction (per day)",
+            "description": "Daily split of e2e runs by cli.sad. Two bars per day: clean (cli.sad:false) vs sad (cli.sad:true).",
+            "displayType": "bar",
+            "thresholds": null,
+            "interval": "1d",
+            "dateCreated": "2026-05-01T18:02:23.703856Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698225",
+                    "name": "clean",
+                    "fields": [
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-* cli.sad:false",
+                    "orderby": "",
+                    "widgetId": "452447",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                },
+                {
+                    "id": "698226",
+                    "name": "sad",
+                    "fields": [
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-* cli.sad:true",
+                    "orderby": "",
+                    "widgetId": "452447",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
             "widgetType": "spans",
             "layout": {
                 "x": 0,
@@ -207,21 +270,20 @@
             "changedReason": null
         },
         {
-            "id": "452438",
-            "title": "Failures by Repo",
-            "description": "Which repos hit failures the most. Internal repos pass through; external repos appear as `<org>/<hash>`.",
+            "id": "452448",
+            "title": "E2E Failures by Phase",
+            "description": "Which phase fails in e2e runs. Compare against the production-traffic equivalent on the Failures Detail dashboard.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
-            "dateCreated": "2026-05-01T17:59:35.486680Z",
-            "dashboardId": "2216067",
+            "dateCreated": "2026-05-01T18:02:23.729934Z",
+            "dashboardId": "2216096",
             "queries": [
                 {
-                    "id": "698216",
+                    "id": "698227",
                     "name": "",
                     "fields": [
-                        "cli.repo",
-                        "cli.command",
+                        "span.op",
                         "count()",
                         "avg(span.duration)"
                     ],
@@ -230,13 +292,12 @@
                         "avg(span.duration)"
                     ],
                     "columns": [
-                        "cli.repo",
-                        "cli.command"
+                        "span.op"
                     ],
                     "fieldAliases": [],
-                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                    "conditions": "span.op:cli.deploy.* cli.tag:e2e-*",
                     "orderby": "-count()",
-                    "widgetId": "452438",
+                    "widgetId": "452448",
                     "onDemand": [],
                     "isHidden": false,
                     "selectedAggregate": null,
@@ -258,20 +319,20 @@
             "changedReason": null
         },
         {
-            "id": "452439",
-            "title": "Failures by Phase",
-            "description": "Which phase failed in `dot deploy`. cli.deploy.storage-dotns and cli.deploy.playground.registry-publish typically dominate.",
+            "id": "452449",
+            "title": "E2E Failures by Signer Mode",
+            "description": "cli.deploy.mode breakdown \u2014 pool vs phone vs dev. Mode-specific regressions appear here first.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
-            "dateCreated": "2026-05-01T17:59:35.491043Z",
-            "dashboardId": "2216067",
+            "dateCreated": "2026-05-01T18:02:23.765357Z",
+            "dashboardId": "2216096",
             "queries": [
                 {
-                    "id": "698217",
+                    "id": "698228",
                     "name": "",
                     "fields": [
-                        "span.op",
+                        "cli.deploy.mode",
                         "count()",
                         "avg(span.duration)"
                     ],
@@ -280,12 +341,12 @@
                         "avg(span.duration)"
                     ],
                     "columns": [
-                        "span.op"
+                        "cli.deploy.mode"
                     ],
                     "fieldAliases": [],
-                    "conditions": "span.op:cli.deploy.* !cli.tag:e2e-*",
+                    "conditions": "span.op:cli.deploy.orchestrator cli.tag:e2e-* cli.status:error",
                     "orderby": "-count()",
-                    "widgetId": "452439",
+                    "widgetId": "452449",
                     "onDemand": [],
                     "isHidden": false,
                     "selectedAggregate": null,
@@ -307,47 +368,45 @@
             "changedReason": null
         },
         {
-            "id": "452440",
-            "title": "Error Messages (Unexpected)",
-            "description": "Unexpected errors only (cli.expected:false). These are bugs to fix in the CLI itself, not user-input issues.",
-            "displayType": "table",
+            "id": "452450",
+            "title": "E2E Warning Volume",
+            "description": "Transient warnings during e2e runs, grouped by title. A spike here without a corresponding failure_rate() spike means retries are masking flakiness.",
+            "displayType": "line",
             "thresholds": null,
-            "interval": "5m",
-            "dateCreated": "2026-05-01T17:59:35.495121Z",
-            "dashboardId": "2216067",
+            "interval": "1h",
+            "dateCreated": "2026-05-01T18:02:23.776172Z",
+            "dashboardId": "2216096",
             "queries": [
                 {
-                    "id": "698218",
+                    "id": "698229",
                     "name": "",
                     "fields": [
-                        "cli.error",
-                        "span.op",
+                        "title",
                         "count()"
                     ],
                     "aggregates": [
                         "count()"
                     ],
                     "columns": [
-                        "cli.error",
-                        "span.op"
+                        "title"
                     ],
                     "fieldAliases": [],
-                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error cli.expected:false",
+                    "conditions": "project:playground-cli level:warning cli.tag:e2e-*",
                     "orderby": "-count()",
-                    "widgetId": "452440",
+                    "widgetId": "452450",
                     "onDemand": [],
                     "isHidden": false,
                     "selectedAggregate": null,
                     "linkedDashboards": []
                 }
             ],
-            "limit": null,
-            "widgetType": "spans",
+            "limit": 10,
+            "widgetType": "error-events",
             "layout": {
                 "x": 0,
                 "y": 6,
                 "w": 6,
-                "h": 3,
+                "h": 2,
                 "minH": 2
             },
             "axisRange": null,
@@ -356,92 +415,40 @@
             "changedReason": null
         },
         {
-            "id": "452441",
-            "title": "Error Messages (Expected)",
-            "description": "Expected user-input errors. High volume here means error copy or onboarding could be clearer.",
+            "id": "452451",
+            "title": "Recent E2E Failures",
+            "description": "Latest failed e2e runs.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
-            "dateCreated": "2026-05-01T17:59:35.499037Z",
-            "dashboardId": "2216067",
+            "dateCreated": "2026-05-01T18:02:23.790518Z",
+            "dashboardId": "2216096",
             "queries": [
                 {
-                    "id": "698219",
-                    "name": "",
-                    "fields": [
-                        "cli.error",
-                        "cli.command",
-                        "count()"
-                    ],
-                    "aggregates": [
-                        "count()"
-                    ],
-                    "columns": [
-                        "cli.error",
-                        "cli.command"
-                    ],
-                    "fieldAliases": [],
-                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error cli.expected:true",
-                    "orderby": "-count()",
-                    "widgetId": "452441",
-                    "onDemand": [],
-                    "isHidden": false,
-                    "selectedAggregate": null,
-                    "linkedDashboards": []
-                }
-            ],
-            "limit": null,
-            "widgetType": "spans",
-            "layout": {
-                "x": 0,
-                "y": 9,
-                "w": 6,
-                "h": 3,
-                "minH": 2
-            },
-            "axisRange": null,
-            "legendType": null,
-            "datasetSource": "user",
-            "changedReason": null
-        },
-        {
-            "id": "452442",
-            "title": "Recent Failures",
-            "description": "Most recent failed runs across all commands. timestamp + repo + version locates the offending change.",
-            "displayType": "table",
-            "thresholds": null,
-            "interval": "5m",
-            "dateCreated": "2026-05-01T17:59:35.503172Z",
-            "dashboardId": "2216067",
-            "queries": [
-                {
-                    "id": "698220",
+                    "id": "698230",
                     "name": "",
                     "fields": [
                         "timestamp",
                         "cli.command",
-                        "cli.repo",
-                        "cli.tool_version",
+                        "cli.tag",
                         "cli.error"
                     ],
                     "aggregates": [],
                     "columns": [
                         "timestamp",
                         "cli.command",
-                        "cli.repo",
-                        "cli.tool_version",
+                        "cli.tag",
                         "cli.error"
                     ],
                     "fieldAliases": [
                         "when",
                         "command",
-                        "repo",
-                        "version",
+                        "tag",
                         "error"
                     ],
-                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-* cli.status:error",
                     "orderby": "-timestamp",
-                    "widgetId": "452442",
+                    "widgetId": "452451",
                     "onDemand": [],
                     "isHidden": false,
                     "selectedAggregate": null,
@@ -452,7 +459,7 @@
             "widgetType": "spans",
             "layout": {
                 "x": 0,
-                "y": 12,
+                "y": 8,
                 "w": 6,
                 "h": 3,
                 "minH": 2

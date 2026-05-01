@@ -1,0 +1,170 @@
+{
+    "title": "Playground CLI E2E Health",
+    "widgets": [
+        {
+            "title": "E2E Runs",
+            "displayType": "big_number",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "All runs tagged cli.tag:e2e-*. Use this to confirm the e2e suite is actually running and emitting telemetry.",
+            "queries": [{
+                "name": "",
+                "fields": ["count()"],
+                "aggregates": ["count()"],
+                "columns": [],
+                "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
+                "orderby": ""
+            }],
+            "layout": {"x": 0, "y": 0, "w": 1, "h": 1, "minH": 1}
+        },
+        {
+            "title": "E2E Failure Rate",
+            "displayType": "big_number",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Sentry's built-in failure_rate() over e2e-* traffic. Watch alongside %SAD.",
+            "queries": [{
+                "name": "",
+                "fields": ["failure_rate()"],
+                "aggregates": ["failure_rate()"],
+                "columns": [],
+                "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
+                "orderby": ""
+            }],
+            "layout": {"x": 1, "y": 0, "w": 1, "h": 1, "minH": 1}
+        },
+        {
+            "title": "E2E %SAD",
+            "displayType": "big_number",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Custom SAD%: succeeded-with-friction + outright-failure / total. Gap to failure_rate() is the retry recovery signal.",
+            "queries": [{
+                "name": "",
+                "fields": [
+                    "count_if(cli.sad,equals,true)",
+                    "count()",
+                    "equation|count_if(cli.sad,equals,true) * 100 / count()"
+                ],
+                "aggregates": [
+                    "count_if(cli.sad,equals,true)",
+                    "count()",
+                    "equation|count_if(cli.sad,equals,true) * 100 / count()"
+                ],
+                "columns": [],
+                "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
+                "orderby": "",
+                "selectedAggregate": 2
+            }],
+            "layout": {"x": 2, "y": 0, "w": 1, "h": 1, "minH": 1}
+        },
+        {
+            "title": "Affected E2E Repos",
+            "displayType": "big_number",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "count_unique(cli.repo) among e2e-* runs.",
+            "queries": [{
+                "name": "",
+                "fields": ["count_unique(cli.repo)"],
+                "aggregates": ["count_unique(cli.repo)"],
+                "columns": [],
+                "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
+                "orderby": ""
+            }],
+            "layout": {"x": 3, "y": 0, "w": 1, "h": 1, "minH": 1}
+        },
+        {
+            "title": "Success vs Friction (per day)",
+            "displayType": "bar",
+            "interval": "1d",
+            "widgetType": "spans",
+            "description": "Daily split of e2e runs by cli.sad. Two bars per day: clean (cli.sad:false) vs sad (cli.sad:true).",
+            "queries": [
+                {
+                    "name": "clean",
+                    "fields": ["count()"],
+                    "aggregates": ["count()"],
+                    "columns": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-* cli.sad:false",
+                    "orderby": ""
+                },
+                {
+                    "name": "sad",
+                    "fields": ["count()"],
+                    "aggregates": ["count()"],
+                    "columns": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-* cli.sad:true",
+                    "orderby": ""
+                }
+            ],
+            "layout": {"x": 0, "y": 1, "w": 6, "h": 2, "minH": 2}
+        },
+        {
+            "title": "E2E Failures by Phase",
+            "displayType": "table",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Which phase fails in e2e runs. Compare against the production-traffic equivalent on the Failures Detail dashboard.",
+            "queries": [{
+                "name": "",
+                "fields": ["span.op", "count()", "avg(span.duration)"],
+                "aggregates": ["count()", "avg(span.duration)"],
+                "columns": ["span.op"],
+                "conditions": "span.op:cli.deploy.* cli.tag:e2e-*",
+                "orderby": "-count()"
+            }],
+            "layout": {"x": 0, "y": 3, "w": 3, "h": 3, "minH": 2}
+        },
+        {
+            "title": "E2E Failures by Signer Mode",
+            "displayType": "table",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "cli.deploy.mode breakdown — pool vs phone vs dev. Mode-specific regressions appear here first.",
+            "queries": [{
+                "name": "",
+                "fields": ["cli.deploy.mode", "count()", "avg(span.duration)"],
+                "aggregates": ["count()", "avg(span.duration)"],
+                "columns": ["cli.deploy.mode"],
+                "conditions": "span.op:cli.deploy.orchestrator cli.tag:e2e-* cli.status:error",
+                "orderby": "-count()"
+            }],
+            "layout": {"x": 3, "y": 3, "w": 3, "h": 3, "minH": 2}
+        },
+        {
+            "title": "E2E Warning Volume",
+            "displayType": "line",
+            "interval": "1h",
+            "widgetType": "error-events",
+            "description": "Transient warnings during e2e runs, grouped by title. A spike here without a corresponding failure_rate() spike means retries are masking flakiness.",
+            "limit": 10,
+            "queries": [{
+                "name": "",
+                "fields": ["title", "count()"],
+                "aggregates": ["count()"],
+                "columns": ["title"],
+                "conditions": "project:playground-cli level:warning cli.tag:e2e-*",
+                "orderby": "-count()"
+            }],
+            "layout": {"x": 0, "y": 6, "w": 6, "h": 2, "minH": 2}
+        },
+        {
+            "title": "Recent E2E Failures",
+            "displayType": "table",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Latest failed e2e runs.",
+            "queries": [{
+                "name": "",
+                "fields": ["timestamp", "cli.command", "cli.tag", "cli.error"],
+                "aggregates": [],
+                "columns": ["timestamp", "cli.command", "cli.tag", "cli.error"],
+                "fieldAliases": ["when", "command", "tag", "error"],
+                "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-* cli.status:error",
+                "orderby": "-timestamp"
+            }],
+            "layout": {"x": 0, "y": 8, "w": 6, "h": 3, "minH": 2}
+        }
+    ]
+}

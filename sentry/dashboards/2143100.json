@@ -9,6 +9,7 @@
         "email": "ionut@parity.io",
         "avatarUrl": "https://gravatar.com/avatar/aa4182266e7ce720e29e841ef51d3673fd5b007f0a892fdd38b99a435c8ea618?s=32&d=mm",
         "isActive": true,
+        "isSuspended": false,
         "hasPasswordAuth": true,
         "isManaged": false,
         "dateJoined": "2026-04-15T16:06:03.281704Z",

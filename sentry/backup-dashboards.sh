@@ -13,7 +13,7 @@ BASE="https://de.sentry.io/api/0/organizations/paritytech"
 DASHBOARDS=(
     "2143100"   # Playground CLI Health
     "2216067"   # Failures Detail
-    # "<id>"    # E2E Health (added in Phase 9)
+    "2216096"   # E2E Health
 )
 
 mkdir -p sentry/dashboards
