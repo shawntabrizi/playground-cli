@@ -6,6 +6,7 @@ import { ContractManager, type CdmJson } from "@polkadot-apps/contracts";
 import type { ResolvedSigner } from "./signer.js";
 import {
     PLAYGROUND_REGISTRY_CONTRACT,
+    suppressReviveTraceNoise,
     withRequiredLiveContractAddresses,
 } from "./contractManifest.js";
 
@@ -35,5 +36,5 @@ export async function getRegistryContract(
         defaultSigner: signer.signer,
         defaultOrigin: signer.address,
     });
-    return manager.getContract(PLAYGROUND_REGISTRY_CONTRACT);
+    return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));
 }
