@@ -35,6 +35,24 @@ function defaultTargetHash(manifest: CdmJson): string {
     return targetHash;
 }
 
+function patchContractAddresses(
+    manifest: CdmJson,
+    liveAddresses: Record<string, HexString>,
+): CdmJson {
+    if (Object.keys(liveAddresses).length === 0) return manifest;
+
+    const patched = structuredClone(manifest);
+    const contracts = patched.contracts?.[defaultTargetHash(patched)];
+    if (!contracts) return manifest;
+
+    for (const [library, address] of Object.entries(liveAddresses)) {
+        const contract = contracts[library];
+        if (contract) contract.address = address;
+    }
+
+    return patched;
+}
+
 export async function resolveLiveContractAddresses(
     assetHub: PolkadotClient,
     libraries: readonly string[] = LIVE_CONTRACTS,
@@ -66,16 +84,19 @@ export async function withLiveContractAddresses(
     libraries: readonly string[] = LIVE_CONTRACTS,
 ): Promise<CdmJson> {
     const liveAddresses = await resolveLiveContractAddresses(assetHub, libraries);
-    if (Object.keys(liveAddresses).length === 0) return manifest;
+    return patchContractAddresses(manifest, liveAddresses);
+}
 
-    const patched = structuredClone(manifest);
-    const contracts = patched.contracts?.[defaultTargetHash(patched)];
-    if (!contracts) return manifest;
-
-    for (const [library, address] of Object.entries(liveAddresses)) {
-        const contract = contracts[library];
-        if (contract) contract.address = address;
+export async function withRequiredLiveContractAddresses(
+    manifest: CdmJson,
+    assetHub: PolkadotClient,
+    libraries: readonly string[] = LIVE_CONTRACTS,
+): Promise<CdmJson> {
+    const liveAddresses = await resolveLiveContractAddresses(assetHub, libraries);
+    const missing = libraries.filter((library) => !liveAddresses[library]);
+    if (missing.length > 0) {
+        throw new Error(`CDM meta-registry did not return live address for ${missing.join(", ")}`);
     }
 
-    return patched;
+    return patchContractAddresses(manifest, liveAddresses);
 }

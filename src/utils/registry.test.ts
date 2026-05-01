@@ -2,13 +2,13 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { ResolvedSigner } from "./signer.js";
 import cdmJson from "../../cdm.json";
 
-const { captureWarningMock, fromClientMock, getContractMock, withLiveContractAddressesMock } =
-    vi.hoisted(() => ({
-        captureWarningMock: vi.fn(),
+const { fromClientMock, getContractMock, withRequiredLiveContractAddressesMock } = vi.hoisted(
+    () => ({
         fromClientMock: vi.fn(),
         getContractMock: vi.fn(),
-        withLiveContractAddressesMock: vi.fn(),
-    }));
+        withRequiredLiveContractAddressesMock: vi.fn(),
+    }),
+);
 
 vi.mock("@polkadot-apps/contracts", () => ({
     ContractManager: {
@@ -18,11 +18,8 @@ vi.mock("@polkadot-apps/contracts", () => ({
 
 vi.mock("./contractManifest.js", () => ({
     PLAYGROUND_REGISTRY_CONTRACT: "@w3s/playground-registry",
-    withLiveContractAddresses: (...args: unknown[]) => withLiveContractAddressesMock(...args),
-}));
-
-vi.mock("../telemetry.js", () => ({
-    captureWarning: (...args: unknown[]) => captureWarningMock(...args),
+    withRequiredLiveContractAddresses: (...args: unknown[]) =>
+        withRequiredLiveContractAddressesMock(...args),
 }));
 
 import { getRegistryContract } from "./registry.js";
@@ -35,10 +32,9 @@ const fakeSigner: ResolvedSigner = {
 };
 
 beforeEach(() => {
-    captureWarningMock.mockReset();
     fromClientMock.mockReset();
     getContractMock.mockReset();
-    withLiveContractAddressesMock.mockReset();
+    withRequiredLiveContractAddressesMock.mockReset();
     getContractMock.mockReturnValue({ publish: { tx: vi.fn() } });
     fromClientMock.mockResolvedValue({ getContract: getContractMock });
 });
@@ -46,12 +42,12 @@ beforeEach(() => {
 describe("getRegistryContract", () => {
     it("builds the manager with a live-patched manifest", async () => {
         const patchedManifest = { ...cdmJson, marker: "patched" };
-        withLiveContractAddressesMock.mockResolvedValue(patchedManifest);
+        withRequiredLiveContractAddressesMock.mockResolvedValue(patchedManifest);
         const rawClient = {} as any;
 
         await getRegistryContract(rawClient, fakeSigner);
 
-        expect(withLiveContractAddressesMock).toHaveBeenCalledWith(cdmJson, rawClient, [
+        expect(withRequiredLiveContractAddressesMock).toHaveBeenCalledWith(cdmJson, rawClient, [
             "@w3s/playground-registry",
         ]);
         expect(fromClientMock).toHaveBeenCalledWith(patchedManifest, rawClient, {
@@ -61,19 +57,14 @@ describe("getRegistryContract", () => {
         expect(getContractMock).toHaveBeenCalledWith("@w3s/playground-registry");
     });
 
-    it("falls back to the cdm.json snapshot and warns when live lookup fails", async () => {
-        withLiveContractAddressesMock.mockRejectedValue(new Error("registry unavailable"));
+    it("throws a clear error when live lookup fails", async () => {
+        withRequiredLiveContractAddressesMock.mockRejectedValue(new Error("registry unavailable"));
         const rawClient = {} as any;
 
-        await getRegistryContract(rawClient, fakeSigner);
-
-        expect(captureWarningMock).toHaveBeenCalledWith(
-            "Live playground registry address lookup failed; using cdm.json snapshot",
-            { error: "registry unavailable" },
+        await expect(getRegistryContract(rawClient, fakeSigner)).rejects.toThrow(
+            /Could not resolve the live Playground registry contract address.*registry unavailable/,
         );
-        expect(fromClientMock).toHaveBeenCalledWith(cdmJson, rawClient, {
-            defaultSigner: fakeSigner.signer,
-            defaultOrigin: fakeSigner.address,
-        });
+
+        expect(fromClientMock).not.toHaveBeenCalled();
     });
 });

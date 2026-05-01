@@ -4,8 +4,10 @@
 
 import { ContractManager, type CdmJson } from "@polkadot-apps/contracts";
 import type { ResolvedSigner } from "./signer.js";
-import { PLAYGROUND_REGISTRY_CONTRACT, withLiveContractAddresses } from "./contractManifest.js";
-import { captureWarning } from "../telemetry.js";
+import {
+    PLAYGROUND_REGISTRY_CONTRACT,
+    withRequiredLiveContractAddresses,
+} from "./contractManifest.js";
 
 import cdmJson from "../../cdm.json";
 
@@ -18,13 +20,15 @@ export async function getRegistryContract(
 ) {
     let manifest: CdmJson = cdmJson;
     try {
-        manifest = await withLiveContractAddresses(cdmJson, rawClient, [
+        manifest = await withRequiredLiveContractAddresses(cdmJson, rawClient, [
             PLAYGROUND_REGISTRY_CONTRACT,
         ]);
     } catch (err) {
-        captureWarning("Live playground registry address lookup failed; using cdm.json snapshot", {
-            error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
-        });
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(
+            `Could not resolve the live Playground registry contract address from the CDM meta-registry. Refusing to use the cdm.json snapshot because it may be stale. ${msg}`,
+            { cause: err instanceof Error ? err : undefined },
+        );
     }
 
     const manager = await ContractManager.fromClient(manifest, rawClient, {

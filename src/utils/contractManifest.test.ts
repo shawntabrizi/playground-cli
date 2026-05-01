@@ -15,6 +15,7 @@ import {
     PLAYGROUND_REGISTRY_CONTRACT,
     resolveLiveContractAddresses,
     withLiveContractAddresses,
+    withRequiredLiveContractAddresses,
 } from "./contractManifest.js";
 
 const snapshotAddress = "0x1111111111111111111111111111111111111111";
@@ -124,5 +125,15 @@ describe("withLiveContractAddresses", () => {
         await expect(
             withLiveContractAddresses(original, {} as any, [PLAYGROUND_REGISTRY_CONTRACT]),
         ).resolves.toBe(original);
+    });
+
+    it("throws when a required live address is unavailable", async () => {
+        getAddressQueryMock.mockResolvedValue({ success: false, value: null });
+
+        await expect(
+            withRequiredLiveContractAddresses(manifest(), {} as any, [
+                PLAYGROUND_REGISTRY_CONTRACT,
+            ]),
+        ).rejects.toThrow(/CDM meta-registry did not return live address/);
     });
 });
