@@ -151,3 +151,16 @@ describe("error helpers", () => {
         expect(truncated.length).toBe(200);
     });
 });
+
+describe("withSpan 2-arg overload", () => {
+    beforeEach(() => {
+        process.env.DOT_TELEMETRY = "0";
+        vi.resetModules();
+    });
+
+    it("accepts (op, name, fn) without an attributes argument", async () => {
+        const { withSpan } = await import("./telemetry.js");
+        const result = await withSpan("cli.test.x", "x", async () => 42);
+        expect(result).toBe(42);
+    });
+});

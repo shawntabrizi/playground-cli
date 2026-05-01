@@ -204,9 +204,25 @@ export async function withCommandTelemetry<T>(
 export async function withSpan<T>(
     op: string,
     name: string,
+    fn: () => Promise<T> | T,
+): Promise<T>;
+export async function withSpan<T>(
+    op: string,
+    name: string,
     attributes: Record<string, TelemetryAttribute>,
     fn: () => Promise<T> | T,
+): Promise<T>;
+export async function withSpan<T>(
+    op: string,
+    name: string,
+    attributesOrFn: Record<string, TelemetryAttribute> | (() => Promise<T> | T),
+    maybeFn?: () => Promise<T> | T,
 ): Promise<T> {
+    const fn = (typeof attributesOrFn === "function" ? attributesOrFn : maybeFn) as () =>
+        | Promise<T>
+        | T;
+    const attributes =
+        typeof attributesOrFn === "function" ? {} : (attributesOrFn ?? {});
     if (!Sentry) return await fn();
     return await Sentry.startSpan(
         { op, name, attributes: sanitizeAttributes(attributes) },
@@ -214,7 +230,7 @@ export async function withSpan<T>(
             try {
                 return await fn();
             } catch (error) {
-                const msg = truncateString(scrubPaths(errorMessage(error)));
+                const msg = sanitizedErrorMessage(error);
                 setSpanAttribute(span, "error.message", msg);
                 setSpanStatus(span, { code: 2, message: "internal_error" });
                 throw error;
