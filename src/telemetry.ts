@@ -25,8 +25,12 @@ function anonymousServerName(): string {
     return process.env.CI ? (process.env.RUNNER_NAME ?? "ci") : "local";
 }
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+export function sanitisedErrorMessage(error: unknown): string {
+    return truncateString(scrubPaths(errorMessage(error)));
 }
 
 function sanitizeExtra(

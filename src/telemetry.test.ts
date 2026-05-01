@@ -122,3 +122,25 @@ describe("telemetry source invariants", () => {
         expect(src).toContain("if (!expected)");
     });
 });
+
+describe("error helpers", () => {
+    beforeEach(() => {
+        process.env.DOT_TELEMETRY = "0";
+        vi.resetModules();
+    });
+
+    it("errorMessage handles Error and non-Error", async () => {
+        const { errorMessage } = await import("./telemetry.js");
+        expect(errorMessage(new Error("boom"))).toBe("boom");
+        expect(errorMessage("plain")).toBe("plain");
+        expect(errorMessage(undefined)).toBe("undefined");
+    });
+
+    it("sanitisedErrorMessage scrubs paths and truncates to 200 chars", async () => {
+        const { sanitisedErrorMessage } = await import("./telemetry.js");
+        const long = "x".repeat(500) + " /Users/alice/repo/file.ts";
+        const out = sanitisedErrorMessage(new Error(long));
+        expect(out.length).toBe(200);
+        expect(out).not.toContain("alice");
+    });
+});
