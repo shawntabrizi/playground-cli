@@ -52,6 +52,32 @@ export async function withoutReviveTraceNoise<T>(fn: () => Promise<T>): Promise<
     }
 }
 
+export function suppressReviveTraceNoise<T extends object>(contract: T): T {
+    return new Proxy(contract, {
+        get(target, prop, receiver) {
+            const method = Reflect.get(target, prop, receiver);
+            if (method === null || typeof method !== "object") return method;
+
+            return new Proxy(method, {
+                get(methodTarget, op, opReceiver) {
+                    const value = Reflect.get(methodTarget, op, opReceiver);
+                    if (
+                        typeof value !== "function" ||
+                        (op !== "query" && op !== "tx" && op !== "prepare")
+                    ) {
+                        return value;
+                    }
+
+                    return (...args: unknown[]) =>
+                        withoutReviveTraceNoise(() =>
+                            Promise.resolve(value.apply(methodTarget, args)),
+                        );
+                },
+            });
+        },
+    });
+}
+
 function defaultTargetHash(manifest: CdmJson): string {
     const [targetHash] = Object.keys(manifest.targets);
     if (!targetHash) throw new Error("No targets found in cdm.json");

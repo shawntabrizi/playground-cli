@@ -12,7 +12,6 @@ import {
     parseGitHubRepoUrl,
     resolveDefaultBranch,
 } from "../../utils/mod/source.js";
-import { withoutReviveTraceNoise } from "../../utils/contractManifest.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 
 interface AppMetadata {
@@ -55,9 +54,7 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                     return;
                 }
                 log(`querying registry for ${domain}...`);
-                const metaRes = await withoutReviveTraceNoise<any>(() =>
-                    registry.getMetadataUri.query(domain),
-                );
+                const metaRes = await registry.getMetadataUri.query(domain);
                 const cid = metaRes.value.isSome ? metaRes.value.value : null;
                 if (!cid) throw new Error(`App "${domain}" not found in registry`);
 

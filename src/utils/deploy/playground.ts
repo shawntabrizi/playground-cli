@@ -24,7 +24,6 @@ import { bulletin } from "@polkadot-apps/descriptors/bulletin";
 import { upload } from "@polkadot-apps/bulletin";
 import { getRegistryContract } from "../registry.js";
 import { getConnection } from "../connection.js";
-import { withoutReviveTraceNoise } from "../contractManifest.js";
 import { getChainConfig, type Env } from "../../config.js";
 import { captureWarning, withSpan } from "../../telemetry.js";
 import type { ResolvedSigner } from "../signer.js";
@@ -197,9 +196,7 @@ export async function publishToPlayground(
             for (let attempt = 1; attempt <= MAX_REGISTRY_RETRIES; attempt++) {
                 try {
                     const visibility = options.isPrivate ? 0 : 1;
-                    const result = await withoutReviveTraceNoise(() =>
-                        registry.publish.tx(fullDomain, metadataCid, visibility),
-                    );
+                    const result = await registry.publish.tx(fullDomain, metadataCid, visibility);
                     if (result && result.ok === false) {
                         throw new Error("Registry publish transaction reverted");
                     }

@@ -18,6 +18,7 @@ vi.mock("@polkadot-apps/contracts", () => ({
 
 vi.mock("./contractManifest.js", () => ({
     PLAYGROUND_REGISTRY_CONTRACT: "@w3s/playground-registry",
+    suppressReviveTraceNoise: (contract: unknown) => contract,
     withRequiredLiveContractAddresses: (...args: unknown[]) =>
         withRequiredLiveContractAddressesMock(...args),
 }));

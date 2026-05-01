@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
 import { getGateway, fetchJson } from "@polkadot-apps/bulletin";
 import { Mark, Hint, COLOR } from "../../utils/ui/theme/index.js";
-import { withoutReviveTraceNoise } from "../../utils/contractManifest.js";
 
 import { filterModable, type AppEntry } from "./browserFilter.js";
 export type { AppEntry };
@@ -42,9 +41,7 @@ export function AppBrowser({ registry, onSelect, onCancel, modableOnly }: Props)
         async (start: number) => {
             setFetching(true);
 
-            const res = await withoutReviveTraceNoise<any>(() =>
-                registry.getApps.query(start, BATCH),
-            );
+            const res = await registry.getApps.query(start, BATCH);
             const rawEntries = res.value.entries as Array<{
                 index: number;
                 domain: string;
