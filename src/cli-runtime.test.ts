@@ -74,4 +74,14 @@ describe("runCliCommand", () => {
         ).rejects.toThrow("boom");
         expect(scheduleHardExit).toHaveBeenCalledWith(1);
     });
+
+    it("preserves an explicit non-zero exit code set before throw", async () => {
+        process.exitCode = 5;
+        await expect(
+            runCliCommand("deploy", { watchdog: false, hardExit: true }, async () => {
+                throw new Error("non-default code");
+            }),
+        ).rejects.toThrow("non-default code");
+        expect(scheduleHardExit).toHaveBeenCalledWith(5);
+    });
 });
