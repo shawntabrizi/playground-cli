@@ -246,12 +246,13 @@ describe("dot deploy — foundry (requires Paseo + IPFS)", () => {
 			"--signer", "dev",
 			"--domain", domain,
 			"--buildDir", absBuildDir(foundry),
-			// --no-build skips both frontend AND contract build; the fixture
-			// ships pre-committed artefacts under out/ so the deploy uses
-			// them directly without spawning forge (not available on the
-			// CI runner).
+			// --no-build skips the frontend build; --no-contract-build skips
+			// the forge subprocess. The fixture ships pre-committed bytecode
+			// under out/Counter.sol/Counter.json so the deploy reads it
+			// directly without needing forge on the CI runner.
 			"--no-build",
 			"--contracts",
+			"--no-contract-build",
 			"--playground",
 			"--suri", SIGNER.suri,
 			"--dir", foundry,
@@ -274,11 +275,15 @@ describe("dot deploy — CDM (requires Paseo + IPFS)", () => {
 			"--signer", "dev",
 			"--domain", domain,
 			"--buildDir", absBuildDir(rustCdm),
-			// --no-build: the fixture ships a pre-committed .contract under
-			// target/ so the deploy uses it directly without spawning
-			// cargo-contract (not available on the CI runner).
+			// --no-build skips the frontend build; --no-contract-build skips
+			// the cargo-contract spawn so we don't need the rust toolchain
+			// on the CI runner. Note: the cdm skip-build path still calls
+			// detectContracts which spawns `cargo metadata` — tracked as a
+			// follow-up; for this fixture a small Cargo.toml that's quick
+			// to parse keeps it tolerable.
 			"--no-build",
 			"--contracts",
+			"--no-contract-build",
 			"--playground",
 			"--suri", SIGNER.suri,
 			"--dir", rustCdm,
