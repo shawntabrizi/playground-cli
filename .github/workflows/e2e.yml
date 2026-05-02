@@ -8,6 +8,11 @@ on:
     schedule:
         - cron: "0 6 * * *"
     workflow_dispatch:
+        inputs:
+            simulate_failure:
+                description: "[temporary, Phase 1 verification only] Force the auto-issue path to fire"
+                type: boolean
+                default: false
 
 permissions:
     pull-requests: write     # sticky PR comment posting
@@ -206,3 +211,76 @@ jobs:
                   echo ""
                   echo "---- writing to step summary ----"
                   cat /tmp/body.md >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Post or update PR comment
+              if: github.event_name == 'pull_request'
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const fs = require('fs');
+                      const body = fs.readFileSync('/tmp/body.md', 'utf8');
+                      const marker = '<!-- e2e-pr-report -->';
+                      const prNumber = context.issue.number;
+                      const { data: comments } = await github.rest.issues.listComments({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: prNumber,
+                      });
+                      const existing = comments.find(c => c.body && c.body.includes(marker));
+                      if (existing) {
+                          await github.rest.issues.updateComment({
+                              owner: context.repo.owner,
+                              repo: context.repo.repo,
+                              comment_id: existing.id,
+                              body,
+                          });
+                          console.log(`Updated existing comment ${existing.id}`);
+                      } else {
+                          await github.rest.issues.createComment({
+                              owner: context.repo.owner,
+                              repo: context.repo.repo,
+                              issue_number: prNumber,
+                              body,
+                          });
+                          console.log("Created new comment");
+                      }
+
+            - name: Open failure issue
+              if: >
+                  (
+                    (github.event_name == 'schedule' || github.event_name == 'release') &&
+                    needs.test.result != 'success'
+                  ) ||
+                  (github.event_name == 'workflow_dispatch' && inputs.simulate_failure == true)
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  TAG: ${{ needs.test.outputs.tag }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                  API_URL: ${{ github.api_url }}
+                  REPO: ${{ github.repository }}
+              shell: /usr/bin/bash -euo pipefail {0}
+              run: |
+                  TODAY=$(date -u +%Y-%m-%d)
+                  case "$TAG" in
+                      e2e-ci-release)  TITLE="Release E2E failure: ${{ github.event.release.tag_name }}" ;;
+                      *)               TITLE="Nightly E2E failure: $TODAY" ;;
+                  esac
+                  CONTEXT="Nightly E2E failed on $TODAY (tag \`$TAG\`)."
+                  case "$TAG" in
+                      e2e-ci-release)  CONTEXT="Release E2E failed for ${{ github.event.release.tag_name }}." ;;
+                  esac
+
+                  {
+                      echo "$CONTEXT"
+                      echo ""
+                      cat /tmp/body.md
+                      echo ""
+                      echo "- Run: $RUN_URL"
+                  } > /tmp/issue-body.md
+
+                  BODY=$(cat /tmp/issue-body.md)
+                  curl -fsSL -X POST \
+                      -H "Authorization: bearer $GITHUB_TOKEN" \
+                      -H "Accept: application/vnd.github+json" \
+                      "$API_URL/repos/$REPO/issues" \
+                      -d "$(jq -n --arg title "$TITLE" --arg body "$BODY" '{title: $title, body: $body}')"
