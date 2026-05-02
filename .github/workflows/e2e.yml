@@ -9,11 +9,22 @@ on:
         - cron: "0 6 * * *"
     workflow_dispatch:
 
+permissions:
+    pull-requests: write     # sticky PR comment posting
+    issues: write            # auto-issue on schedule fail
+    actions: read            # /runs/{id}/jobs API for per-leg fetch
+
+concurrency:
+    group: e2e-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-    e2e:
-        name: E2E Tests
+    test:
+        name: "E2E · current"
         runs-on: ubuntu-latest
         timeout-minutes: 30
+        outputs:
+            tag: ${{ steps.tag.outputs.tag }}
         steps:
             - uses: actions/checkout@v4
 
@@ -62,3 +73,15 @@ jobs:
                   DOT_DEPLOY_VERBOSE: "1"
                   DOT_TAG: ${{ steps.tag.outputs.tag }}
                   DOT_TELEMETRY: "1"
+
+    report:
+        name: E2E Report
+        needs: [test]
+        if: always()
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        steps:
+            - name: Placeholder — implemented in Tasks 6–8
+              run: |
+                  echo "test job result: ${{ needs.test.result }}"
+                  echo "(report job logic added in subsequent tasks)"
