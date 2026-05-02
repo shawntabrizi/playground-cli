@@ -40,6 +40,6 @@ jobs:
             - name: Run E2E tests
               run: pnpm test:e2e
               env:
-                  TEST_TEMPLATE_DOMAIN: rock-paper-scissors.dot
+                  TEST_TEMPLATE_DOMAIN: dot-cli-mod-fixture.dot
                   TEST_TEMPLATE_REPO: https://github.com/paritytech/Rock-Paper-Scissors
                   DOT_DEPLOY_VERBOSE: "1"
