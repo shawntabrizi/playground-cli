@@ -8,11 +8,6 @@ on:
     schedule:
         - cron: "0 6 * * *"
     workflow_dispatch:
-        inputs:
-            simulate_failure:
-                description: "[temporary, Phase 1 verification only] Force the auto-issue path to fire"
-                type: boolean
-                default: false
 
 permissions:
     pull-requests: write     # sticky PR comment posting
@@ -247,11 +242,8 @@ jobs:
 
             - name: Open failure issue
               if: >
-                  (
-                    (github.event_name == 'schedule' || github.event_name == 'release') &&
-                    needs.test.result != 'success'
-                  ) ||
-                  (github.event_name == 'workflow_dispatch' && inputs.simulate_failure == true)
+                  (github.event_name == 'schedule' || github.event_name == 'release') &&
+                  needs.test.result != 'success'
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   TAG: ${{ needs.test.outputs.tag }}
