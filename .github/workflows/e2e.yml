@@ -74,6 +74,16 @@ jobs:
                   DOT_TAG: ${{ steps.tag.outputs.tag }}
                   DOT_TELEMETRY: "1"
 
+            - name: Upload forensic artefacts
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@v4
+              with:
+                  name: e2e-reports-current
+                  path: e2e-reports/
+                  retention-days: 7
+                  if-no-files-found: ignore
+
     report:
         name: E2E Report
         needs: [test]

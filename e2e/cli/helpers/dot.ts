@@ -6,6 +6,7 @@
  */
 
 import { execa as execaFn } from "execa";
+import { appendFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../../");
@@ -74,6 +75,7 @@ async function run(args: string[], options?: DotOptions): Promise<DotResult> {
 		env.HOME = options.home;
 	}
 
+	const startedAt = Date.now();
 	try {
 		const result = await execaFn("bun", ["run", CLI_ENTRY, ...args], {
 			cwd: options?.cwd ?? REPO_ROOT,
@@ -81,13 +83,39 @@ async function run(args: string[], options?: DotOptions): Promise<DotResult> {
 			timeout: options?.timeout ?? DEFAULT_TIMEOUT,
 			reject: false,
 		});
-		return {
+		const dotResult: DotResult = {
 			stdout: result.stdout,
 			stderr: result.stderr,
 			exitCode: result.exitCode ?? 1,
 		};
+		appendForensicLog(args, dotResult, Date.now() - startedAt);
+		return dotResult;
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : String(err);
-		return { stdout: "", stderr: msg, exitCode: 1 };
+		const dotResult: DotResult = { stdout: "", stderr: msg, exitCode: 1 };
+		appendForensicLog(args, dotResult, Date.now() - startedAt);
+		return dotResult;
+	}
+}
+
+function appendForensicLog(args: string[], result: DotResult, durationMs: number): void {
+	// Best-effort: only write if e2e-reports/ exists. Don't create the dir
+	// eagerly — tests that don't care about forensic capture shouldn't get
+	// a stray dir in their cwd.
+	const reportsDir = resolve(REPO_ROOT, "e2e-reports");
+	if (!existsSync(reportsDir)) return;
+	try {
+		const entry = [
+			`# ${new Date().toISOString()}  exit=${result.exitCode}  durationMs=${durationMs}`,
+			`# args: ${args.map((a) => (/\s/.test(a) ? `'${a}'` : a)).join(" ")}`,
+			`--- stdout ---`,
+			result.stdout,
+			`--- stderr ---`,
+			result.stderr,
+			``,
+		].join("\n");
+		appendFileSync(resolve(reportsDir, "dot-runs.log"), entry);
+	} catch {
+		// Forensic logging must never fail a test. Swallow.
 	}
 }
