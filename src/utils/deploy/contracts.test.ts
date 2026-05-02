@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -177,7 +177,7 @@ describe("runContractsPhase skipBuild=true (foundry)", () => {
         runStreamedMock.mockClear();
         deployBatchMock.mockClear();
         // Fresh tmp dir per test so artifact presence/absence is controlled.
-        dir = join(tmpdir(), `contracts-test-foundry-${Date.now()}`);
+        dir = mkdtempSync(join(tmpdir(), "contracts-test-foundry-"));
     });
 
     it("uses existing foundry artifacts without spawning forge", async () => {
@@ -222,7 +222,7 @@ describe("runContractsPhase skipBuild=true (hardhat)", () => {
     beforeEach(() => {
         runStreamedMock.mockClear();
         deployBatchMock.mockClear();
-        dir = join(tmpdir(), `contracts-test-hardhat-${Date.now()}`);
+        dir = mkdtempSync(join(tmpdir(), "contracts-test-hardhat-"));
     });
 
     it("uses existing hardhat artifacts without spawning npx hardhat compile", async () => {
