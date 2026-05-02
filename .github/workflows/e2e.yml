@@ -52,6 +52,8 @@ jobs:
               id: tag
               shell: bash
               run: |
+                  # Phase 1 triggers: pull_request / push:main / schedule / workflow_dispatch.
+                  # Phase 7 will add `release` (with TAG=e2e-ci-release).
                   case "${{ github.event_name }}" in
                       schedule)            TAG=e2e-ci-nightly  ;;
                       workflow_dispatch)   TAG=e2e-ci-dispatch ;;
@@ -92,6 +94,9 @@ jobs:
         timeout-minutes: 5
         steps:
             - name: Download JUnit + forensic artefacts
+              # Phase 1 has one upload (e2e-reports-current). When Phase 4 adds
+              # the matrix, drop `merge-multiple: true` and parse per-cell sub-dirs
+              # so per-leg junit.xml don't collide on the same flat path.
               uses: actions/download-artifact@v4
               with:
                   pattern: e2e-reports-*
@@ -204,7 +209,10 @@ jobs:
                   fi
 
                   # ---- Part 3: Sentry traces link ----
-                  # Only the traces URL — works against any cli.tag value.
+                  # Project ID 4511298552135760 mirrors src/telemetry-config.ts (PLAYGROUND_SENTRY_DSN
+                  # → o4511059872841728 / 4511298552135760) and sentry/dashboards/2143100.json.
+                  # If the project is ever rotated, update all three together.
+                  # Only the traces URL is emitted — it works against any cli.tag value.
                   # The "E2E Health dashboard" link is intentionally NOT emitted in
                   # Phase 1 (requires manual one-time dashboard creation per spec §9a).
                   {
@@ -263,14 +271,9 @@ jobs:
               shell: /usr/bin/bash -euo pipefail {0}
               run: |
                   TODAY=$(date -u +%Y-%m-%d)
-                  case "$TAG" in
-                      e2e-ci-release)  TITLE="Release E2E failure: ${{ github.event.release.tag_name }}" ;;
-                      *)               TITLE="Nightly E2E failure: $TODAY" ;;
-                  esac
+                  TITLE="Nightly E2E failure: $TODAY"
                   CONTEXT="Nightly E2E failed on $TODAY (tag \`$TAG\`)."
-                  case "$TAG" in
-                      e2e-ci-release)  CONTEXT="Release E2E failed for ${{ github.event.release.tag_name }}." ;;
-                  esac
+                  # Release-trigger branches will be added in Phase 7 (post-Phase-4).
 
                   {
                       echo "$CONTEXT"
