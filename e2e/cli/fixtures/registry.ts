@@ -8,6 +8,11 @@ import { ContractManager } from "@polkadot-apps/contracts";
 import { createDevSigner, getDevPublicKey } from "@polkadot-apps/tx";
 import { ss58Encode } from "@polkadot-apps/address";
 import { getTestClient } from "../helpers/chain.js";
+import {
+	PLAYGROUND_REGISTRY_CONTRACT,
+	suppressReviveTraceNoise,
+	withRequiredLiveContractAddresses,
+} from "../../../src/utils/contractManifest.js";
 
 import cdmJson from "../../../cdm.json";
 
@@ -27,11 +32,19 @@ async function getRegistry(): Promise<Registry> {
 			const client = await getTestClient();
 			const aliceSigner = createDevSigner("Alice");
 			const aliceAddress = ss58Encode(getDevPublicKey("Alice"));
-			const manager = await ContractManager.fromClient(cdmJson, client.raw.assetHub, {
+			// Mirror src/utils/registry.ts — query the CDM meta-registry for the
+			// live address before binding, so the helper reads from the same
+			// contract `dot mod` and `dot deploy` actually use. Without this,
+			// reads land on the cdm.json snapshot and silently diverge from the
+			// command paths after a registry redeploy. See issue #74.
+			const manifest = await withRequiredLiveContractAddresses(cdmJson, client.raw.assetHub, [
+				PLAYGROUND_REGISTRY_CONTRACT,
+			]);
+			const manager = await ContractManager.fromClient(manifest, client.raw.assetHub, {
 				defaultSigner: aliceSigner,
 				defaultOrigin: aliceAddress,
 			});
-			return manager.getContract("@w3s/playground-registry");
+			return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));
 		})().catch((err) => {
 			// Reset so the next call can retry instead of replaying the error
 			registryPromise = null;
@@ -44,16 +57,21 @@ async function getRegistry(): Promise<Registry> {
 /**
  * Query the registry for an app entry by domain.
  * Returns null if not found.
+ *
+ * `getMetadataUri` returns an `Option<String>` shaped as `{ isSome, value }` —
+ * always a truthy object regardless of registration. The `isSome` flag is the
+ * real discriminator; check it explicitly. (See cdm.json's getMetadataUri ABI.)
  */
 export async function getApp(domain: string): Promise<AppEntry | null> {
 	try {
 		const registry = await getRegistry();
 		const res = await registry.getMetadataUri.query(domain);
-		if (!res.value) return null;
+		const tuple = res.value as { isSome?: boolean; value?: string } | undefined;
+		if (!tuple?.isSome) return null;
 		return {
 			domain,
 			owner: "",
-			metadataUri: String(res.value),
+			metadataUri: String(tuple.value ?? ""),
 		};
 	} catch {
 		return null;
