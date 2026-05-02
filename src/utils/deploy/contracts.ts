@@ -124,6 +124,14 @@ export async function runContractsPhase(
     return { deployed };
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function throwMissingArtifacts(dir: string, manualCmd: string): never {
+    throw new Error(
+        `no pre-built contract artifacts found at ${dir}; remove --no-contract-build or run \`${manualCmd}\` manually first`,
+    );
+}
+
 // ── Compile dispatch ─────────────────────────────────────────────────────────
 
 interface CompiledArtifact {
@@ -182,9 +190,7 @@ async function compileCdmSkipBuild(opts: RunContractsPhaseOptions): Promise<Comp
     const contracts = detectContracts(projectDir);
 
     if (contracts.length === 0) {
-        throw new Error(
-            `no pre-built contract artifacts found under ${projectDir}; remove --no-contract-build or run \`cargo-contract build\` manually first`,
-        );
+        throwMissingArtifacts(projectDir, "cargo-contract build");
     }
 
     opts.onEvent({
@@ -196,9 +202,7 @@ async function compileCdmSkipBuild(opts: RunContractsPhaseOptions): Promise<Comp
     for (const contract of contracts) {
         const pvmPath = join(projectDir, `target/${contract.name}.release.polkavm`);
         if (!existsSync(pvmPath)) {
-            throw new Error(
-                `no pre-built contract artifacts found at ${pvmPath}; remove --no-contract-build or run \`cargo-contract build\` manually first`,
-            );
+            throwMissingArtifacts(pvmPath, "cargo-contract build");
         }
         artifacts.push({ name: contract.name, pvmPath });
     }
@@ -237,17 +241,19 @@ async function compileFoundry(opts: RunContractsPhaseOptions): Promise<CompiledA
     }
 
     const outDir = join(projectDir, "out");
-    if (!existsSync(outDir)) {
-        if (opts.skipBuild) {
-            throw new Error(
-                `no pre-built contract artifacts found at ${outDir}; remove --no-contract-build or run \`forge build --resolc\` manually first`,
-            );
+    let foundryEntries: import("node:fs").Dirent[];
+    try {
+        foundryEntries = readdirSync(outDir, { withFileTypes: true });
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            if (opts.skipBuild) throwMissingArtifacts(outDir, "forge build --resolc");
+            throw new Error(`forge build did not produce an out/ directory at ${outDir}`);
         }
-        throw new Error(`forge build did not produce an out/ directory at ${outDir}`);
+        throw err;
     }
 
     const artifacts: CompiledArtifact[] = [];
-    for (const entry of readdirSync(outDir, { withFileTypes: true })) {
+    for (const entry of foundryEntries) {
         if (!entry.isDirectory()) continue;
         if (entry.name.endsWith(".t.sol") || entry.name.endsWith(".s.sol")) continue;
         if (!entry.name.endsWith(".sol")) continue;
@@ -268,9 +274,7 @@ async function compileFoundry(opts: RunContractsPhaseOptions): Promise<CompiledA
     }
 
     if (opts.skipBuild && artifacts.length === 0) {
-        throw new Error(
-            `no pre-built contract artifacts found at ${outDir}; remove --no-contract-build or run \`forge build --resolc\` manually first`,
-        );
+        throwMissingArtifacts(outDir, "forge build --resolc");
     }
 
     return artifacts;
@@ -293,19 +297,21 @@ async function compileHardhat(opts: RunContractsPhaseOptions): Promise<CompiledA
     }
 
     const artifactsRoot = join(projectDir, "artifacts", "contracts");
-    if (!existsSync(artifactsRoot)) {
-        if (opts.skipBuild) {
+    let hardhatEntries: import("node:fs").Dirent[];
+    try {
+        hardhatEntries = readdirSync(artifactsRoot, { withFileTypes: true });
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            if (opts.skipBuild) throwMissingArtifacts(artifactsRoot, "npx hardhat compile");
             throw new Error(
-                `no pre-built contract artifacts found at ${artifactsRoot}; remove --no-contract-build or run \`npx hardhat compile\` manually first`,
+                `hardhat compile did not produce artifacts/contracts/ at ${artifactsRoot} — did you load "@parity/hardhat-polkadot" in your hardhat.config?`,
             );
         }
-        throw new Error(
-            `hardhat compile did not produce artifacts/contracts/ at ${artifactsRoot} — did you load "@parity/hardhat-polkadot" in your hardhat.config?`,
-        );
+        throw err;
     }
 
     const artifacts: CompiledArtifact[] = [];
-    for (const entry of readdirSync(artifactsRoot, { withFileTypes: true })) {
+    for (const entry of hardhatEntries) {
         if (!entry.isDirectory()) continue;
         if (!entry.name.endsWith(".sol")) continue;
 
@@ -327,9 +333,7 @@ async function compileHardhat(opts: RunContractsPhaseOptions): Promise<CompiledA
     }
 
     if (opts.skipBuild && artifacts.length === 0) {
-        throw new Error(
-            `no pre-built contract artifacts found at ${artifactsRoot}; remove --no-contract-build or run \`npx hardhat compile\` manually first`,
-        );
+        throwMissingArtifacts(artifactsRoot, "npx hardhat compile");
     }
 
     return artifacts;

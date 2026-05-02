@@ -156,10 +156,9 @@ export const deployCommand = new Command("deploy")
                 const nonInteractive = isFullySpecified(opts);
 
                 if (opts.contractBuild === false && opts.contracts && !nonInteractive) {
-                    console.error(
-                        "Error: --no-contract-build requires headless mode (combine with --signer, --domain, --buildDir, --playground).",
+                    throw new Error(
+                        "--no-contract-build requires headless mode (combine with --signer, --domain, --buildDir, --playground).",
                     );
-                    process.exit(2);
                 }
 
                 if (nonInteractive) {
