@@ -1,6 +1,41 @@
-import { describe, it, expect } from "vitest";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Buffer } from "node:buffer";
 import { extractFoundryBytecode, extractHardhatBytecode, hexToBytes } from "./contracts.js";
+
+// ── skipBuild mocks ──────────────────────────────────────────────────────────
+//
+// These mocks exist purely for the skipBuild integration tests at the bottom of
+// this file. The pure-helper tests above do not need them.
+
+const { runStreamedMock, deployBatchMock } = vi.hoisted(() => ({
+    runStreamedMock: vi.fn(async () => {}),
+    deployBatchMock: vi.fn(async () => ({
+        addresses: ["0xdeadbeef"] as `0x${string}`[],
+        chunkCount: 1,
+    })),
+}));
+
+vi.mock("../process.js", () => ({
+    runStreamed: runStreamedMock,
+}));
+
+vi.mock("@dotdm/contracts", async (importOriginal) => {
+    const real = await importOriginal<typeof import("@dotdm/contracts")>();
+    return {
+        ...real,
+        buildContracts: vi.fn(async () => ({
+            contracts: [{ crate: "flipper", pvmPath: "/tmp/flipper.polkavm" }],
+            totalDurationMs: 1,
+        })),
+        detectContracts: vi.fn(() => [{ name: "flipper" }]),
+        ContractDeployer: class MockContractDeployer {
+            deployBatch = deployBatchMock;
+        },
+    };
+});
 
 describe("hexToBytes", () => {
     it("decodes a 0x-prefixed hex string", () => {
@@ -108,5 +143,116 @@ describe("extractHardhatBytecode", () => {
         expect(extractHardhatBytecode(undefined)).toBeNull();
         expect(extractHardhatBytecode("0x60806040")).toBeNull();
         expect(extractHardhatBytecode(42)).toBeNull();
+    });
+});
+
+// ── skipBuild integration tests ───────────────────────────────────────────────
+//
+// These tests verify that the compile step (runStreamed) is NOT called when
+// skipBuild is true, and that the discovery loop reads pre-existing artifacts.
+// They use a real tmp dir so the fs checks in compileFoundry/compileHardhat
+// work correctly; ContractDeployer.deployBatch is mocked to avoid chain I/O.
+
+import { runContractsPhase } from "./contracts.js";
+
+function makeOpts(projectDir: string, contractsType: "foundry" | "hardhat", skipBuild: boolean) {
+    return {
+        projectDir,
+        contractsType,
+        skipBuild,
+        // ContractDeployer is mocked — provide the minimal shape that the
+        // constructor call `new ContractDeployer(signer, origin, raw.assetHub,
+        // assetHub)` accesses before handing off to the mock.
+        client: { raw: { assetHub: {} }, assetHub: {} } as any,
+        signer: {} as any,
+        origin: "5FakeAddress" as any,
+        onEvent: () => {},
+    };
+}
+
+describe("runContractsPhase skipBuild=true (foundry)", () => {
+    let dir: string;
+
+    beforeEach(() => {
+        runStreamedMock.mockClear();
+        deployBatchMock.mockClear();
+        // Fresh tmp dir per test so artifact presence/absence is controlled.
+        dir = mkdtempSync(join(tmpdir(), "contracts-test-foundry-"));
+    });
+
+    it("uses existing foundry artifacts without spawning forge", async () => {
+        // Set up out/Counter.sol/Counter.json with real bytecode.
+        const solDir = join(dir, "out", "Counter.sol");
+        mkdirSync(solDir, { recursive: true });
+        writeFileSync(
+            join(solDir, "Counter.json"),
+            JSON.stringify({ bytecode: { object: "0x6080604052" } }),
+        );
+
+        const result = await runContractsPhase(makeOpts(dir, "foundry", true));
+
+        expect(runStreamedMock).not.toHaveBeenCalled();
+        expect(result.deployed).toHaveLength(1);
+        expect(result.deployed[0].name).toBe("Counter");
+    });
+
+    it("throws with a clear message when out/ is missing", async () => {
+        // No out/ directory — simulates a project where forge was never run.
+        mkdirSync(dir, { recursive: true });
+
+        await expect(runContractsPhase(makeOpts(dir, "foundry", true))).rejects.toThrow(
+            /no pre-built contract artifacts found at/,
+        );
+        expect(runStreamedMock).not.toHaveBeenCalled();
+    });
+
+    it("throws with a clear message when out/ exists but has no valid artifacts", async () => {
+        // out/ exists but is empty — forge ran but produced nothing usable.
+        mkdirSync(join(dir, "out"), { recursive: true });
+
+        await expect(runContractsPhase(makeOpts(dir, "foundry", true))).rejects.toThrow(
+            /no pre-built contract artifacts found at/,
+        );
+    });
+});
+
+describe("runContractsPhase skipBuild=true (hardhat)", () => {
+    let dir: string;
+
+    beforeEach(() => {
+        runStreamedMock.mockClear();
+        deployBatchMock.mockClear();
+        dir = mkdtempSync(join(tmpdir(), "contracts-test-hardhat-"));
+    });
+
+    it("uses existing hardhat artifacts without spawning npx hardhat compile", async () => {
+        // Set up artifacts/contracts/Lock.sol/Lock.json with real bytecode.
+        const solDir = join(dir, "artifacts", "contracts", "Lock.sol");
+        mkdirSync(solDir, { recursive: true });
+        writeFileSync(join(solDir, "Lock.json"), JSON.stringify({ bytecode: "0x6080604052" }));
+
+        const result = await runContractsPhase(makeOpts(dir, "hardhat", true));
+
+        expect(runStreamedMock).not.toHaveBeenCalled();
+        expect(result.deployed).toHaveLength(1);
+        expect(result.deployed[0].name).toBe("Lock");
+    });
+
+    it("throws with a clear message when artifacts/contracts/ is missing", async () => {
+        mkdirSync(dir, { recursive: true });
+
+        await expect(runContractsPhase(makeOpts(dir, "hardhat", true))).rejects.toThrow(
+            /no pre-built contract artifacts found at/,
+        );
+        expect(runStreamedMock).not.toHaveBeenCalled();
+    });
+
+    it("throws with a clear message when artifacts/contracts/ has no valid artifacts", async () => {
+        // Directory exists but contains no .sol subdirs with valid JSON.
+        mkdirSync(join(dir, "artifacts", "contracts"), { recursive: true });
+
+        await expect(runContractsPhase(makeOpts(dir, "hardhat", true))).rejects.toThrow(
+            /no pre-built contract artifacts found at/,
+        );
     });
 });

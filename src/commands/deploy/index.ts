@@ -42,6 +42,13 @@ interface DeployOpts {
      * a `--no-foo` option is declared.
      */
     build?: boolean;
+    /**
+     * Commander's auto-negated boolean: defaults to `true`; `--no-contract-build` flips it to `false`.
+     * When false, the contract compile step (forge/hardhat/cargo-contract) is skipped and
+     * pre-existing artifacts on disk are used instead. CI-friendly for environments without
+     * the contract toolchains installed.
+     */
+    contractBuild?: boolean;
     /** Deploy the project's contracts alongside the frontend. Defaults to false. */
     contracts?: boolean;
     /** Publish the source repo so others can `dot mod` it. Commander auto-negates: `--no-modable` ⇒ false. */
@@ -67,6 +74,10 @@ export const deployCommand = new Command("deploy")
     .option(
         "--contracts",
         "Also deploy any contracts detected in the project (foundry/hardhat/cdm)",
+    )
+    .option(
+        "--no-contract-build",
+        "Skip the contract compile step (forge/hardhat/cargo-contract) and deploy existing pre-built artifacts. Requires --contracts. Useful for CI environments without the contract toolchains installed.",
     )
     .option("--playground", "Publish to the playground registry")
     .option(
@@ -143,6 +154,13 @@ export const deployCommand = new Command("deploy")
 
             try {
                 const nonInteractive = isFullySpecified(opts);
+
+                if (opts.contractBuild === false && opts.contracts && !nonInteractive) {
+                    throw new Error(
+                        "--no-contract-build requires headless mode (combine with --signer, --domain, --buildDir, --playground).",
+                    );
+                }
+
                 if (nonInteractive) {
                     await runHeadless({ projectDir, env, userSigner, opts });
                 } else {
@@ -261,6 +279,7 @@ async function runHeadless(ctx: {
     const buildDir = ctx.opts.buildDir as string;
     const skipBuild = ctx.opts.build === false;
     const deployContracts = Boolean(ctx.opts.contracts);
+    const skipContractBuild = ctx.opts.contractBuild === false;
     const contractsType = safeDetectContractsType(ctx.projectDir);
     if (deployContracts && contractsType === null) {
         throw new Error(
@@ -369,6 +388,7 @@ async function runHeadless(ctx: {
                 modable,
                 repositoryUrl,
                 deployContracts,
+                skipContractBuild,
                 contractsFundingNeeded,
                 userSigner: ctx.userSigner,
                 plan: availability.plan,
