@@ -93,4 +93,13 @@ export const E2E_DOMAINS = {
 	redeploy: "e2e-cli-redeploy",
 	/** Used by the cross-owner collision test (BOB tries to take SIGNER's). */
 	collision: "e2e-cli-collision",
+	/**
+	 * Phase 3 cell domains — registered by `tools/register-e2e-fixtures.ts`.
+	 * Owned by SIGNER; subsequent runs are same-owner re-publishes.
+	 * Not yet wired to any test — see Phase 4 of docs-internal/2026-05-02-e2e-test-suite-design.md.
+	 */
+	foundry: "e2e-cli-foundry",
+	cdm: "e2e-cli-cdm",
+	hardhat: "e2e-cli-hardhat",
+	multi: "e2e-cli-multi",
 } as const;
