@@ -1,7 +1,8 @@
 import React from "react";
 import { Command } from "commander";
 import { render } from "ink";
-import { withCommandTelemetry, withSpan } from "../../telemetry.js";
+import { withSpan } from "../../telemetry.js";
+import { runCliCommand } from "../../cli-runtime.js";
 import { findSession, type LogoutHandle } from "../../utils/auth.js";
 import { LogoutScreen } from "./LogoutScreen.js";
 
@@ -27,10 +28,10 @@ async function lookupSession(): Promise<LookupResult> {
 export const logoutCommand = new Command("logout")
     .description("Sign out of the account paired via `dot init`")
     .action(async () =>
-        withCommandTelemetry("logout", async () => {
+        runCliCommand("logout", { hardExit: true }, async () => {
             console.log();
 
-            const result = await withSpan("cli.logout.lookup", "lookup session", {}, lookupSession);
+            const result = await withSpan("cli.logout.lookup", "lookup session", lookupSession);
 
             if (result.kind === "error") {
                 console.error(`  Could not reach the login service: ${result.message}\n`);
@@ -50,7 +51,7 @@ export const logoutCommand = new Command("logout")
                     onDone: () => app.unmount(),
                 }),
             );
-            await withSpan("cli.logout.tui", "logout session", {}, () => app.waitUntilExit());
+            await withSpan("cli.logout.tui", "logout session", () => app.waitUntilExit());
 
             console.log();
         }),

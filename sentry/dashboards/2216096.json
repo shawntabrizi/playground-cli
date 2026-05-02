@@ -1,0 +1,480 @@
+{
+    "id": "2216096",
+    "title": "Playground CLI E2E Health",
+    "dateCreated": "2026-05-01T18:02:23.551793Z",
+    "createdBy": {
+        "id": "4441470",
+        "name": "Ionut",
+        "username": "ionut@parity.io",
+        "email": "ionut@parity.io",
+        "avatarUrl": "https://gravatar.com/avatar/aa4182266e7ce720e29e841ef51d3673fd5b007f0a892fdd38b99a435c8ea618?s=32&d=mm",
+        "isActive": true,
+        "hasPasswordAuth": true,
+        "isManaged": false,
+        "dateJoined": "2026-04-15T16:06:03.281704Z",
+        "lastLogin": "2026-04-22T12:48:09.478383Z",
+        "has2fa": true,
+        "lastActive": "2026-05-01T15:59:08.742757Z",
+        "isSuperuser": false,
+        "isStaff": false,
+        "emails": [],
+        "experiments": {},
+        "avatar": {
+            "avatarType": "letter_avatar",
+            "avatarUuid": null,
+            "avatarUrl": null
+        }
+    },
+    "widgets": [
+        {
+            "id": "452443",
+            "title": "E2E Runs",
+            "description": "All runs tagged cli.tag:e2e-*. Use this to confirm the e2e suite is actually running and emitting telemetry.",
+            "displayType": "big_number",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T18:02:23.577372Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698221",
+                    "name": "",
+                    "fields": [
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
+                    "orderby": "",
+                    "widgetId": "452443",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 0,
+                "w": 1,
+                "h": 1,
+                "minH": 1
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452444",
+            "title": "E2E Failure Rate",
+            "description": "Sentry's built-in failure_rate() over e2e-* traffic. Watch alongside %SAD.",
+            "displayType": "big_number",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T18:02:23.616370Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698222",
+                    "name": "",
+                    "fields": [
+                        "failure_rate()"
+                    ],
+                    "aggregates": [
+                        "failure_rate()"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
+                    "orderby": "",
+                    "widgetId": "452444",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 1,
+                "y": 0,
+                "w": 1,
+                "h": 1,
+                "minH": 1
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452445",
+            "title": "E2E %SAD",
+            "description": "Custom SAD%: succeeded-with-friction + outright-failure / total. Gap to failure_rate() is the retry recovery signal.",
+            "displayType": "big_number",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T18:02:23.656040Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698223",
+                    "name": "",
+                    "fields": [
+                        "count_if(cli.sad,equals,true)",
+                        "count()",
+                        "equation|count_if(cli.sad,equals,true) * 100 / count()"
+                    ],
+                    "aggregates": [
+                        "count_if(cli.sad,equals,true)",
+                        "count()",
+                        "equation|count_if(cli.sad,equals,true) * 100 / count()"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
+                    "orderby": "",
+                    "widgetId": "452445",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": 2,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 2,
+                "y": 0,
+                "w": 1,
+                "h": 1,
+                "minH": 1
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452446",
+            "title": "Affected E2E Repos",
+            "description": "count_unique(cli.repo) among e2e-* runs.",
+            "displayType": "big_number",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T18:02:23.686002Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698224",
+                    "name": "",
+                    "fields": [
+                        "count_unique(cli.repo)"
+                    ],
+                    "aggregates": [
+                        "count_unique(cli.repo)"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-*",
+                    "orderby": "",
+                    "widgetId": "452446",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 3,
+                "y": 0,
+                "w": 1,
+                "h": 1,
+                "minH": 1
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452447",
+            "title": "Success vs Friction (per day)",
+            "description": "Daily split of e2e runs by cli.sad. Two bars per day: clean (cli.sad:false) vs sad (cli.sad:true).",
+            "displayType": "bar",
+            "thresholds": null,
+            "interval": "1d",
+            "dateCreated": "2026-05-01T18:02:23.703856Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698225",
+                    "name": "clean",
+                    "fields": [
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-* cli.sad:false",
+                    "orderby": "",
+                    "widgetId": "452447",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                },
+                {
+                    "id": "698226",
+                    "name": "sad",
+                    "fields": [
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-* cli.sad:true",
+                    "orderby": "",
+                    "widgetId": "452447",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 1,
+                "w": 6,
+                "h": 2,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452448",
+            "title": "E2E Failures by Phase",
+            "description": "Which phase fails in e2e runs. Compare against the production-traffic equivalent on the Failures Detail dashboard.",
+            "displayType": "table",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T18:02:23.729934Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698227",
+                    "name": "",
+                    "fields": [
+                        "span.op",
+                        "count()",
+                        "avg(span.duration)"
+                    ],
+                    "aggregates": [
+                        "count()",
+                        "avg(span.duration)"
+                    ],
+                    "columns": [
+                        "span.op"
+                    ],
+                    "fieldAliases": [],
+                    "conditions": "span.op:cli.deploy.* cli.tag:e2e-*",
+                    "orderby": "-count()",
+                    "widgetId": "452448",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 3,
+                "w": 3,
+                "h": 3,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452449",
+            "title": "E2E Failures by Signer Mode",
+            "description": "cli.deploy.mode breakdown \u2014 pool vs phone vs dev. Mode-specific regressions appear here first.",
+            "displayType": "table",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T18:02:23.765357Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698228",
+                    "name": "",
+                    "fields": [
+                        "cli.deploy.mode",
+                        "count()",
+                        "avg(span.duration)"
+                    ],
+                    "aggregates": [
+                        "count()",
+                        "avg(span.duration)"
+                    ],
+                    "columns": [
+                        "cli.deploy.mode"
+                    ],
+                    "fieldAliases": [],
+                    "conditions": "span.op:cli.deploy.orchestrator cli.tag:e2e-* cli.status:error",
+                    "orderby": "-count()",
+                    "widgetId": "452449",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 3,
+                "y": 3,
+                "w": 3,
+                "h": 3,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452450",
+            "title": "E2E Warning Volume",
+            "description": "Transient warnings during e2e runs, grouped by title. A spike here without a corresponding failure_rate() spike means retries are masking flakiness.",
+            "displayType": "line",
+            "thresholds": null,
+            "interval": "1h",
+            "dateCreated": "2026-05-01T18:02:23.776172Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698229",
+                    "name": "",
+                    "fields": [
+                        "title",
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [
+                        "title"
+                    ],
+                    "fieldAliases": [],
+                    "conditions": "project:playground-cli level:warning cli.tag:e2e-*",
+                    "orderby": "-count()",
+                    "widgetId": "452450",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": 10,
+            "widgetType": "error-events",
+            "layout": {
+                "x": 0,
+                "y": 6,
+                "w": 6,
+                "h": 2,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452451",
+            "title": "Recent E2E Failures",
+            "description": "Latest failed e2e runs.",
+            "displayType": "table",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T18:02:23.790518Z",
+            "dashboardId": "2216096",
+            "queries": [
+                {
+                    "id": "698230",
+                    "name": "",
+                    "fields": [
+                        "timestamp",
+                        "cli.command",
+                        "cli.tag",
+                        "cli.error"
+                    ],
+                    "aggregates": [],
+                    "columns": [
+                        "timestamp",
+                        "cli.command",
+                        "cli.tag",
+                        "cli.error"
+                    ],
+                    "fieldAliases": [
+                        "when",
+                        "command",
+                        "tag",
+                        "error"
+                    ],
+                    "conditions": "is_transaction:true span.op:cli.* cli.tag:e2e-* cli.status:error",
+                    "orderby": "-timestamp",
+                    "widgetId": "452451",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 8,
+                "w": 6,
+                "h": 3,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        }
+    ],
+    "filters": {},
+    "permissions": null,
+    "isFavorited": false,
+    "projects": [],
+    "environment": [],
+    "prebuiltId": null,
+    "expired": false
+}

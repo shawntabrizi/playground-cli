@@ -1,0 +1,473 @@
+{
+    "id": "2216067",
+    "title": "Playground CLI Failures",
+    "dateCreated": "2026-05-01T17:59:35.463164Z",
+    "createdBy": {
+        "id": "4441470",
+        "name": "Ionut",
+        "username": "ionut@parity.io",
+        "email": "ionut@parity.io",
+        "avatarUrl": "https://gravatar.com/avatar/aa4182266e7ce720e29e841ef51d3673fd5b007f0a892fdd38b99a435c8ea618?s=32&d=mm",
+        "isActive": true,
+        "isSuspended": false,
+        "hasPasswordAuth": true,
+        "isManaged": false,
+        "dateJoined": "2026-04-15T16:06:03.281704Z",
+        "lastLogin": "2026-04-22T12:48:09.478383Z",
+        "has2fa": true,
+        "lastActive": "2026-05-01T15:59:08.742757Z",
+        "isSuperuser": false,
+        "isStaff": false,
+        "emails": [],
+        "experiments": {},
+        "avatar": {
+            "avatarType": "letter_avatar",
+            "avatarUuid": null,
+            "avatarUrl": null
+        }
+    },
+    "widgets": [
+        {
+            "id": "452434",
+            "title": "Total Failures",
+            "description": "All hard failures (cli.status:error) excluding e2e-* runs.",
+            "displayType": "big_number",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T17:59:35.468922Z",
+            "dashboardId": "2216067",
+            "queries": [
+                {
+                    "id": "698212",
+                    "name": "",
+                    "fields": [
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                    "orderby": "",
+                    "widgetId": "452434",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 0,
+                "w": 1,
+                "h": 1,
+                "minH": 1
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452435",
+            "title": "Failure Rate (%)",
+            "description": "Sentry's built-in failure_rate(): transactions with transaction.status != ok. Compare against %SAD on the Health dashboard.",
+            "displayType": "big_number",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T17:59:35.474057Z",
+            "dashboardId": "2216067",
+            "queries": [
+                {
+                    "id": "698213",
+                    "name": "",
+                    "fields": [
+                        "failure_rate()"
+                    ],
+                    "aggregates": [
+                        "failure_rate()"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-*",
+                    "orderby": "",
+                    "widgetId": "452435",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 1,
+                "y": 0,
+                "w": 1,
+                "h": 1,
+                "minH": 1
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452436",
+            "title": "Affected Repos",
+            "description": "count_unique(cli.repo) among failed runs.",
+            "displayType": "big_number",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T17:59:35.478283Z",
+            "dashboardId": "2216067",
+            "queries": [
+                {
+                    "id": "698214",
+                    "name": "",
+                    "fields": [
+                        "count_unique(cli.repo)"
+                    ],
+                    "aggregates": [
+                        "count_unique(cli.repo)"
+                    ],
+                    "columns": [],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                    "orderby": "",
+                    "widgetId": "452436",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 2,
+                "y": 0,
+                "w": 1,
+                "h": 1,
+                "minH": 1
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452437",
+            "title": "Failures Over Time",
+            "description": "Per-command failure counts over time. Spikes correlated to a release date usually mean a regression.",
+            "displayType": "line",
+            "thresholds": null,
+            "interval": "1h",
+            "dateCreated": "2026-05-01T17:59:35.482541Z",
+            "dashboardId": "2216067",
+            "queries": [
+                {
+                    "id": "698215",
+                    "name": "",
+                    "fields": [
+                        "cli.command",
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [
+                        "cli.command"
+                    ],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                    "orderby": "-count()",
+                    "widgetId": "452437",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": 10,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 1,
+                "w": 6,
+                "h": 2,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452438",
+            "title": "Failures by Repo",
+            "description": "Which repos hit failures the most. Internal repos pass through; external repos appear as `<org>/<hash>`.",
+            "displayType": "table",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T17:59:35.486680Z",
+            "dashboardId": "2216067",
+            "queries": [
+                {
+                    "id": "698216",
+                    "name": "",
+                    "fields": [
+                        "cli.repo",
+                        "cli.command",
+                        "count()",
+                        "avg(span.duration)"
+                    ],
+                    "aggregates": [
+                        "count()",
+                        "avg(span.duration)"
+                    ],
+                    "columns": [
+                        "cli.repo",
+                        "cli.command"
+                    ],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                    "orderby": "-count()",
+                    "widgetId": "452438",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 3,
+                "w": 3,
+                "h": 3,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452439",
+            "title": "Failures by Phase",
+            "description": "Which phase failed in `dot deploy`. cli.deploy.storage-dotns and cli.deploy.playground.registry-publish typically dominate.",
+            "displayType": "table",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T17:59:35.491043Z",
+            "dashboardId": "2216067",
+            "queries": [
+                {
+                    "id": "698217",
+                    "name": "",
+                    "fields": [
+                        "span.op",
+                        "count()",
+                        "avg(span.duration)"
+                    ],
+                    "aggregates": [
+                        "count()",
+                        "avg(span.duration)"
+                    ],
+                    "columns": [
+                        "span.op"
+                    ],
+                    "fieldAliases": [],
+                    "conditions": "span.op:cli.deploy.* !cli.tag:e2e-*",
+                    "orderby": "-count()",
+                    "widgetId": "452439",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 3,
+                "y": 3,
+                "w": 3,
+                "h": 3,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452440",
+            "title": "Error Messages (Unexpected)",
+            "description": "Unexpected errors only (cli.expected:false). These are bugs to fix in the CLI itself, not user-input issues.",
+            "displayType": "table",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T17:59:35.495121Z",
+            "dashboardId": "2216067",
+            "queries": [
+                {
+                    "id": "698218",
+                    "name": "",
+                    "fields": [
+                        "cli.error",
+                        "span.op",
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [
+                        "cli.error",
+                        "span.op"
+                    ],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error cli.expected:false",
+                    "orderby": "-count()",
+                    "widgetId": "452440",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 6,
+                "w": 6,
+                "h": 3,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452441",
+            "title": "Error Messages (Expected)",
+            "description": "Expected user-input errors. High volume here means error copy or onboarding could be clearer.",
+            "displayType": "table",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T17:59:35.499037Z",
+            "dashboardId": "2216067",
+            "queries": [
+                {
+                    "id": "698219",
+                    "name": "",
+                    "fields": [
+                        "cli.error",
+                        "cli.command",
+                        "count()"
+                    ],
+                    "aggregates": [
+                        "count()"
+                    ],
+                    "columns": [
+                        "cli.error",
+                        "cli.command"
+                    ],
+                    "fieldAliases": [],
+                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error cli.expected:true",
+                    "orderby": "-count()",
+                    "widgetId": "452441",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 9,
+                "w": 6,
+                "h": 3,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        },
+        {
+            "id": "452442",
+            "title": "Recent Failures",
+            "description": "Most recent failed runs across all commands. timestamp + repo + version locates the offending change.",
+            "displayType": "table",
+            "thresholds": null,
+            "interval": "5m",
+            "dateCreated": "2026-05-01T17:59:35.503172Z",
+            "dashboardId": "2216067",
+            "queries": [
+                {
+                    "id": "698220",
+                    "name": "",
+                    "fields": [
+                        "timestamp",
+                        "cli.command",
+                        "cli.repo",
+                        "cli.tool_version",
+                        "cli.error"
+                    ],
+                    "aggregates": [],
+                    "columns": [
+                        "timestamp",
+                        "cli.command",
+                        "cli.repo",
+                        "cli.tool_version",
+                        "cli.error"
+                    ],
+                    "fieldAliases": [
+                        "when",
+                        "command",
+                        "repo",
+                        "version",
+                        "error"
+                    ],
+                    "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                    "orderby": "-timestamp",
+                    "widgetId": "452442",
+                    "onDemand": [],
+                    "isHidden": false,
+                    "selectedAggregate": null,
+                    "linkedDashboards": []
+                }
+            ],
+            "limit": null,
+            "widgetType": "spans",
+            "layout": {
+                "x": 0,
+                "y": 12,
+                "w": 6,
+                "h": 3,
+                "minH": 2
+            },
+            "axisRange": null,
+            "legendType": null,
+            "datasetSource": "user",
+            "changedReason": null
+        }
+    ],
+    "filters": {},
+    "permissions": null,
+    "isFavorited": false,
+    "projects": [],
+    "environment": [],
+    "prebuiltId": null,
+    "expired": false
+}

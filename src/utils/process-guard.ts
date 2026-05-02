@@ -105,11 +105,7 @@ export function installSignalHandlers(): void {
     // Unhandled rejections should not silently keep the event loop alive.
     process.on("unhandledRejection", (reason) => {
         if (isBenignUnsubscriptionError(reason)) {
-            if (process.env.DOT_DEPLOY_VERBOSE === "1") {
-                process.stderr.write(
-                    "(suppressed benign post-destroy UnsubscriptionError: Not connected)\n",
-                );
-            }
+            logSuppressedBenign(reason);
             return;
         }
         process.stderr.write(`\nUnhandled promise rejection: ${String(reason)}\n`);
@@ -124,11 +120,7 @@ export function installSignalHandlers(): void {
     // `Required status: ProofOfPersonhoodFull`.
     process.on("uncaughtException", (err) => {
         if (isBenignUnsubscriptionError(err)) {
-            if (process.env.DOT_DEPLOY_VERBOSE === "1") {
-                process.stderr.write(
-                    "(suppressed benign post-destroy UnsubscriptionError: Not connected)\n",
-                );
-            }
+            logSuppressedBenign(err);
             return;
         }
         process.stderr.write(`\nUncaught exception: ${err?.stack ?? String(err)}\n`);
@@ -137,18 +129,40 @@ export function installSignalHandlers(): void {
 }
 
 /**
- * True for the specific rxjs `UnsubscriptionError` we see on `client.destroy()`
+ * When DOT_DEPLOY_VERBOSE=1, mirror a one-line note to stderr identifying
+ * the actual error shape that was suppressed. Otherwise silent — the user's
+ * work succeeded and a scary stack trace on the way out would be misleading.
+ *
+ * Telemetry hook for "benign teardown happened" deliberately skipped here
+ * because `captureWarning` marks the run as `cli.sad=true`, which would
+ * misclassify a successful deploy. Add a breadcrumb-only telemetry helper
+ * upstream first, then wire it in.
+ */
+function logSuppressedBenign(reason: unknown): void {
+    if (process.env.DOT_DEPLOY_VERBOSE !== "1") return;
+    const name = reason instanceof Error ? reason.name : "unknown";
+    const message = reason instanceof Error ? reason.message : String(reason);
+    process.stderr.write(`(suppressed benign post-destroy ${name}: ${message})\n`);
+}
+
+/**
+ * True for the specific rxjs / polkadot-api errors we see on `client.destroy()`
  * when a still-live chainHead (or similar) subscription's teardown tries to
- * send a cancel RPC and the WS has already closed — by design, because we
- * just destroyed the client. The symptom is a giant stack trace wrapping
- * `Error: Not connected`, which looks terrifying but is already the expected
- * outcome. Keeping the match narrow (UnsubscriptionError + every inner error
- * is "Not connected") so a genuinely new rxjs failure still escalates.
+ * send a cancel RPC after the chainHead follow has already been disjointed or
+ * the WS closed — by design, because we just destroyed the client. Two shapes
+ * surface in practice:
+ *
+ *   1. `UnsubscriptionError` wrapping inner `Not connected` errors (rxjs).
+ *   2. `DisjointError: ChainHead disjointed` from polkadot-api's substrate
+ *      client when an outstanding chainHead operation races the unfollow.
+ *
+ * Both look terrifying but are already the expected outcome. Keeping the match
+ * narrow so a genuinely new failure still escalates.
  */
 export function isBenignUnsubscriptionError(reason: unknown): boolean {
-    if (!(reason instanceof Error) || reason.name !== "UnsubscriptionError") {
-        return false;
-    }
+    if (!(reason instanceof Error)) return false;
+    if (reason.name === "DisjointError") return true;
+    if (reason.name !== "UnsubscriptionError") return false;
     const errors = (reason as Error & { errors?: unknown }).errors;
     if (!Array.isArray(errors) || errors.length === 0) return false;
     return errors.every((e) => {

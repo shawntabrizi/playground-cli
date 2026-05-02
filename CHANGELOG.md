@@ -1,5 +1,41 @@
 # playground-cli
 
+## 0.15.4
+
+### Patch Changes
+
+- 7151157: Avoid GitHub auth and `git push` during `dot deploy --modable` when the project already has an `origin`; the existing repository URL is recorded directly.
+
+## 0.15.3
+
+### Patch Changes
+
+- 9d0a0ba: Load the logged-in account for `dot deploy --signer dev --playground` so Playground registry publishes can be signed by the app owner.
+
+## 0.15.2
+
+### Patch Changes
+
+- f2f43c4: Suppress the non-fatal `ReviveApi_trace_call` compatibility stack during Playground registry contract dry-runs.
+
+## 0.15.1
+
+### Patch Changes
+
+- 2de1408: Resolve the Playground registry address from the live CDM meta-registry before publishing or browsing apps.
+
+## 0.15.0
+
+### Minor Changes
+
+- 86abd07: `dot --suri` now accepts a BIP-39 mnemonic in addition to the dev names (Alice, Bob, Charlie, Dave, Eve, Ferdie). An optional `//<path>` derivation suffix is supported, e.g. `dot deploy --suri "<12-word phrase>//0"`. The dev-name fast path is unchanged.
+
+### Patch Changes
+
+- 934c0db: Add E2E integration test suite covering install, build, init, session, deploy, mod, and diagnostic commands. Tests spawn the CLI as a child process via execa and assert on stdout/stderr/exit codes. Deploy tests verify contract detection for Foundry, Hardhat, and CDM backends. Includes CI workflow, fixture projects, and chain query helpers for Paseo testnet validation.
+- 21481ba: Fix `dot deploy` exiting 1 after a successful deploy. polkadot-api's `client.destroy()` can fire a `DisjointError: ChainHead disjointed` from a still-in-flight chainHead operation after the WS has closed, which surfaces as an unhandled rejection and forced the process to exit 1 even though the deploy completed and printed "Deploy complete". Now suppressed alongside the existing benign-teardown filter for `UnsubscriptionError: Not connected`.
+- ba63fec: Fix `dot deploy` and `dot mod` exiting 0 on failures. Previously the CLI's entry point unconditionally called `process.exit(0)` after the action returned, overwriting the non-zero `process.exitCode` set by `scheduleHardExit()` (deploy preflight, e.g. `SignerNotAvailableError` from a corrupt session) and never set by `dot mod` at all on `runSetup` failures (e.g. registry miss). Both paths now propagate a non-zero exit code so shell scripts and CI pipelines can rely on the result.
+
 ## 0.14.1
 
 ### Patch Changes

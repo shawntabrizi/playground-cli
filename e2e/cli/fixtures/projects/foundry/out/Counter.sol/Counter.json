@@ -1,0 +1,4 @@
+{
+	"abi": [{"type":"function","name":"increment","inputs":[],"outputs":[],"stateMutability":"nonpayable"}],
+	"bytecode": {"object": "0x6080604052"}
+}

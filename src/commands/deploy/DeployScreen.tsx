@@ -75,7 +75,7 @@ export interface DeployScreenInputs {
     onDone: (outcome: DeployOutcome | null) => void;
 }
 
-type Stage =
+export type Stage =
     | { kind: "prompt-build" }
     | { kind: "prompt-signer" }
     | { kind: "prompt-buildDir" }
@@ -377,6 +377,7 @@ export function DeployScreen({
                             publishToPlayground,
                             deployContracts,
                             true,
+                            url,
                         );
                     }}
                     onError={(msg) => {
@@ -479,7 +480,7 @@ function pickInitialStage(
     );
 }
 
-function pickNextStage(
+export function pickNextStage(
     skipBuild: boolean | null,
     mode: SignerMode | null,
     buildDir: string | null,
@@ -520,10 +521,9 @@ function ModablePreflightStage({
     const [phase, setPhase] = useState<Phase>("preparing");
     const [status, setStatus] = useState<string>("checking git…");
 
-    // Run install/auth checks once, then either prompt for a repo name (when
-    // origin is missing AND no `--repo-name` was supplied) or proceed directly
-    // to resolving the URL. Wrapping in a single effect keeps the cancel
-    // semantics simple — we only have one effect to clean up.
+    // Existing origins do not need gh auth. Only the no-origin branch checks
+    // gh before asking for a repo name, because that path has to create and
+    // push a new public GitHub repo.
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -532,21 +532,23 @@ function ModablePreflightStage({
                 await ensureGitInstalled();
                 if (cancelled) return;
 
-                setStatus("ensuring gh is installed…");
-                await ensureGhInstalled();
-                if (cancelled) return;
-
-                setStatus("checking gh authentication…");
-                await ensureGhAuthed();
-                if (cancelled) return;
-
                 // Decide whether to prompt for a repo name. We prompt only
                 // when origin doesn't already point somewhere AND the caller
                 // didn't pre-supply one via --repo-name.
                 const origin = readOrigin(projectDir);
-                if (origin === null && initialRepoName === null) {
-                    setPhase("needs-repo-name");
-                    return;
+                if (origin === null) {
+                    setStatus("ensuring gh is installed…");
+                    await ensureGhInstalled();
+                    if (cancelled) return;
+
+                    setStatus("checking gh authentication…");
+                    await ensureGhAuthed();
+                    if (cancelled) return;
+
+                    if (initialRepoName === null) {
+                        setPhase("needs-repo-name");
+                        return;
+                    }
                 }
                 runResolve(initialRepoName);
             } catch (err) {
@@ -558,17 +560,20 @@ function ModablePreflightStage({
         return () => {
             cancelled = true;
         };
-        // We deliberately exclude `runResolve` from deps — it closes over
-        // `cancelled` via the effect's lexical scope, and we want the same
-        // closure to fire whether the user supplied a name up front or via
-        // the prompt below.
+        // `runResolve` is called from the initial effect and from the repo-name
+        // prompt, so keep it outside the dependency list to avoid replaying the
+        // preflight when the component re-renders.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectDir, initialRepoName]);
 
     function runResolve(repoName: string | null) {
         setPhase("resolving");
         setStatus("resolving repository…");
-        resolveRepositoryUrl({ cwd: projectDir, repoName })
+        resolveRepositoryUrl({
+            cwd: projectDir,
+            repoName,
+            onLog: (line) => setStatus(line),
+        })
             .then((url) => onResolved(url))
             .catch((err) => onError(err instanceof Error ? err.message : String(err)));
     }

@@ -1,0 +1,81 @@
+{
+    "ops": [
+        {
+            "op": "replace",
+            "widgetId": "451749",
+            "value": {
+                "queries": [
+                    {
+                        "id": "697320",
+                        "name": "",
+                        "fields": [
+                            "timestamp",
+                            "span.op",
+                            "cli.source",
+                            "cli.repo",
+                            "cli.tag",
+                            "cli.status",
+                            "cli.expected",
+                            "span.duration",
+                            "cli.branch"
+                        ],
+                        "aggregates": [],
+                        "columns": [
+                            "timestamp",
+                            "span.op",
+                            "cli.source",
+                            "cli.repo",
+                            "cli.tag",
+                            "cli.status",
+                            "cli.expected",
+                            "span.duration",
+                            "cli.branch"
+                        ],
+                        "fieldAliases": [
+                            "when",
+                            "command",
+                            "source",
+                            "repo",
+                            "tag",
+                            "status",
+                            "expected",
+                            "duration",
+                            "branch"
+                        ],
+                        "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-*",
+                        "orderby": "-timestamp"
+                    }
+                ]
+            }
+        },
+        {
+            "op": "patch_query",
+            "widgetId": "451747",
+            "queryId": "*",
+            "value": {
+                "conditions": "project:playground-cli level:warning !cli.tag:e2e-*"
+            }
+        },
+        {
+            "op": "replace",
+            "widgetId": "451748",
+            "value": {
+                "title": "Warnings Over Time (by title)",
+                "displayType": "line",
+                "limit": 10,
+                "queries": [
+                    {
+                        "id": "697285",
+                        "name": "",
+                        "fields": ["title", "count()"],
+                        "aggregates": ["count()"],
+                        "columns": ["title"],
+                        "fieldAliases": [],
+                        "conditions": "project:playground-cli level:warning !cli.tag:e2e-*",
+                        "orderby": "-count()"
+                    }
+                ]
+            }
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+{
+	"name": "e2e-multi-contract",
+	"version": "0.0.1",
+	"private": true,
+	"scripts": {
+		"build": "mkdir -p dist && echo '<h1>multi-contract app</h1>' > dist/index.html"
+	}
+}

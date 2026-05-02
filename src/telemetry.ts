@@ -25,8 +25,12 @@ function anonymousServerName(): string {
     return process.env.CI ? (process.env.RUNNER_NAME ?? "ci") : "local";
 }
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+export function sanitizedErrorMessage(error: unknown): string {
+    return truncateString(scrubPaths(errorMessage(error)));
 }
 
 function sanitizeExtra(
@@ -69,12 +73,17 @@ export function sanitizeSentryTransaction<T extends Record<string, unknown>>(eve
 }
 
 export function isExpectedCliError(message: string): boolean {
-    return /signer.*not available|run "dot init"|account is not mapped|storage allowance is exhausted|invalid domain|already owned|reserved|insufficient balance|github cli is not authenticated|no foundry\/hardhat\/cdm project was detected|github api returned|download failed/i.test(
+    return /badregistrylookup|signer.*not available|run "dot init"|account is not mapped|storage allowance is exhausted|invalid domain|already owned|reserved|insufficient balance|github cli is not authenticated|no foundry\/hardhat\/cdm project was detected|github api returned|download failed/i.test(
         message,
     );
 }
 
-export async function initTelemetry(): Promise<void> {
+export interface TelemetryInitOptions {
+    /** Override the default Sentry transport. Used by tests to capture envelopes. */
+    transport?: (options: unknown) => unknown;
+}
+
+export async function initTelemetry(options: TelemetryInitOptions = {}): Promise<void> {
     if (initStarted || !isTelemetryEnabled()) return;
     initStarted = true;
 
@@ -102,6 +111,7 @@ export async function initTelemetry(): Promise<void> {
                     event as unknown as Record<string, unknown>,
                 ) as unknown as typeof event;
             },
+            transport: options.transport as never,
         });
         Sentry.setTag("cli.tool_version", VERSION);
         Sentry.setContext("playground-cli", {
@@ -197,12 +207,23 @@ export async function withCommandTelemetry<T>(
     return withRootSpan(`cli.${command}`, `dot ${command}`, getCliRootAttributes(command), fn);
 }
 
+export async function withSpan<T>(op: string, name: string, fn: () => Promise<T> | T): Promise<T>;
 export async function withSpan<T>(
     op: string,
     name: string,
     attributes: Record<string, TelemetryAttribute>,
     fn: () => Promise<T> | T,
+): Promise<T>;
+export async function withSpan<T>(
+    op: string,
+    name: string,
+    attributesOrFn: Record<string, TelemetryAttribute> | (() => Promise<T> | T),
+    maybeFn?: () => Promise<T> | T,
 ): Promise<T> {
+    const fn = (typeof attributesOrFn === "function" ? attributesOrFn : maybeFn) as () =>
+        | Promise<T>
+        | T;
+    const attributes = typeof attributesOrFn === "function" ? {} : (attributesOrFn ?? {});
     if (!Sentry) return await fn();
     return await Sentry.startSpan(
         { op, name, attributes: sanitizeAttributes(attributes) },
@@ -210,7 +231,7 @@ export async function withSpan<T>(
             try {
                 return await fn();
             } catch (error) {
-                const msg = truncateString(scrubPaths(errorMessage(error)));
+                const msg = sanitizedErrorMessage(error);
                 setSpanAttribute(span, "error.message", msg);
                 setSpanStatus(span, { code: 2, message: "internal_error" });
                 throw error;
@@ -228,6 +249,24 @@ export function setTelemetryTag(key: string, value: string): void {
     }
 }
 
+/**
+ * Emit a warning event tied to the current root span.
+ *
+ * The `message` is path-scrubbed and truncated to 200 chars. The `context`
+ * object is recursively sanitised — strings inside it are also scrubbed and
+ * truncated. Callers must NOT pre-truncate; double-truncation creates jagged
+ * suffixes and indicates the helper's contract isn't trusted. High-cardinality
+ * variants (CIDs, addresses, full URLs) embedded into the `message` itself
+ * will fragment the Sentry issue group — keep `message` a stable prefix and
+ * push variable values into `context`.
+ *
+ * Side effects:
+ *   1. Adds a breadcrumb to the trace timeline.
+ *   2. Captures a standalone warning event (queryable as `level:warning`).
+ *   3. Flips the active root span's `cli.sad` attribute and the `cli.sad`
+ *      Sentry scope tag to `"true"` so SAD% calculations include retries
+ *      that ultimately succeeded.
+ */
 export function captureWarning(message: string, context?: Record<string, unknown>): void {
     if (!Sentry) return;
     try {
@@ -268,6 +307,11 @@ export async function closeTelemetry(timeoutMs: number): Promise<void> {
     } catch {
         // ignore
     }
+}
+
+export function _resetTelemetryForTesting(): void {
+    Sentry = null;
+    initStarted = false;
 }
 
 export function getRuntimeTelemetryContext(): Record<string, string> {

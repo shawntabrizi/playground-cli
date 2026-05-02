@@ -1,0 +1,151 @@
+{
+    "title": "Playground CLI Failures",
+    "widgets": [
+        {
+            "title": "Total Failures",
+            "displayType": "big_number",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "All hard failures (cli.status:error) excluding e2e-* runs.",
+            "queries": [{
+                "name": "",
+                "fields": ["count()"],
+                "aggregates": ["count()"],
+                "columns": [],
+                "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                "orderby": ""
+            }],
+            "layout": {"x": 0, "y": 0, "w": 1, "h": 1, "minH": 1}
+        },
+        {
+            "title": "Failure Rate (%)",
+            "displayType": "big_number",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Sentry's built-in failure_rate(): transactions with transaction.status != ok. Compare against %SAD on the Health dashboard.",
+            "queries": [{
+                "name": "",
+                "fields": ["failure_rate()"],
+                "aggregates": ["failure_rate()"],
+                "columns": [],
+                "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-*",
+                "orderby": ""
+            }],
+            "layout": {"x": 1, "y": 0, "w": 1, "h": 1, "minH": 1}
+        },
+        {
+            "title": "Affected Repos",
+            "displayType": "big_number",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "count_unique(cli.repo) among failed runs.",
+            "queries": [{
+                "name": "",
+                "fields": ["count_unique(cli.repo)"],
+                "aggregates": ["count_unique(cli.repo)"],
+                "columns": [],
+                "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                "orderby": ""
+            }],
+            "layout": {"x": 2, "y": 0, "w": 1, "h": 1, "minH": 1}
+        },
+        {
+            "title": "Failures Over Time",
+            "displayType": "line",
+            "interval": "1h",
+            "widgetType": "spans",
+            "description": "Per-command failure counts over time. Spikes correlated to a release date usually mean a regression.",
+            "limit": 10,
+            "queries": [{
+                "name": "",
+                "fields": ["cli.command", "count()"],
+                "aggregates": ["count()"],
+                "columns": ["cli.command"],
+                "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                "orderby": "-count()"
+            }],
+            "layout": {"x": 0, "y": 1, "w": 6, "h": 2, "minH": 2}
+        },
+        {
+            "title": "Failures by Repo",
+            "displayType": "table",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Which repos hit failures the most. Internal repos pass through; external repos appear as `<org>/<hash>`.",
+            "queries": [{
+                "name": "",
+                "fields": ["cli.repo", "cli.command", "count()", "avg(span.duration)"],
+                "aggregates": ["count()", "avg(span.duration)"],
+                "columns": ["cli.repo", "cli.command"],
+                "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                "orderby": "-count()"
+            }],
+            "layout": {"x": 0, "y": 3, "w": 3, "h": 3, "minH": 2}
+        },
+        {
+            "title": "Failures by Phase",
+            "displayType": "table",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Which phase failed in `dot deploy`. cli.deploy.storage-dotns and cli.deploy.playground.registry-publish typically dominate.",
+            "queries": [{
+                "name": "",
+                "fields": ["span.op", "count()", "avg(span.duration)"],
+                "aggregates": ["count()", "avg(span.duration)"],
+                "columns": ["span.op"],
+                "conditions": "span.op:cli.deploy.* !cli.tag:e2e-*",
+                "orderby": "-count()"
+            }],
+            "layout": {"x": 3, "y": 3, "w": 3, "h": 3, "minH": 2}
+        },
+        {
+            "title": "Error Messages (Unexpected)",
+            "displayType": "table",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Unexpected errors only (cli.expected:false). These are bugs to fix in the CLI itself, not user-input issues.",
+            "queries": [{
+                "name": "",
+                "fields": ["cli.error", "span.op", "count()"],
+                "aggregates": ["count()"],
+                "columns": ["cli.error", "span.op"],
+                "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error cli.expected:false",
+                "orderby": "-count()"
+            }],
+            "layout": {"x": 0, "y": 6, "w": 6, "h": 3, "minH": 2}
+        },
+        {
+            "title": "Error Messages (Expected)",
+            "displayType": "table",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Expected user-input errors. High volume here means error copy or onboarding could be clearer.",
+            "queries": [{
+                "name": "",
+                "fields": ["cli.error", "cli.command", "count()"],
+                "aggregates": ["count()"],
+                "columns": ["cli.error", "cli.command"],
+                "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error cli.expected:true",
+                "orderby": "-count()"
+            }],
+            "layout": {"x": 0, "y": 9, "w": 6, "h": 3, "minH": 2}
+        },
+        {
+            "title": "Recent Failures",
+            "displayType": "table",
+            "interval": "5m",
+            "widgetType": "spans",
+            "description": "Most recent failed runs across all commands. timestamp + repo + version locates the offending change.",
+            "queries": [{
+                "name": "",
+                "fields": ["timestamp", "cli.command", "cli.repo", "cli.tool_version", "cli.error"],
+                "aggregates": [],
+                "columns": ["timestamp", "cli.command", "cli.repo", "cli.tool_version", "cli.error"],
+                "fieldAliases": ["when", "command", "repo", "version", "error"],
+                "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-* cli.status:error",
+                "orderby": "-timestamp"
+            }],
+            "layout": {"x": 0, "y": 12, "w": 6, "h": 3, "minH": 2}
+        }
+    ]
+}

@@ -55,7 +55,7 @@ Flags:
 - `--domain <name>` — DotNS label (with or without the `.dot` suffix). Interactive prompt if omitted.
 - `--buildDir <path>` — directory holding the built artifacts (default `dist/`). Interactive prompt if omitted.
 - `--playground` — publish to the playground registry so the app appears under "my apps". Interactive prompt (default: no) if omitted.
-- `--modable` / `--no-modable` — publish the source repo URL alongside the deploy so others can `dot mod` it. Requires `--playground`. Interactive prompt (default: no) if omitted. When set, `dot deploy` ensures `git` and `gh` are installed (auto-installs if missing), confirms `gh` is authenticated (run `gh auth login` first if not — the deploy will fail with a hint otherwise), then either pushes `HEAD` to the existing `origin` or runs `gh repo create --public --push` to set one up. The resulting URL is recorded in the Bulletin metadata.
+- `--modable` / `--no-modable` — publish the source repo URL alongside the deploy so others can `dot mod` it. Requires `--playground`. Interactive prompt (default: no) if omitted. When set, `dot deploy` uses the existing `origin` URL without pushing. If there is no `origin`, it ensures `git` and `gh` are installed (auto-installs if missing), confirms `gh` is authenticated (run `gh auth login` first if not — the deploy will fail with a hint otherwise), then runs `gh repo create --public --push` to set one up. The resulting URL is recorded in the Bulletin metadata.
 - `--repo-name <name>` — repo name to use when `--modable` needs to create a new GitHub repo (no existing `origin`). Defaults to the basename of the project directory; validated against GitHub's repository-name rules.
 - `--suri <suri>` — override signer with a dev secret URI (e.g. `//Alice`). Useful for CI.
 - `--env <env>` — `testnet` (default) or `mainnet` (not yet supported).
@@ -125,12 +125,30 @@ pnpm cli:install
 ### Tests
 
 ```bash
-pnpm test            # one-shot
+pnpm test            # unit tests, one-shot
 pnpm test:watch      # rerun on change
 npx tsc --noEmit     # type check
+
+pnpm test:e2e        # E2E tests (slow; run `dot init` first)
 ```
 
-Tests live alongside the code as `*.test.ts`. They avoid mocking so deeply that they just re-implement the code under test — real `polkadot-api` primitives (`Enum`) stay real so a variant name change is caught.
+#### Unit tests
+
+Live alongside the code as `*.test.ts`. They avoid mocking so deeply that they just re-implement the code under test — real `polkadot-api` primitives (`Enum`) stay real so a variant name change is caught.
+
+#### E2E tests
+
+Live under `e2e/cli/*.test.ts`, with a separate `e2e/vitest.config.ts`. Each test spawns the CLI via `bun run src/index.ts` (execa wrapper in `e2e/cli/helpers/dot.ts`) and asserts on stdout/stderr/exit code. Files run serially — they share a single deployer account on Paseo and would race otherwise.
+
+Prerequisite: run `dot init` once to install the required local deps (mainly Kubo IPFS for the deploy pipeline). Tests also reach Paseo Asset Hub and `codeload.github.com` over the internet, so they need network.
+
+CI runs the suite on every PR, on push to `main`, and daily at 06:00 UTC (`.github/workflows/e2e.yml`).
+
+Running a single file: invoke vitest directly to avoid a `pnpm`/`vitest` `--`-forwarding gotcha that runs the whole suite anyway:
+
+```bash
+pnpm vitest run --config e2e/vitest.config.ts e2e/cli/session.test.ts
+```
 
 ### Testing a Branch Build
 

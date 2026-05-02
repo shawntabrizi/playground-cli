@@ -9,12 +9,13 @@
         "email": "ionut@parity.io",
         "avatarUrl": "https://gravatar.com/avatar/aa4182266e7ce720e29e841ef51d3673fd5b007f0a892fdd38b99a435c8ea618?s=32&d=mm",
         "isActive": true,
+        "isSuspended": false,
         "hasPasswordAuth": true,
         "isManaged": false,
         "dateJoined": "2026-04-15T16:06:03.281704Z",
         "lastLogin": "2026-04-22T12:48:09.478383Z",
         "has2fa": true,
-        "lastActive": "2026-04-30T13:07:23.770433Z",
+        "lastActive": "2026-05-01T15:59:08.742757Z",
         "isSuperuser": false,
         "isStaff": false,
         "emails": [],
@@ -29,7 +30,7 @@
         {
             "id": "451732",
             "title": "Total Commands",
-            "description": null,
+            "description": "Total CLI commands captured in the production filter (excludes e2e-* tags).",
             "displayType": "big_number",
             "thresholds": null,
             "interval": "5m",
@@ -73,7 +74,7 @@
         {
             "id": "451733",
             "title": "Deploys",
-            "description": null,
+            "description": "Root-span count for `dot deploy`. Drops if telemetry is disabled or the binary version is too old to instrument deploy.",
             "displayType": "big_number",
             "thresholds": null,
             "interval": "5m",
@@ -117,7 +118,7 @@
         {
             "id": "451734",
             "title": "Unexpected Failures",
-            "description": null,
+            "description": "Hard failures the tool itself broke (cli.status:error AND cli.expected:false). Expected user-input failures (invalid domain, missing PoP) are excluded \u2014 those live in the Failures Detail dashboard.",
             "displayType": "big_number",
             "thresholds": null,
             "interval": "5m",
@@ -161,7 +162,7 @@
         {
             "id": "451735",
             "title": "%SAD Commands",
-            "description": null,
+            "description": "Percentage of commands that emitted any captureWarning or hard error. The propagation path is verified (telemetry.test.ts). Most production warnings occur on runs that fail; gap widens as retries succeed cleanly.",
             "displayType": "big_number",
             "thresholds": null,
             "interval": "5m",
@@ -209,7 +210,7 @@
         {
             "id": "451736",
             "title": "Avg Command Duration",
-            "description": null,
+            "description": "Average wall-clock duration of root spans, in ms. Slow trends usually point at chain RPC latency.",
             "displayType": "big_number",
             "thresholds": null,
             "interval": "5m",
@@ -253,7 +254,7 @@
         {
             "id": "451737",
             "title": "Active Repos",
-            "description": null,
+            "description": "count_unique(cli.repo) for the production filter. Watch for unexpected churn \u2014 a sudden drop suggests internal-org regex changes or telemetry being disabled in CI.",
             "displayType": "big_number",
             "thresholds": null,
             "interval": "5m",
@@ -297,7 +298,7 @@
         {
             "id": "451738",
             "title": "Commands by Source",
-            "description": null,
+            "description": "Per-command, per-source breakdown. CI vs local activity is the most useful split here. If self-hosted runner volume drops without an org change, suspect runner naming.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
@@ -350,7 +351,7 @@
         {
             "id": "451739",
             "title": "Command Duration Over Time",
-            "description": null,
+            "description": "p50/p95 of command duration, split by source. The CI/local divergence reflects testnet vs local chain RPC latency.",
             "displayType": "line",
             "thresholds": null,
             "interval": "5m",
@@ -451,7 +452,7 @@
         {
             "id": "451740",
             "title": "Command Volume Over Time",
-            "description": null,
+            "description": "Command volume over time. Use this to confirm a release shipped (a step-up in volume after release date) and to spot drop-offs.",
             "displayType": "bar",
             "thresholds": null,
             "interval": "5m",
@@ -514,7 +515,7 @@
         {
             "id": "451741",
             "title": "Success vs Failure",
-            "description": null,
+            "description": "Three-way split: success, expected failure, unexpected failure. Expected failures are user-input mistakes (the spec calls these isExpectedCliError matches). Unexpected failures are bugs.",
             "displayType": "area",
             "thresholds": null,
             "interval": "5m",
@@ -596,7 +597,7 @@
         {
             "id": "451742",
             "title": "Deploy Phase Breakdown",
-            "description": null,
+            "description": "Phase breakdown for cli.deploy.*. Order by avg duration to find which phase is the bottleneck. Storage-and-DotNS dominates by design \u2014 chunk uploads + DotNS commit-reveal both span seconds.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
@@ -649,7 +650,7 @@
         {
             "id": "451743",
             "title": "Deploy Options",
-            "description": null,
+            "description": "Deploy options matrix \u2014 combinations of mode/playground/modable/contracts. Useful to find a regression that only appears in one combination.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
@@ -704,7 +705,7 @@
         {
             "id": "451744",
             "title": "Playground Publish Phases",
-            "description": null,
+            "description": "Sub-phase breakdown of the playground publish \u2014 metadata upload vs registry contract publish. Registry publish has a 3-attempt retry loop; high counts here without proportional warning events suggest the retry path is not hitting captureWarning.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
@@ -755,7 +756,7 @@
         {
             "id": "451745",
             "title": "Failures by Error",
-            "description": null,
+            "description": "Top error messages grouped by phase. Use this to prioritise expected-error copy improvements (cli.expected:true) vs bug fixes (cli.expected:false).",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
@@ -808,7 +809,7 @@
         {
             "id": "451746",
             "title": "Recent Failures",
-            "description": null,
+            "description": "Most recent failures. Use the timestamp + repo to pull the offending PR or runner.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
@@ -869,7 +870,7 @@
         {
             "id": "451747",
             "title": "Warning Events",
-            "description": null,
+            "description": "All warnings in the playground-cli project, excluding e2e-* tagged runs. Each row is a unique warning title \u2014 captureWarning callsites should keep titles stable so this groups cleanly.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
@@ -890,7 +891,7 @@
                         "title"
                     ],
                     "fieldAliases": [],
-                    "conditions": "level:warning",
+                    "conditions": "project:playground-cli level:warning !cli.tag:e2e-*",
                     "orderby": "-count()",
                     "widgetId": "451747",
                     "onDemand": [],
@@ -915,8 +916,8 @@
         },
         {
             "id": "451748",
-            "title": "Warnings Over Time",
-            "description": null,
+            "title": "Warnings Over Time (by title)",
+            "description": "Warnings over time, automatically grouped by title (no hard-coded list). Any new captureWarning string will surface here without a dashboard change.",
             "displayType": "line",
             "thresholds": null,
             "interval": "5m",
@@ -925,74 +926,20 @@
             "queries": [
                 {
                     "id": "697285",
-                    "name": "registry publish retry",
+                    "name": "",
                     "fields": [
+                        "title",
                         "count()"
                     ],
                     "aggregates": [
                         "count()"
                     ],
-                    "columns": [],
+                    "columns": [
+                        "title"
+                    ],
                     "fieldAliases": [],
-                    "conditions": "level:warning title:\"Playground registry publish failed, retrying\"",
-                    "orderby": "",
-                    "widgetId": "451748",
-                    "onDemand": [],
-                    "isHidden": false,
-                    "selectedAggregate": null,
-                    "linkedDashboards": []
-                },
-                {
-                    "id": "697286",
-                    "name": "chunk retry failed",
-                    "fields": [
-                        "count()"
-                    ],
-                    "aggregates": [
-                        "count()"
-                    ],
-                    "columns": [],
-                    "fieldAliases": [],
-                    "conditions": "level:warning title:\"Chunk retry failed\"",
-                    "orderby": "",
-                    "widgetId": "451748",
-                    "onDemand": [],
-                    "isHidden": false,
-                    "selectedAggregate": null,
-                    "linkedDashboards": []
-                },
-                {
-                    "id": "697287",
-                    "name": "ws reconnect",
-                    "fields": [
-                        "count()"
-                    ],
-                    "aggregates": [
-                        "count()"
-                    ],
-                    "columns": [],
-                    "fieldAliases": [],
-                    "conditions": "level:warning title:\"WebSocket connection lost, reconnecting\"",
-                    "orderby": "",
-                    "widgetId": "451748",
-                    "onDemand": [],
-                    "isHidden": false,
-                    "selectedAggregate": null,
-                    "linkedDashboards": []
-                },
-                {
-                    "id": "697288",
-                    "name": "chunk upload retry",
-                    "fields": [
-                        "count()"
-                    ],
-                    "aggregates": [
-                        "count()"
-                    ],
-                    "columns": [],
-                    "fieldAliases": [],
-                    "conditions": "level:warning title:\"Chunk upload failed, retrying\"",
-                    "orderby": "",
+                    "conditions": "project:playground-cli level:warning !cli.tag:e2e-*",
+                    "orderby": "-count()",
                     "widgetId": "451748",
                     "onDemand": [],
                     "isHidden": false,
@@ -1000,7 +947,7 @@
                     "linkedDashboards": []
                 }
             ],
-            "limit": null,
+            "limit": 10,
             "widgetType": "error-events",
             "layout": {
                 "x": 2,
@@ -1017,15 +964,15 @@
         {
             "id": "451749",
             "title": "Recent Commands",
-            "description": null,
+            "description": "Most recent commands across the production filter. Useful for ad-hoc 'what did this PR do' lookups by repo + timestamp.",
             "displayType": "table",
             "thresholds": null,
-            "interval": "5m",
+            "interval": "1h",
             "dateCreated": "2026-04-30T13:16:59.670160Z",
             "dashboardId": "2143100",
             "queries": [
                 {
-                    "id": "697289",
+                    "id": "697320",
                     "name": "",
                     "fields": [
                         "timestamp",
@@ -1035,7 +982,8 @@
                         "cli.tag",
                         "cli.status",
                         "cli.expected",
-                        "span.duration"
+                        "span.duration",
+                        "cli.branch"
                     ],
                     "aggregates": [],
                     "columns": [
@@ -1046,7 +994,8 @@
                         "cli.tag",
                         "cli.status",
                         "cli.expected",
-                        "span.duration"
+                        "span.duration",
+                        "cli.branch"
                     ],
                     "fieldAliases": [
                         "when",
@@ -1056,7 +1005,8 @@
                         "tag",
                         "status",
                         "expected",
-                        "duration"
+                        "duration",
+                        "branch"
                     ],
                     "conditions": "is_transaction:true span.op:cli.* !cli.tag:e2e-*",
                     "orderby": "-timestamp",
@@ -1076,7 +1026,7 @@
                 "h": 3,
                 "minH": 2
             },
-            "axisRange": null,
+            "axisRange": "auto",
             "legendType": null,
             "datasetSource": "user",
             "changedReason": null

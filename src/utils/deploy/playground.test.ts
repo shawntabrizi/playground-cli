@@ -41,6 +41,7 @@ vi.mock("../../telemetry.js", () => ({
     captureWarning: (...args: unknown[]) => captureWarningMock(...args),
     withSpan: (...args: unknown[]) =>
         withSpanMock(args[0] as string, args[1] as string, args[2], args[3]),
+    errorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
 }));
 
 import {

@@ -25,7 +25,7 @@ import { upload } from "@polkadot-apps/bulletin";
 import { getRegistryContract } from "../registry.js";
 import { getConnection } from "../connection.js";
 import { getChainConfig, type Env } from "../../config.js";
-import { captureWarning, withSpan } from "../../telemetry.js";
+import { captureWarning, withSpan, errorMessage } from "../../telemetry.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { DeployLogEvent } from "./progress.js";
 
@@ -207,10 +207,7 @@ export async function publishToPlayground(
                     captureWarning("Playground registry publish failed, retrying", {
                         attempt,
                         maxAttempts: MAX_REGISTRY_RETRIES,
-                        error:
-                            err instanceof Error
-                                ? err.message.slice(0, 200)
-                                : String(err).slice(0, 200),
+                        error: errorMessage(err),
                     });
                     await new Promise((r) => setTimeout(r, REGISTRY_RETRY_DELAY_MS));
                 }

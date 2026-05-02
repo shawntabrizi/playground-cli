@@ -1,7 +1,8 @@
 import React from "react";
 import { Command } from "commander";
 import { render } from "ink";
-import { captureWarning, withCommandTelemetry, withSpan } from "../../telemetry.js";
+import { captureWarning, withSpan, errorMessage } from "../../telemetry.js";
+import { runCliCommand } from "../../cli-runtime.js";
 import { InitScreen } from "./InitScreen.js";
 import { connect, type LoginHandle } from "../../utils/auth.js";
 
@@ -9,7 +10,7 @@ export const initCommand = new Command("init")
     .description("Install prerequisites and login via mobile QR")
     .option("-y, --yes", "Skip interactive prompts")
     .action(async (opts) =>
-        withCommandTelemetry("init", async () => {
+        runCliCommand("init", { hardExit: false }, async () => {
             console.log();
 
             let login: LoginHandle | null = null;
@@ -20,7 +21,6 @@ export const initCommand = new Command("init")
                     const result = await withSpan(
                         "cli.init.login",
                         "login via mobile session",
-                        {},
                         () => connect(),
                     );
                     if (result.kind === "existing") {
@@ -31,7 +31,7 @@ export const initCommand = new Command("init")
                         console.log(result.qrCode);
                     }
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : "Login service unavailable";
+                    const msg = errorMessage(err);
                     captureWarning("Init login service unavailable, continuing setup", {
                         error: msg,
                     });
@@ -46,7 +46,7 @@ export const initCommand = new Command("init")
                     onDone: () => app.unmount(),
                 }),
             );
-            await withSpan("cli.init.setup", "run init setup", {}, () => app.waitUntilExit());
+            await withSpan("cli.init.setup", "run init setup", () => app.waitUntilExit());
 
             console.log();
         }),

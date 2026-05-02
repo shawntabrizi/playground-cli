@@ -37,6 +37,7 @@ describe("expected CLI errors", () => {
         expect(isExpectedCliError("GitHub CLI is not authenticated")).toBe(true);
         expect(isExpectedCliError('Invalid domain "bad_domain"')).toBe(true);
         expect(isExpectedCliError("No foundry/hardhat/cdm project was detected")).toBe(true);
+        expect(isExpectedCliError("BadRegistryLookup: CDM registry unavailable")).toBe(true);
     });
 
     it("treats ambiguous runtime failures as unexpected", async () => {
@@ -119,5 +120,103 @@ describe("telemetry source invariants", () => {
             'setSpanAttribute(span, "cli.expected", expected ? "true" : "false");',
         );
         expect(src).toContain("if (!expected)");
+    });
+});
+
+describe("error helpers", () => {
+    beforeEach(() => {
+        process.env.DOT_TELEMETRY = "0";
+        vi.resetModules();
+    });
+
+    it("errorMessage handles Error and non-Error", async () => {
+        const { errorMessage } = await import("./telemetry.js");
+        expect(errorMessage(new Error("boom"))).toBe("boom");
+        expect(errorMessage("plain")).toBe("plain");
+        expect(errorMessage(undefined)).toBe("undefined");
+    });
+
+    it("sanitizedErrorMessage scrubs paths and truncates to 200 chars", async () => {
+        const { sanitizedErrorMessage } = await import("./telemetry.js");
+
+        // Scrubbing: path within the first 200 chars must be redacted.
+        const withPath = "/Users/alice/repo/file.ts failed";
+        const scrubbed = sanitizedErrorMessage(new Error(withPath));
+        expect(scrubbed).not.toContain("alice");
+        expect(scrubbed).toContain("/Users/<redacted>");
+
+        // Truncation: output must never exceed 200 chars.
+        const long = "x".repeat(500);
+        const truncated = sanitizedErrorMessage(new Error(long));
+        expect(truncated.length).toBe(200);
+    });
+});
+
+describe("withSpan 2-arg overload", () => {
+    beforeEach(() => {
+        process.env.DOT_TELEMETRY = "0";
+        vi.resetModules();
+    });
+
+    it("accepts (op, name, fn) without an attributes argument", async () => {
+        const { withSpan } = await import("./telemetry.js");
+        const result = await withSpan("cli.test.x", "x", async () => 42);
+        expect(result).toBe(42);
+    });
+});
+
+describe("SAD% propagation through transaction envelope", () => {
+    beforeEach(() => {
+        process.env.DOT_TELEMETRY = "1";
+        process.env.SENTRY_DSN = "https://abc@example.com/1";
+        delete process.env.CI;
+        delete process.env.RUNNER_NAME;
+        vi.resetModules();
+    });
+
+    it("captures cli.sad=true on the root transaction when captureWarning fires from a child span", async () => {
+        const envelopes: any[] = [];
+        const fakeTransport = () => ({
+            send: (envelope: any) => {
+                envelopes.push(envelope);
+                return Promise.resolve({ statusCode: 200 });
+            },
+            flush: () => Promise.resolve(true),
+        });
+
+        const {
+            initTelemetry,
+            withCommandTelemetry,
+            withSpan,
+            captureWarning,
+            _resetTelemetryForTesting,
+        } = await import("./telemetry.js");
+        _resetTelemetryForTesting();
+        await initTelemetry({ transport: fakeTransport as never });
+
+        await withCommandTelemetry("deploy", async () => {
+            await withSpan("cli.deploy.test-phase", "test-phase", async () => {
+                captureWarning("Test warning", { attempt: 1 });
+            });
+        });
+
+        // Each envelope is a tuple [headers, items[]]; each item is [itemHeaders, payload].
+        // Find a transaction-typed item across all envelopes captured.
+        let transactionPayload: any | undefined;
+        for (const envelope of envelopes) {
+            const items = envelope?.[1] ?? [];
+            for (const item of items) {
+                if (Array.isArray(item) && item[0]?.type === "transaction") {
+                    transactionPayload = item[1];
+                    break;
+                }
+            }
+            if (transactionPayload) break;
+        }
+
+        expect(transactionPayload, "expected one transaction envelope item").toBeDefined();
+        // Sentry surfaces root-span attributes under contexts.trace.data on transaction events.
+        const traceData = transactionPayload?.contexts?.trace?.data ?? {};
+        expect(traceData["cli.sad"]).toBe("true");
     });
 });

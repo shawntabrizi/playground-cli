@@ -126,6 +126,7 @@ vi.mock("@polkadot-apps/tx", () => ({
 vi.mock("../../telemetry.js", () => ({
     withSpan: (...args: unknown[]) =>
         withSpanMock(args[0] as string, args[1] as string, args[2], args[3]),
+    errorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
 }));
 
 import { runDeploy, type DeployEvent } from "./run.js";
