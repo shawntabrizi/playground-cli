@@ -35,6 +35,15 @@ ISOLATED_HOME="$(mktemp -d -t dot-e2e-home-XXXXXX)"
 trap 'rm -rf "$ISOLATED_HOME"' EXIT
 export HOME="$ISOLATED_HOME"
 
+# Bootstrap a fresh IPFS repo in the isolated HOME. The deploy tests shell
+# out to `ipfs add` (via bulletin-deploy's Kubo path), and IPFS resolves the
+# repo location from `$HOME/.ipfs` by default. Without this, the deploy
+# tests fail with "no IPFS repo found in <isolated home>/.ipfs". CI does
+# the same thing in the workflow's `ipfs init --profile=test` step.
+if command -v ipfs >/dev/null 2>&1; then
+    ipfs init --profile=test >/dev/null 2>&1 || true
+fi
+
 echo "→ TEST_TEMPLATE_DOMAIN  $TEST_TEMPLATE_DOMAIN"
 echo "→ TEST_TEMPLATE_REPO    $TEST_TEMPLATE_REPO"
 echo "→ DOT_DEPLOY_VERBOSE    $DOT_DEPLOY_VERBOSE"
