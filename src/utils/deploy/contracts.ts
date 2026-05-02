@@ -28,6 +28,7 @@ import { runStreamed } from "../process.js";
 import {
     ContractDeployer,
     buildContracts,
+    detectContracts,
     type BuildEvent as CdmBuildEvent,
     type PipelineChainClient,
 } from "@dotdm/contracts";
@@ -58,6 +59,12 @@ export interface RunContractsPhaseOptions {
     /** SS58-encoded address of `signer`. Used as the deployer origin for dry-runs. */
     origin: SS58String;
     onEvent: (event: ContractsPhaseEvent) => void;
+    /**
+     * If true, skip the contract compile step (forge/hardhat/cargo-contract)
+     * and use pre-existing artifacts on disk. CI-friendly for environments
+     * without the contract toolchain installed. Throws if no artifacts found.
+     */
+    skipBuild?: boolean;
 }
 
 export interface ContractsPhaseResult {
@@ -140,6 +147,10 @@ async function compileContracts(opts: RunContractsPhaseOptions): Promise<Compile
 // ── cdm compile ──────────────────────────────────────────────────────────────
 
 async function compileCdm(opts: RunContractsPhaseOptions): Promise<CompiledArtifact[]> {
+    if (opts.skipBuild) {
+        return compileCdmSkipBuild(opts);
+    }
+
     const summary = await buildContracts({
         rootDir: opts.projectDir,
         onEvent: (event: CdmBuildEvent) => {
@@ -156,6 +167,40 @@ async function compileCdm(opts: RunContractsPhaseOptions): Promise<CompiledArtif
             throw new Error(`cdm build produced no bytecode path for ${c.crate}`);
         }
         artifacts.push({ name: c.crate, pvmPath: c.pvmPath });
+    }
+    return artifacts;
+}
+
+/**
+ * CDM skip-build path: use `detectContracts` to enumerate crates from
+ * Cargo metadata (no build required), then resolve the expected
+ * `target/<crate>.release.polkavm` path that `buildContracts` would have
+ * produced. Throws with a clear message if any artifact is missing.
+ */
+async function compileCdmSkipBuild(opts: RunContractsPhaseOptions): Promise<CompiledArtifact[]> {
+    const projectDir = resolve(opts.projectDir);
+    const contracts = detectContracts(projectDir);
+
+    if (contracts.length === 0) {
+        throw new Error(
+            `no pre-built contract artifacts found under ${projectDir}; remove --no-contract-build or run \`cargo-contract build\` manually first`,
+        );
+    }
+
+    opts.onEvent({
+        kind: "compile-detected",
+        contracts: contracts.map((c) => c.name),
+    });
+
+    const artifacts: CompiledArtifact[] = [];
+    for (const contract of contracts) {
+        const pvmPath = join(projectDir, `target/${contract.name}.release.polkavm`);
+        if (!existsSync(pvmPath)) {
+            throw new Error(
+                `no pre-built contract artifacts found at ${pvmPath}; remove --no-contract-build or run \`cargo-contract build\` manually first`,
+            );
+        }
+        artifacts.push({ name: contract.name, pvmPath });
     }
     return artifacts;
 }
@@ -178,19 +223,26 @@ function relayCdmBuildEvent(event: CdmBuildEvent, emit: (e: ContractsPhaseEvent)
 async function compileFoundry(opts: RunContractsPhaseOptions): Promise<CompiledArtifact[]> {
     const projectDir = resolve(opts.projectDir);
 
-    // `--resolc` forces PolkaVM codegen regardless of `foundry.toml`; plain
-    // `forge build` defaults to EVM even on the polkadot fork.
-    await runStreamed({
-        cmd: "forge",
-        args: ["build", "--resolc"],
-        cwd: projectDir,
-        description: "forge build --resolc",
-        failurePrefix: "forge build failed",
-        onData: (line) => opts.onEvent({ kind: "compile-log", line }),
-    });
+    if (!opts.skipBuild) {
+        // `--resolc` forces PolkaVM codegen regardless of `foundry.toml`; plain
+        // `forge build` defaults to EVM even on the polkadot fork.
+        await runStreamed({
+            cmd: "forge",
+            args: ["build", "--resolc"],
+            cwd: projectDir,
+            description: "forge build --resolc",
+            failurePrefix: "forge build failed",
+            onData: (line) => opts.onEvent({ kind: "compile-log", line }),
+        });
+    }
 
     const outDir = join(projectDir, "out");
     if (!existsSync(outDir)) {
+        if (opts.skipBuild) {
+            throw new Error(
+                `no pre-built contract artifacts found at ${outDir}; remove --no-contract-build or run \`forge build --resolc\` manually first`,
+            );
+        }
         throw new Error(`forge build did not produce an out/ directory at ${outDir}`);
     }
 
@@ -215,6 +267,12 @@ async function compileFoundry(opts: RunContractsPhaseOptions): Promise<CompiledA
         });
     }
 
+    if (opts.skipBuild && artifacts.length === 0) {
+        throw new Error(
+            `no pre-built contract artifacts found at ${outDir}; remove --no-contract-build or run \`forge build --resolc\` manually first`,
+        );
+    }
+
     return artifacts;
 }
 
@@ -223,17 +281,24 @@ async function compileFoundry(opts: RunContractsPhaseOptions): Promise<CompiledA
 async function compileHardhat(opts: RunContractsPhaseOptions): Promise<CompiledArtifact[]> {
     const projectDir = resolve(opts.projectDir);
 
-    await runStreamed({
-        cmd: "npx",
-        args: ["hardhat", "compile"],
-        cwd: projectDir,
-        description: "npx hardhat compile",
-        failurePrefix: "hardhat compile failed",
-        onData: (line) => opts.onEvent({ kind: "compile-log", line }),
-    });
+    if (!opts.skipBuild) {
+        await runStreamed({
+            cmd: "npx",
+            args: ["hardhat", "compile"],
+            cwd: projectDir,
+            description: "npx hardhat compile",
+            failurePrefix: "hardhat compile failed",
+            onData: (line) => opts.onEvent({ kind: "compile-log", line }),
+        });
+    }
 
     const artifactsRoot = join(projectDir, "artifacts", "contracts");
     if (!existsSync(artifactsRoot)) {
+        if (opts.skipBuild) {
+            throw new Error(
+                `no pre-built contract artifacts found at ${artifactsRoot}; remove --no-contract-build or run \`npx hardhat compile\` manually first`,
+            );
+        }
         throw new Error(
             `hardhat compile did not produce artifacts/contracts/ at ${artifactsRoot} — did you load "@parity/hardhat-polkadot" in your hardhat.config?`,
         );
@@ -259,6 +324,12 @@ async function compileHardhat(opts: RunContractsPhaseOptions): Promise<CompiledA
                 pvmPath: writeTmpBytecode(`hardhat-${contractName}`, bytes),
             });
         }
+    }
+
+    if (opts.skipBuild && artifacts.length === 0) {
+        throw new Error(
+            `no pre-built contract artifacts found at ${artifactsRoot}; remove --no-contract-build or run \`npx hardhat compile\` manually first`,
+        );
     }
 
     return artifacts;

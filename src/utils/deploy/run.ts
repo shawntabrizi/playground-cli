@@ -81,6 +81,12 @@ export interface RunDeployOptions {
     repositoryUrl?: string | null;
     /** Compile + deploy foundry/hardhat/cdm contracts alongside the frontend. */
     deployContracts?: boolean;
+    /**
+     * Skip the contract compile step (forge/hardhat/cargo-contract) and use
+     * pre-existing artifacts on disk. CI-friendly for environments without the
+     * contract toolchain installed. Throws if no artifacts are found.
+     */
+    skipContractBuild?: boolean;
     /** The logged-in phone signer. Required for `mode === "phone"` or `publishToPlayground`. */
     userSigner: ResolvedSigner | null;
     /** Event sink — consumed by the TUI / RevX. */
@@ -277,6 +283,7 @@ async function maybeRunContracts(
             const result = await runContractsPhase({
                 projectDir: options.projectDir,
                 contractsType,
+                skipBuild: options.skipContractBuild,
                 // cdm's PipelineChainClient is a structural subset of our
                 // ChainClient — cast keeps the extra `individuality` field out
                 // of the SDK-surface type without affecting runtime behaviour.

@@ -66,6 +66,21 @@ Passing all four of `--signer`, `--domain`, `--buildDir`, and `--playground` run
 
 The publish step is always signed by the user so the registry contract records their address as the app owner — this is what drives the Playground "my apps" view.
 
+#### CI / automation flags for `dot deploy`
+
+These flags are designed for non-interactive (CI) usage. Combining all four of `--signer`, `--domain`, `--buildDir`, and `--playground` triggers fully headless mode; the flags below layer on top.
+
+| Flag | Effect |
+|---|---|
+| `--signer dev` | Use the dev signer (no phone QR scan). Requires `--suri`. |
+| `--suri <suri>` | Secret URI for the user signer (e.g. `//Alice` or a full mnemonic). Required with `--signer dev`. |
+| `--domain <name>` | DotNS domain. Skips interactive selection. |
+| `--buildDir <path>` | Path to existing built frontend assets. |
+| `--no-build` | Skip the **frontend** build (`pnpm build`). Use pre-built `dist/`. |
+| `--no-contract-build` | Skip the **contract** compile (`forge build --resolc`, `cargo-contract build`, `npx hardhat compile`). Use pre-built `out/` / `target/<crate>.release.polkavm` / `artifacts/contracts/`. Requires `--contracts`. |
+| `--no-modable` | Don't push source to GitHub even if `--modable` would normally apply. |
+| `--playground` | Publish to the playground registry. Required with all the above to trigger the fully-headless code path. |
+
 ### `dot mod`
 
 Pull a modable playground app's source into a fresh local project so you can customise and re-deploy it. The interactive picker only shows apps that opted into modable at deploy time; non-modable apps surface a clear "this app is not modable" error if you target them by domain.
