@@ -246,6 +246,11 @@ describe("dot deploy — foundry (requires Paseo + IPFS)", () => {
 			"--signer", "dev",
 			"--domain", domain,
 			"--buildDir", absBuildDir(foundry),
+			// --no-build skips both frontend AND contract build; the fixture
+			// ships pre-committed artefacts under out/ so the deploy uses
+			// them directly without spawning forge (not available on the
+			// CI runner).
+			"--no-build",
 			"--contracts",
 			"--playground",
 			"--suri", SIGNER.suri,
@@ -269,6 +274,10 @@ describe("dot deploy — CDM (requires Paseo + IPFS)", () => {
 			"--signer", "dev",
 			"--domain", domain,
 			"--buildDir", absBuildDir(rustCdm),
+			// --no-build: the fixture ships a pre-committed .contract under
+			// target/ so the deploy uses it directly without spawning
+			// cargo-contract (not available on the CI runner).
+			"--no-build",
 			"--contracts",
 			"--playground",
 			"--suri", SIGNER.suri,
