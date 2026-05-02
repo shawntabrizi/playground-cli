@@ -9,7 +9,10 @@
 #     leak into tests (matches the runner's clean home).
 #
 # Usage:
-#   tools/e2e-local.sh                          # full suite
+#   tools/e2e-local.sh                          # full suite (smoke mode)
+#   tools/e2e-local.sh smoke                    # smoke mode (explicit)
+#   tools/e2e-local.sh pr                       # pr mode
+#   tools/e2e-local.sh nightly                  # nightly mode
 #   tools/e2e-local.sh e2e/cli/mod.test.ts      # filter (forwarded to vitest)
 #   tools/e2e-local.sh -t "registry-miss"       # name filter
 #
@@ -26,6 +29,20 @@ if ! command -v ipfs >/dev/null 2>&1; then
     echo "         install with: brew install ipfs   (macOS), or follow https://docs.ipfs.tech/install/" >&2
     echo "" >&2
 fi
+
+# Derive DOT_TAG from an optional leading mode keyword (smoke|pr|nightly).
+# e2e/cli/helpers/dot.ts defaults DOT_TAG to "e2e-local"; we override that
+# here so local runs are tagged by mode and stay distinct in Sentry dashboards.
+_MODE="${1:-smoke}"
+case "$_MODE" in
+	smoke|pr|nightly)
+		export DOT_TAG="${DOT_TAG:-e2e-local-${_MODE}}"
+		shift
+		;;
+	*)
+		export DOT_TAG="${DOT_TAG:-e2e-local-smoke}"
+		;;
+esac
 
 export TEST_TEMPLATE_DOMAIN="${TEST_TEMPLATE_DOMAIN:-dot-cli-mod-fixture.dot}"
 export TEST_TEMPLATE_REPO="${TEST_TEMPLATE_REPO:-https://github.com/paritytech/Rock-Paper-Scissors}"
@@ -44,6 +61,7 @@ if command -v ipfs >/dev/null 2>&1; then
     ipfs init --profile=test >/dev/null 2>&1 || true
 fi
 
+echo "→ DOT_TAG               $DOT_TAG"
 echo "→ TEST_TEMPLATE_DOMAIN  $TEST_TEMPLATE_DOMAIN"
 echo "→ TEST_TEMPLATE_REPO    $TEST_TEMPLATE_REPO"
 echo "→ DOT_DEPLOY_VERBOSE    $DOT_DEPLOY_VERBOSE"
