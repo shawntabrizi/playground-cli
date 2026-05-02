@@ -237,3 +237,49 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 		expect(output.toLowerCase()).toMatch(/revert|taken|registered|owned|unavailable|already/);
 	});
 });
+
+describe("dot deploy — foundry (requires Paseo + IPFS)", () => {
+	test("foundry deploy completes end-to-end", { timeout: 450_000 }, async () => {
+		const domain = E2E_DOMAINS.foundry;
+		const result = await dot([
+			"deploy",
+			"--signer", "dev",
+			"--domain", domain,
+			"--buildDir", absBuildDir(foundry),
+			"--contracts",
+			"--playground",
+			"--suri", SIGNER.suri,
+			"--dir", foundry,
+		], { timeout: 400_000 });
+
+		expect(
+			result.exitCode,
+			`foundry deploy failed: ${result.stdout}\n${result.stderr}`,
+		).toBe(0);
+		expect(result.stdout).toContain("Deploy complete");
+		expect(result.stdout).toContain(domain);
+	});
+});
+
+describe("dot deploy — CDM (requires Paseo + IPFS)", () => {
+	test("CDM deploy completes end-to-end", { timeout: 450_000 }, async () => {
+		const domain = E2E_DOMAINS.cdm;
+		const result = await dot([
+			"deploy",
+			"--signer", "dev",
+			"--domain", domain,
+			"--buildDir", absBuildDir(rustCdm),
+			"--contracts",
+			"--playground",
+			"--suri", SIGNER.suri,
+			"--dir", rustCdm,
+		], { timeout: 400_000 });
+
+		expect(
+			result.exitCode,
+			`CDM deploy failed: ${result.stdout}\n${result.stderr}`,
+		).toBe(0);
+		expect(result.stdout).toContain("Deploy complete");
+		expect(result.stdout).toContain(domain);
+	});
+});
