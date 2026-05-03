@@ -15,26 +15,26 @@ import { checkBalance, ensureFunded } from "../../../src/utils/account/funding.j
 import { getTestClient } from "../helpers/chain.js";
 import { SIGNER } from "../fixtures/accounts.js";
 
-const DOT = 10_000_000_000n;
+const PAS = 10_000_000_000n;
 
 /** Top up the deployer if it falls below this. */
-export const MIN_BALANCE = 500n * DOT;
+export const MIN_BALANCE = 500n * PAS;
 
 /** Amount to send when topping up. */
-export const TOP_UP_AMOUNT = 1000n * DOT;
+export const TOP_UP_AMOUNT = 1000n * PAS;
 
 export async function fundDeployerIfLow(): Promise<void> {
 	const client = await getTestClient();
 	const before = await checkBalance(client, SIGNER.address, MIN_BALANCE);
 	console.log(
-		`[e2e setup] SIGNER (${SIGNER.name}) balance: ${before.free / DOT} DOT (${SIGNER.address})`,
+		`[e2e setup] SIGNER (${SIGNER.name}) balance: ${before.free / PAS} PAS (${SIGNER.address})`,
 	);
 	if (before.sufficient) return;
 
 	console.log(
-		`[e2e setup] balance below ${MIN_BALANCE / DOT} DOT — topping up by ${TOP_UP_AMOUNT / DOT} DOT…`,
+		`[e2e setup] balance below ${MIN_BALANCE / PAS} PAS — topping up by ${TOP_UP_AMOUNT / PAS} PAS…`,
 	);
 	await ensureFunded(client, SIGNER.address, MIN_BALANCE, TOP_UP_AMOUNT);
 	const after = await checkBalance(client, SIGNER.address, MIN_BALANCE);
-	console.log(`[e2e setup] SIGNER topped up: ${after.free / DOT} DOT`);
+	console.log(`[e2e setup] SIGNER topped up: ${after.free / PAS} PAS`);
 }

@@ -70,9 +70,9 @@ const FIXTURES: readonly Fixture[] = [
 ];
 
 const DEFAULT_SURI = `${DEDICATED_E2E_DEPLOYER_MNEMONIC}//e2e-deployer`;
-const DOT = 10_000_000_000n;
-const TOPUP_TARGET = 500n * DOT;
-const TOPUP_AMOUNT = 1000n * DOT;
+const PAS = 10_000_000_000n;
+const TOPUP_TARGET = 500n * PAS;
+const TOPUP_AMOUNT = 1000n * PAS;
 
 interface Args {
 	onlyDomain: string | null;
@@ -107,12 +107,12 @@ function parseArgs(argv: string[]): Args {
 
 async function topUpIfLow(client: Awaited<ReturnType<typeof getConnection>>, address: string): Promise<void> {
 	const balance = await checkBalance(client, address, TOPUP_TARGET);
-	console.log(`signer balance: ${balance.free / DOT} DOT`);
+	console.log(`signer balance: ${balance.free / PAS} PAS`);
 	if (!balance.sufficient) {
-		console.log(`balance below ${TOPUP_TARGET / DOT} DOT — topping up by ${TOPUP_AMOUNT / DOT} DOT…`);
+		console.log(`balance below ${TOPUP_TARGET / PAS} PAS — topping up by ${TOPUP_AMOUNT / PAS} PAS…`);
 		await ensureFunded(client, address, TOPUP_TARGET, TOPUP_AMOUNT);
 		const after = await checkBalance(client, address, MIN_BALANCE);
-		console.log(`topped up: ${after.free / DOT} DOT`);
+		console.log(`topped up: ${after.free / PAS} PAS`);
 	}
 	console.log();
 }
@@ -158,8 +158,8 @@ async function main(): Promise<number> {
 
 	try {
 		const client = await getConnection();
-		// Balance checked once; TOPUP_TARGET (500 DOT) gives ~1000× headroom
-		// for the ~0.1 DOT/publish cost across all 5 fixtures.
+		// Balance checked once; TOPUP_TARGET (500 PAS) gives ~1000× headroom
+		// for the ~0.1 PAS/publish cost across all 5 fixtures.
 		await topUpIfLow(client, signer.address);
 		for (const fixture of targets) {
 			await registerOne(fixture, signer);
