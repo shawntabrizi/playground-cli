@@ -287,6 +287,28 @@ runContractDeployTest({ name: "hardhat", domain: E2E_DOMAINS.hardhat, fixture: h
 // (TokenA.sol + TokenB.sol deployed in a single --contracts run).
 runContractDeployTest({ name: "multi", domain: E2E_DOMAINS.multi, fixture: multiContract });
 
+// Rejection test — does NOT require Paseo or IPFS; exits before any chain mutation.
+describe("dot deploy — rejects --no-contract-build with no artefacts", () => {
+	test("foundry project with --no-contract-build but no out/ → clear error", { timeout: 120_000 }, async () => {
+		const constructorArgs = fixturePath("constructor-args");
+		const result = await dot([
+			"deploy",
+			"--signer", "dev",
+			"--domain", E2E_DOMAINS.preflight,
+			"--buildDir", absBuildDir(constructorArgs),
+			"--contracts",
+			"--no-contract-build",
+			"--playground",
+			"--suri", SIGNER.suri,
+			"--dir", constructorArgs,
+		]);
+		const output = result.stdout + result.stderr;
+		expect(result.exitCode).not.toBe(0);
+		expect(output).toMatch(/no pre-built contract artifacts found/i);
+		expect(output).toMatch(/--no-contract-build/);
+	});
+});
+
 // SKIPPED: the rust-cdm fixture's `target/flipper.contract` is a stub
 // (`{"source":{"hash":"0xabc"}}`) and there is no `target/<crate>.release.polkavm`
 // for the skip-build path to read. A working fixture needs:
