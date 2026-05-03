@@ -3,6 +3,7 @@ import {
     chmodSync,
     closeSync,
     fsyncSync,
+    mkdirSync,
     openSync,
     renameSync,
     unlinkSync,
@@ -154,6 +155,7 @@ export const updateCommand = new Command("update")
                     "install update",
                     { "cli.update.asset": asset },
                     async () => {
+                        mkdirSync(installDir, { recursive: true });
                         atomicInstall(dest, binary);
 
                         if (platform() === "darwin") {
