@@ -1,0 +1,37 @@
+name: E2E Cleanup
+
+on:
+    schedule:
+        - cron: "0 4 * * 0" # Sunday 04:00 UTC, after the nightly window
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    issues: write # for filing if cleanup fails
+
+jobs:
+    sweep:
+        name: Sweep rotating E2E state
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Sweep rotating modable repos and domains
+              shell: bash
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  echo "::group::What this workflow sweeps"
+                  echo "Per spec §9c, this cron sweeps rotating per-run E2E state:"
+                  echo "  - GH repos matching 'e2e-cli-modable-*' older than 14 days"
+                  echo "  - Registry domains matching 'e2e-cli-modable-*' older than 14 days"
+                  echo ""
+                  echo "Phase 5e (modable) hasn't shipped yet, so there's nothing to sweep today."
+                  echo "When Phase 5e lands, this step gets the actual sweep logic:"
+                  echo "  gh repo list --topic e2e-test-fixture --limit 100 ..."
+                  echo "  bun tools/sweep-modable-domains.ts (would be added then)"
+                  echo "::endgroup::"
+
+                  # Stub — exit 0. Replace with real sweep when Phase 5e adds rotating state.
+                  echo "no rotating state to sweep — Phase 5e not yet shipped"
