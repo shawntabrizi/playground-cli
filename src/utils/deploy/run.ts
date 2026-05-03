@@ -317,18 +317,33 @@ async function ensureSessionFunded(opts: {
 
     emitInfo(`funding session key ${opts.sessionAddress}…`);
 
-    // Phone signer: user pays, with a lifecycle event so the TUI numbers the
-    // tap. Pure dev mode: pick the first funder in the chain that has enough
-    // PAS to cover the top-up. If every dev funder is drained, tell the user
-    // to switch to a mobile signer rather than silently falling back to
-    // anything that might race the drainer.
+    // Three-way branch based on who's funding the session key top-up:
+    //
+    //   source === "session"  Phone signer: user pays on-device. Wrap with
+    //                         lifecycle events so the TUI can number the tap
+    //                         and show "📱 Approve on your phone".
+    //
+    //   source === "dev"      Dev-with-SURI: a local keypair (--suri //Alice
+    //                         or a BIP-39 mnemonic) pretending to be the user.
+    //                         Signs immediately in-process — no human in the
+    //                         loop — so wrapping with phone-tap events would
+    //                         be misleading. Sign directly.
+    //
+    //   null                  Pure dev mode (no --suri, no session): pick the
+    //                         first funder in the chain that has enough PAS.
+    //                         If every dev funder is drained, tell the user to
+    //                         switch to a mobile signer rather than silently
+    //                         falling back to anything that might race the drainer.
     let funder: PolkadotSigner;
-    if (opts.userSigner) {
+    if (opts.userSigner?.source === "session") {
         funder = wrapSignerWithEvents(opts.userSigner.signer, {
             label: "Fund contract deploy session key",
             counter: opts.counter,
             onEvent: (event) => opts.onEvent({ kind: "signing", event }),
         });
+    } else if (opts.userSigner) {
+        // Dev-with-SURI: sign directly, no lifecycle events.
+        funder = opts.userSigner.signer;
     } else {
         const picked = await pickFunder(opts.client, SESSION_FUND_AMOUNT + FUNDER_FEE_BUFFER);
         if (!picked) {
