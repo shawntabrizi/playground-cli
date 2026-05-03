@@ -29,6 +29,26 @@ import { fixturePath } from "./fixtures/templates.js";
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
 const CLI_ENTRY = resolve(REPO_ROOT, "src/index.ts");
 
+/** Common CLI args for a full playground deploy in chaos scenarios. */
+function chaosDeployArgs(domain: string, buildDir: string, dir: string): string[] {
+	return [
+		"run",
+		CLI_ENTRY,
+		"deploy",
+		"--signer",
+		"dev",
+		"--domain",
+		domain,
+		"--buildDir",
+		buildDir,
+		"--playground",
+		"--suri",
+		SIGNER.suri,
+		"--dir",
+		dir,
+	];
+}
+
 /** How long to wait for the storage-phase sentinel before sending SIGINT anyway. */
 const SENTINEL_WAIT_MS = 60_000;
 
@@ -41,22 +61,11 @@ describe("dot deploy — chaos", () => {
 
 		const child = execa(
 			"bun",
-			[
-				"run",
-				CLI_ENTRY,
-				"deploy",
-				"--signer",
-				"dev",
-				"--domain",
+			chaosDeployArgs(
 				E2E_DOMAINS.chaos,
-				"--buildDir",
 				resolve(frontendOnly, "dist"),
-				"--playground",
-				"--suri",
-				SIGNER.suri,
-				"--dir",
 				frontendOnly,
-			],
+			),
 			{
 				cwd: REPO_ROOT,
 				env: { ...process.env, DOT_TAG: "e2e-chaos-sigint", DOT_TELEMETRY: "1" },
@@ -119,5 +128,42 @@ describe("dot deploy — chaos", () => {
 			elapsedMs,
 			`process took ${elapsedMs} ms to exit after SIGINT (limit ${MAX_EXIT_MS} ms)\nlast output:\n${buf.slice(-500)}`,
 		).toBeLessThan(MAX_EXIT_MS);
+	});
+});
+
+describe("dot deploy — chaos RPC failover", () => {
+	test("survives an unreachable primary bulletin RPC via failover", { timeout: 600_000 }, async () => {
+		// Set DOT_BULLETIN_RPC to an unroutable address. getChainConfig() will
+		// expose it as bulletinRpc and put the real endpoint in bulletinRpcFallbacks.
+		// bulletin-deploy's deploy() internally builds [override, DEFAULT] as its
+		// BULLETIN_ENDPOINTS list and polkadot-api's WS provider fails over
+		// automatically when the primary is unreachable. The deploy MUST still
+		// succeed — we're testing failover, not rejection.
+		const frontendOnly = fixturePath("frontend-only");
+
+		const result = await execa(
+			"bun",
+			chaosDeployArgs(
+				E2E_DOMAINS.chaos,
+				resolve(frontendOnly, "dist"),
+				frontendOnly,
+			),
+			{
+				cwd: REPO_ROOT,
+				env: {
+					...process.env,
+					DOT_TAG: "e2e-chaos-rpc",
+					DOT_TELEMETRY: "1",
+					DOT_BULLETIN_RPC: "ws://127.0.0.1:1/",
+				},
+				reject: false,
+				timeout: 580_000,
+			},
+		);
+
+		expect(
+			result.exitCode,
+			`deploy failed: ${result.stdout}\n${result.stderr}`,
+		).toBe(0);
 	});
 });

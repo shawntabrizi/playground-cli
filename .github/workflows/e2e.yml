@@ -149,6 +149,10 @@ jobs:
                     - cell: nightly-deploy-multi
                       # source: e2e/cli/deploy.test.ts → describe("dot deploy — multi …")
                       pattern: "deploy — multi"
+                    - cell: nightly-chaos-rpc
+                      # source: e2e/cli/chaos.test.ts → describe("dot deploy — chaos RPC failover")
+                      pattern: "chaos RPC failover"
+                      testFile: e2e/cli/chaos.test.ts
         steps:
             - uses: actions/checkout@v4
 

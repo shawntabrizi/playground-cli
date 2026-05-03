@@ -168,7 +168,7 @@ export async function publishToPlayground(
             const bulletinClient = createClient(
                 withPolkadotSdkCompat(
                     getWsProvider({
-                        endpoints: [cfg.bulletinRpc],
+                        endpoints: [cfg.bulletinRpc, ...cfg.bulletinRpcFallbacks],
                         heartbeatTimeout: BULLETIN_WS_HEARTBEAT_MS,
                     }),
                 ),
