@@ -1,0 +1,37 @@
+name: Surface E2E failure detail
+description: |
+    Print dot-runs.log + failed-testcase summary to the job log and emit
+    ::error:: annotations so triagers see the real root cause without
+    downloading artefacts. Intended to run with `if: failure()` after a
+    cell's test step.
+
+runs:
+    using: composite
+    steps:
+        - name: Dump dot-runs.log + failed testcases
+          shell: bash
+          run: |
+              echo "::group::dot-runs.log (CLI subprocess stdout/stderr)"
+              if [ -f e2e-reports/dot-runs.log ]; then
+                  cat e2e-reports/dot-runs.log
+              else
+                  echo "(no dot-runs.log written — test failed before any dot subprocess ran, or the e2e-reports dir wasn't created)"
+              fi
+              echo "::endgroup::"
+
+              if [ -f e2e-reports/junit.xml ]; then
+                  if ! command -v xmlstarlet >/dev/null 2>&1; then
+                      sudo apt-get update -q
+                      sudo apt-get install -y -q xmlstarlet
+                  fi
+                  echo "::group::Failed testcases (from junit.xml)"
+                  xmlstarlet sel -t -m "//testcase[failure or error]" \
+                      -v "concat(@classname, ' › ', @name)" -o $'\n  ' \
+                      -v "failure/@message | error/@message" -n e2e-reports/junit.xml || true
+                  echo "::endgroup::"
+
+                  xmlstarlet sel -t -m "//testcase[failure or error]" \
+                      -v "concat('::error file=', @classname, '::', @name, ' — ')" \
+                      -v "failure/@message | error/@message" -n e2e-reports/junit.xml \
+                      | head -c 3000 || true
+              fi

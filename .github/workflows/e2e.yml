@@ -65,6 +65,10 @@ jobs:
                   DOT_TAG: ${{ steps.setup.outputs.tag }}
                   DOT_TELEMETRY: "1"
 
+            - name: Surface failure detail
+              if: failure()
+              uses: ./.github/actions/surface-e2e-failure
+
             - name: Upload forensic artefacts
               if: always()
               continue-on-error: true
@@ -115,6 +119,10 @@ jobs:
                   DOT_TAG: ${{ steps.setup.outputs.tag }}
                   DOT_TELEMETRY: "1"
 
+            - name: Surface failure detail
+              if: failure()
+              uses: ./.github/actions/surface-e2e-failure
+
             - name: Upload forensic artefacts
               if: always()
               continue-on-error: true
@@ -160,6 +168,10 @@ jobs:
                   DOT_DEPLOY_VERBOSE: "1"
                   DOT_TAG: ${{ steps.setup.outputs.tag }}
                   DOT_TELEMETRY: "1"
+
+            - name: Surface failure detail
+              if: failure()
+              uses: ./.github/actions/surface-e2e-failure
 
             - name: Upload forensic artefacts
               if: always()
@@ -216,6 +228,10 @@ jobs:
                   DOT_DEPLOY_VERBOSE: "1"
                   DOT_TAG: ${{ steps.setup.outputs.tag }}
                   DOT_TELEMETRY: "1"
+
+            - name: Surface failure detail
+              if: failure()
+              uses: ./.github/actions/surface-e2e-failure
 
             - name: Upload forensic artefacts
               if: always()
