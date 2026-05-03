@@ -1,0 +1,88 @@
+name: E2E (Published Binary)
+
+on:
+    release:
+        types: [prereleased]
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: "Release tag to test (e.g. v0.16.0-rc.1)"
+                required: true
+
+permissions:
+    contents: read
+
+jobs:
+    smoke:
+        name: "E2E · release-smoke"
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        env:
+            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - run: pnpm install
+
+            - name: Resolve release tag
+              id: tag
+              shell: bash
+              run: |
+                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                      TAG="${{ inputs.tag }}"
+                  else
+                      TAG="${{ github.event.release.tag_name }}"
+                  fi
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+            - name: Wait for SEA asset to be uploaded
+              shell: /usr/bin/bash -euo pipefail {0}
+              run: |
+                  TAG="${{ steps.tag.outputs.tag }}"
+                  for i in $(seq 1 30); do
+                      if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -q "^dot-linux-x64$"; then
+                          echo "Found dot-linux-x64 asset on attempt $i"
+                          exit 0
+                      fi
+                      echo "  attempt $i/30: waiting for asset..."
+                      sleep 10
+                  done
+                  echo "::error::Timed out waiting for dot-linux-x64 asset on $TAG"
+                  exit 1
+
+            - name: Download SEA asset
+              shell: bash
+              run: |
+                  TAG="${{ steps.tag.outputs.tag }}"
+                  mkdir -p ./bin
+                  gh release download "$TAG" --pattern "dot-linux-x64" --dir ./bin
+                  chmod +x ./bin/dot-linux-x64
+                  ls -la ./bin/dot-linux-x64
+
+            - name: Smoke test the published binary
+              uses: nick-fields/retry@v3
+              with:
+                  timeout_minutes: 5
+                  max_attempts: 2
+                  retry_wait_seconds: 15
+                  command: pnpm exec vitest run --config e2e/vitest.config.ts e2e/cli/published.test.ts
+              env:
+                  DOT_E2E_BINARY: ${{ github.workspace }}/bin/dot-linux-x64
+                  DOT_TAG: e2e-ci-release
+                  DOT_TELEMETRY: "1"
+
+            - name: Upload forensic artefacts
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@v4
+              with:
+                  name: e2e-reports-release-smoke
+                  path: e2e-reports/
+                  retention-days: 7
+                  if-no-files-found: ignore
