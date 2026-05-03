@@ -192,6 +192,10 @@ jobs:
                     - cell: nightly-rejections
                       # source: e2e/cli/deploy.test.ts → describe("dot deploy — rejects --no-contract-build with no artefacts")
                       pattern: "rejects --no-contract-build"
+                    - cell: nightly-chaos-sigint
+                      # source: e2e/cli/chaos.test.ts → describe("dot deploy — chaos")
+                      pattern: "dot deploy — chaos"
+                      testFile: e2e/cli/chaos.test.ts
         steps:
             # checkout must run before the local composite action can be loaded.
             - uses: actions/checkout@v4

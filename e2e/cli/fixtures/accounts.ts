@@ -102,4 +102,12 @@ export const E2E_DOMAINS = {
 	cdm: "e2e-cli-cdm",
 	hardhat: "e2e-cli-hardhat",
 	multi: "e2e-cli-multi",
+	/**
+	 * Used by the nightly-chaos-sigint cell only. The deploy is interrupted by
+	 * SIGINT before it completes, so this domain is never actually registered.
+	 * It is kept separate from `storage` to avoid any race with the happy-path
+	 * storage test in test-publish when both run in a nightly that triggers all
+	 * matrices.
+	 */
+	chaos: "e2e-cli-chaos",
 } as const;
