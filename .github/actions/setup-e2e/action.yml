@@ -1,0 +1,49 @@
+name: Setup E2E environment
+description: Checkout, install pnpm/node/bun/kubo, run pnpm install, and resolve DOT_TAG from the trigger event.
+
+outputs:
+    tag:
+        description: The DOT_TAG value resolved from github.event_name (e2e-ci-{nightly,dispatch,pr}).
+        value: ${{ steps.tag.outputs.tag }}
+
+runs:
+    using: composite
+    steps:
+        - uses: actions/checkout@v4
+
+        - uses: pnpm/action-setup@v4
+
+        - uses: actions/setup-node@v4
+          with:
+              node-version: "22"
+
+        - uses: oven-sh/setup-bun@v2
+          with:
+              bun-version: latest
+
+        - name: Install Kubo (IPFS)
+          shell: bash
+          run: |
+              wget -q https://dist.ipfs.tech/kubo/v0.32.1/kubo_v0.32.1_linux-amd64.tar.gz
+              tar xf kubo_v0.32.1_linux-amd64.tar.gz
+              sudo mv kubo/ipfs /usr/local/bin/
+              ipfs init --profile=test
+              ipfs version
+
+        - name: pnpm install
+          shell: bash
+          run: pnpm install
+
+        - name: Resolve DOT_TAG from trigger
+          id: tag
+          shell: bash
+          run: |
+              # Phase 1 triggers: pull_request / push:main / schedule / workflow_dispatch.
+              # Phase 7 will add `release` (with TAG=e2e-ci-release).
+              case "${{ github.event_name }}" in
+                  schedule)            TAG=e2e-ci-nightly  ;;
+                  workflow_dispatch)   TAG=e2e-ci-dispatch ;;
+                  *)                   TAG=e2e-ci-pr       ;;
+              esac
+              echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+              echo "Resolved DOT_TAG=$TAG (event=${{ github.event_name }})"
