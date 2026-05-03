@@ -267,6 +267,33 @@ describe("dot deploy — foundry (requires Paseo + IPFS)", () => {
 	});
 });
 
+describe("dot deploy — hardhat (requires Paseo + IPFS)", () => {
+	test("hardhat deploy completes end-to-end", { timeout: 450_000 }, async () => {
+		const domain = E2E_DOMAINS.hardhat;
+		const result = await dot([
+			"deploy",
+			"--signer", "dev",
+			"--domain", domain,
+			"--buildDir", absBuildDir(hardhat),
+			// --no-contract-build skips `npx hardhat compile` (the toolchain
+			// isn't installed on the CI runner). The fixture ships pre-built
+			// bytecode under artifacts/contracts/Lock.sol/Lock.json.
+			"--contracts",
+			"--no-contract-build",
+			"--playground",
+			"--suri", SIGNER.suri,
+			"--dir", hardhat,
+		], { timeout: 400_000 });
+
+		expect(
+			result.exitCode,
+			`hardhat deploy failed: ${result.stdout}\n${result.stderr}`,
+		).toBe(0);
+		expect(result.stdout).toContain("Deploy complete");
+		expect(result.stdout).toContain(domain);
+	});
+});
+
 // SKIPPED: the rust-cdm fixture's `target/flipper.contract` is a stub
 // (`{"source":{"hash":"0xabc"}}`) and there is no `target/<crate>.release.polkavm`
 // for the skip-build path to read. A working fixture needs:

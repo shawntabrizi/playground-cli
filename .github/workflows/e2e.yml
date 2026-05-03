@@ -125,6 +125,49 @@ jobs:
                   retention-days: 7
                   if-no-files-found: ignore
 
+    test-nightly-publish:
+        name: "E2E · ${{ matrix.cell }}"
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        runs-on: ubuntu-latest
+        timeout-minutes: 55
+        strategy:
+            fail-fast: false
+            max-parallel: 1                  # serial — share SIGNER + registry domains
+            matrix:
+                include:
+                    - cell: nightly-deploy-hardhat
+                      # source: e2e/cli/deploy.test.ts → describe("dot deploy — hardhat …")
+                      pattern: "deploy — hardhat"
+        steps:
+            - uses: actions/checkout@v4
+
+            - id: setup
+              uses: ./.github/actions/setup-e2e
+
+            - name: Run E2E cell (one retry on transient testnet failures)
+              uses: nick-fields/retry@v3
+              with:
+                  timeout_minutes: 25
+                  max_attempts: 2
+                  retry_wait_seconds: 30
+                  command: pnpm exec vitest run --config e2e/vitest.config.ts ${{ matrix.testFile || '' }} -t "${{ matrix.pattern }}"
+              env:
+                  TEST_TEMPLATE_DOMAIN: dot-cli-mod-fixture.dot
+                  TEST_TEMPLATE_REPO: https://github.com/paritytech/Rock-Paper-Scissors
+                  DOT_DEPLOY_VERBOSE: "1"
+                  DOT_TAG: ${{ steps.setup.outputs.tag }}
+                  DOT_TELEMETRY: "1"
+
+            - name: Upload forensic artefacts
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@v4
+              with:
+                  name: e2e-reports-${{ matrix.cell }}
+                  path: e2e-reports/
+                  retention-days: 7
+                  if-no-files-found: ignore
+
     test-nightly-no-publish:
         name: "E2E · ${{ matrix.cell }}"
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -176,7 +219,7 @@ jobs:
 
     report:
         name: E2E Report
-        needs: [test-no-publish, test-publish, test-nightly-no-publish]
+        needs: [test-no-publish, test-publish, test-nightly-no-publish, test-nightly-publish]
         if: always()
         runs-on: ubuntu-latest
         timeout-minutes: 5
@@ -218,6 +261,7 @@ jobs:
                   AGGREGATE_PUBLISH: ${{ needs.test-publish.result }}
                   AGGREGATE_NO_PUBLISH: ${{ needs.test-no-publish.result }}
                   AGGREGATE_NIGHTLY_NO_PUBLISH: ${{ needs.test-nightly-no-publish.result }}
+                  AGGREGATE_NIGHTLY_PUBLISH: ${{ needs.test-nightly-publish.result }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
                   TAG: ${{ needs.test-no-publish.outputs.tag }}
               shell: /usr/bin/bash -euo pipefail {0}
@@ -226,7 +270,7 @@ jobs:
                   # here when introducing one (Phase 5b+). 'skipped' (a matrix
                   # that didn't run because of an event-name gate) doesn't
                   # count as failure.
-                  all_results="$AGGREGATE_PUBLISH $AGGREGATE_NO_PUBLISH $AGGREGATE_NIGHTLY_NO_PUBLISH"
+                  all_results="$AGGREGATE_PUBLISH $AGGREGATE_NO_PUBLISH $AGGREGATE_NIGHTLY_NO_PUBLISH $AGGREGATE_NIGHTLY_PUBLISH"
                   if echo "$all_results" | grep -q failure; then
                       AGGREGATE=failure
                   elif echo "$all_results" | grep -q cancelled; then
@@ -364,7 +408,7 @@ jobs:
             - name: Open failure issue
               if: >
                   (github.event_name == 'schedule' || github.event_name == 'release') &&
-                  (needs.test-no-publish.result != 'success' || needs.test-publish.result != 'success' || needs.test-nightly-no-publish.result != 'success')
+                  (needs.test-no-publish.result != 'success' || needs.test-publish.result != 'success' || needs.test-nightly-no-publish.result != 'success' || needs.test-nightly-publish.result != 'success')
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   TAG: ${{ needs.test-no-publish.outputs.tag }}
