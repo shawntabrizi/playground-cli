@@ -56,9 +56,10 @@ These are things that aren't self-evident from reading the code and have bitten 
 
 - **Local launcher:** `tools/e2e-local.sh [smoke|pr|nightly]` — also callable via `pnpm test:e2e:smoke`, `pnpm test:e2e:pr`, `pnpm test:e2e:nightly`.
 - **CI workflow:** `.github/workflows/e2e.yml` — runs on PR / push:main / cron 06:00 UTC / workflow_dispatch.
+- **CI matrix:** 7 cells in two matrices — `test-no-publish` (parallel: pr-install, pr-preflight, pr-mod, pr-init-session) + `test-publish` (max-parallel: 1: pr-deploy-frontend, pr-deploy-foundry, pr-deploy-cdm). Each cell runs a subset via `vitest -t "<pattern>"`.
 - **Test files:** `e2e/cli/*.test.ts` (vitest, spawned via `bun run src/index.ts`).
 - **Reports directory:** `e2e-reports/junit.xml` + `e2e-reports/dot-runs.log` (gitignored).
 - **Tag prefix:** `DOT_TAG=e2e-{ci|local}-{trigger}` so Sentry dashboards filter test traffic. The CLI plumbs `DOT_TAG` into the `cli.tag` root-span attribute via `src/telemetry-config.ts`.
 - **CI report job name:** `E2E Report` — aggregates per-leg conclusions, posts a sticky PR comment with marker `<!-- e2e-pr-report -->`, opens an auto-issue on schedule/release fail.
-- **Bootstrap:** see `tools/register-mod-fixture.ts` for the mod-test fixture; full bootstrap doc TBD in a later phase.
+- **Bootstrap:** see `tools/register-e2e-fixtures.ts` for the mod-test fixture; full bootstrap doc TBD in a later phase.
 - **Design spec:** `docs-internal/2026-05-02-e2e-test-suite-design.md`.

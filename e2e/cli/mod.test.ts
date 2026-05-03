@@ -35,7 +35,7 @@ afterEach(() => {
 	tempDirs.length = 0;
 });
 
-describe("dot mod", () => {
+describe("dot mod — clone", () => {
 	test.skipIf(!TEST_DOMAIN)(
 		"clones the registered template into a fresh directory",
 		{ timeout: 180_000 },
@@ -59,6 +59,17 @@ describe("dot mod", () => {
 		},
 	);
 
+	test("exits non-zero with signer suggestion when no signer available", async () => {
+		const tempHome = makeTempDir("dot-e2e-mod-home-");
+		const cwd = makeTempDir("dot-e2e-mod-cwd-");
+		const result = await dot(["mod", "some-app.dot"], { home: tempHome, cwd });
+		expect(result.exitCode).not.toBe(0);
+		const output = result.stdout + result.stderr;
+		expect(output).toMatch(/signer|init|log.?in/i);
+	});
+});
+
+describe("dot mod — registry miss", () => {
 	test("reports a registry-miss for an unknown domain", async () => {
 		const cwd = makeTempDir("dot-e2e-mod-unknown-");
 		const result = await dot(
@@ -68,14 +79,5 @@ describe("dot mod", () => {
 		const output = result.stdout + result.stderr;
 		expect(result.exitCode).not.toBe(0);
 		expect(output).toMatch(/not found/i);
-	});
-
-	test("exits non-zero with signer suggestion when no signer available", async () => {
-		const tempHome = makeTempDir("dot-e2e-mod-home-");
-		const cwd = makeTempDir("dot-e2e-mod-cwd-");
-		const result = await dot(["mod", "some-app.dot"], { home: tempHome, cwd });
-		expect(result.exitCode).not.toBe(0);
-		const output = result.stdout + result.stderr;
-		expect(output).toMatch(/signer|init|log.?in/i);
 	});
 });

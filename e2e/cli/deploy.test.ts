@@ -237,3 +237,66 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 		expect(output.toLowerCase()).toMatch(/revert|taken|registered|owned|unavailable|already/);
 	});
 });
+
+describe("dot deploy — foundry (requires Paseo + IPFS)", () => {
+	test("foundry deploy completes end-to-end", { timeout: 450_000 }, async () => {
+		const domain = E2E_DOMAINS.foundry;
+		const result = await dot([
+			"deploy",
+			"--signer", "dev",
+			"--domain", domain,
+			"--buildDir", absBuildDir(foundry),
+			// --no-contract-build skips the forge subprocess so we don't
+			// need the EVM toolchain on the CI runner; the fixture ships
+			// pre-committed bytecode under out/Counter.sol/Counter.json.
+			// The frontend build is the trivial mkdir+echo in the fixture's
+			// package.json — let it run to produce dist/.
+			"--contracts",
+			"--no-contract-build",
+			"--playground",
+			"--suri", SIGNER.suri,
+			"--dir", foundry,
+		], { timeout: 400_000 });
+
+		expect(
+			result.exitCode,
+			`foundry deploy failed: ${result.stdout}\n${result.stderr}`,
+		).toBe(0);
+		expect(result.stdout).toContain("Deploy complete");
+		expect(result.stdout).toContain(domain);
+	});
+});
+
+// SKIPPED: the rust-cdm fixture's `target/flipper.contract` is a stub
+// (`{"source":{"hash":"0xabc"}}`) and there is no `target/<crate>.release.polkavm`
+// for the skip-build path to read. A working fixture needs:
+//   1. a real `src/lib.rs` so `cargo metadata` parses the manifest
+//      (currently fails: "no targets specified in the manifest")
+//   2. a committed `target/<crate>.release.polkavm` produced by an
+//      actual `cargo-contract build` of a minimal flipper contract
+// Tracked as Phase 5 follow-up. Until then, CDM detection is covered by
+// the preflight test in `dot deploy — preflight and validation` and the
+// skip-build path itself is unit-tested in `src/utils/deploy/contracts.test.ts`.
+describe.skip("dot deploy — CDM (requires Paseo + IPFS)", () => {
+	test("CDM deploy completes end-to-end", { timeout: 450_000 }, async () => {
+		const domain = E2E_DOMAINS.cdm;
+		const result = await dot([
+			"deploy",
+			"--signer", "dev",
+			"--domain", domain,
+			"--buildDir", absBuildDir(rustCdm),
+			"--contracts",
+			"--no-contract-build",
+			"--playground",
+			"--suri", SIGNER.suri,
+			"--dir", rustCdm,
+		], { timeout: 400_000 });
+
+		expect(
+			result.exitCode,
+			`CDM deploy failed: ${result.stdout}\n${result.stderr}`,
+		).toBe(0);
+		expect(result.stdout).toContain("Deploy complete");
+		expect(result.stdout).toContain(domain);
+	});
+});

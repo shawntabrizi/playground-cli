@@ -19,10 +19,23 @@ concurrency:
     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-    test:
-        name: "E2E · current"
+    test-no-publish:
+        name: "E2E · ${{ matrix.cell }}"
         runs-on: ubuntu-latest
-        timeout-minutes: 55
+        timeout-minutes: 25
+        strategy:
+            fail-fast: false
+            max-parallel: 5
+            matrix:
+                include:
+                    - cell: pr-install
+                      pattern: "dot install"
+                    - cell: pr-preflight
+                      pattern: "dot build|preflight and validation"
+                    - cell: pr-mod
+                      pattern: "dot mod — clone"
+                    - cell: pr-init-session
+                      pattern: "dot init|session management"
         outputs:
             tag: ${{ steps.tag.outputs.tag }}
         steps:
@@ -62,13 +75,13 @@ jobs:
                   echo "tag=$TAG" >> "$GITHUB_OUTPUT"
                   echo "Resolved DOT_TAG=$TAG (event=${{ github.event_name }})"
 
-            - name: Run E2E tests (one retry on transient testnet failures)
+            - name: Run E2E cell (one retry on transient testnet failures)
               uses: nick-fields/retry@v3
               with:
-                  timeout_minutes: 25
+                  timeout_minutes: 20
                   max_attempts: 2
                   retry_wait_seconds: 30
-                  command: pnpm test:e2e
+                  command: pnpm exec vitest run --config e2e/vitest.config.ts -t "${{ matrix.pattern }}"
               env:
                   TEST_TEMPLATE_DOMAIN: dot-cli-mod-fixture.dot
                   TEST_TEMPLATE_REPO: https://github.com/paritytech/Rock-Paper-Scissors
@@ -81,22 +94,97 @@ jobs:
               continue-on-error: true
               uses: actions/upload-artifact@v4
               with:
-                  name: e2e-reports-current
+                  name: e2e-reports-${{ matrix.cell }}
+                  path: e2e-reports/
+                  retention-days: 7
+                  if-no-files-found: ignore
+
+    test-publish:
+        name: "E2E · ${{ matrix.cell }}"
+        runs-on: ubuntu-latest
+        timeout-minutes: 55
+        strategy:
+            fail-fast: false
+            max-parallel: 1                  # serial — share SIGNER + registry domains
+            matrix:
+                include:
+                    - cell: pr-deploy-frontend
+                      pattern: "full pipeline"
+                    - cell: pr-deploy-foundry
+                      pattern: "deploy — foundry"
+                    # pr-deploy-cdm dropped pending fixture upgrade — see the
+                    # describe.skip block in e2e/cli/deploy.test.ts. Phase 5
+                    # follow-up will land a real flipper fixture and re-add
+                    # this cell.
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - name: Install Kubo (IPFS)
+              run: |
+                  wget -q https://dist.ipfs.tech/kubo/v0.32.1/kubo_v0.32.1_linux-amd64.tar.gz
+                  tar xf kubo_v0.32.1_linux-amd64.tar.gz
+                  sudo mv kubo/ipfs /usr/local/bin/
+                  ipfs init --profile=test
+                  ipfs version
+
+            - run: pnpm install
+
+            - name: Resolve DOT_TAG from trigger
+              id: tag
+              shell: bash
+              run: |
+                  # Phase 1 triggers: pull_request / push:main / schedule / workflow_dispatch.
+                  # Phase 7 will add `release` (with TAG=e2e-ci-release).
+                  case "${{ github.event_name }}" in
+                      schedule)            TAG=e2e-ci-nightly  ;;
+                      workflow_dispatch)   TAG=e2e-ci-dispatch ;;
+                      *)                   TAG=e2e-ci-pr       ;;
+                  esac
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+                  echo "Resolved DOT_TAG=$TAG (event=${{ github.event_name }})"
+
+            - name: Run E2E cell (one retry on transient testnet failures)
+              uses: nick-fields/retry@v3
+              with:
+                  timeout_minutes: 25
+                  max_attempts: 2
+                  retry_wait_seconds: 30
+                  command: pnpm exec vitest run --config e2e/vitest.config.ts -t "${{ matrix.pattern }}"
+              env:
+                  TEST_TEMPLATE_DOMAIN: dot-cli-mod-fixture.dot
+                  TEST_TEMPLATE_REPO: https://github.com/paritytech/Rock-Paper-Scissors
+                  DOT_DEPLOY_VERBOSE: "1"
+                  DOT_TAG: ${{ steps.tag.outputs.tag }}
+                  DOT_TELEMETRY: "1"
+
+            - name: Upload forensic artefacts
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@v4
+              with:
+                  name: e2e-reports-${{ matrix.cell }}
                   path: e2e-reports/
                   retention-days: 7
                   if-no-files-found: ignore
 
     report:
         name: E2E Report
-        needs: [test]
+        needs: [test-no-publish, test-publish]
         if: always()
         runs-on: ubuntu-latest
         timeout-minutes: 5
         steps:
             - name: Download JUnit + forensic artefacts
-              # Phase 1 has one upload (e2e-reports-current). When Phase 4 adds
-              # the matrix, drop `merge-multiple: true` and parse per-cell sub-dirs
-              # so per-leg junit.xml don't collide on the same flat path.
               uses: actions/download-artifact@v4
               with:
                   pattern: e2e-reports-*
@@ -127,11 +215,20 @@ jobs:
 
             - name: Parse JUnit and render report body
               env:
-                  AGGREGATE: ${{ needs.test.result }}
+                  AGGREGATE_PUBLISH: ${{ needs.test-publish.result }}
+                  AGGREGATE_NO_PUBLISH: ${{ needs.test-no-publish.result }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-                  TAG: ${{ needs.test.outputs.tag }}
+                  TAG: ${{ needs.test-no-publish.outputs.tag }}
               shell: /usr/bin/bash -euo pipefail {0}
               run: |
+                  if [ "$AGGREGATE_PUBLISH" = "success" ] && [ "$AGGREGATE_NO_PUBLISH" = "success" ]; then
+                      AGGREGATE=success
+                  elif [ "$AGGREGATE_PUBLISH" = "cancelled" ] || [ "$AGGREGATE_NO_PUBLISH" = "cancelled" ]; then
+                      AGGREGATE=cancelled
+                  else
+                      AGGREGATE=failure
+                  fi
+
                   emoji() { case "$1" in
                       success)   echo "✅ PASS";;
                       failure)   echo "❌ FAIL";;
@@ -261,10 +358,10 @@ jobs:
             - name: Open failure issue
               if: >
                   (github.event_name == 'schedule' || github.event_name == 'release') &&
-                  needs.test.result != 'success'
+                  (needs.test-no-publish.result != 'success' || needs.test-publish.result != 'success')
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  TAG: ${{ needs.test.outputs.tag }}
+                  TAG: ${{ needs.test-no-publish.outputs.tag }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
                   API_URL: ${{ github.api_url }}
                   REPO: ${{ github.repository }}
