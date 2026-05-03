@@ -1,0 +1,99 @@
+name: E2E (Post-Release)
+
+on:
+    release:
+        types: [published]
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: "Release tag to test (e.g. v0.16.0)"
+                required: true
+
+permissions:
+    contents: read
+
+jobs:
+    smoke:
+        name: "E2E · post-release-smoke"
+        if: github.event.release.prerelease != true || github.event_name == 'workflow_dispatch'
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        env:
+            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - run: pnpm install
+
+            - name: Resolve release tag
+              id: tag
+              shell: bash
+              run: |
+                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                      TAG="${{ inputs.tag }}"
+                  else
+                      TAG="${{ github.event.release.tag_name }}"
+                  fi
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+            - name: Wait for SEA asset on the release
+              shell: /usr/bin/bash -euo pipefail {0}
+              run: |
+                  TAG="${{ steps.tag.outputs.tag }}"
+                  for i in $(seq 1 30); do
+                      if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -q "^dot-linux-x64$"; then
+                          echo "Found dot-linux-x64 asset on attempt $i"
+                          exit 0
+                      fi
+                      echo "  attempt $i/30: waiting for asset..."
+                      sleep 10
+                  done
+                  echo "::error::Timed out waiting for dot-linux-x64 asset on $TAG"
+                  exit 1
+
+            - name: Install via install.sh (consumer path)
+              shell: bash
+              run: |
+                  TAG="${{ steps.tag.outputs.tag }}"
+                  # Pin to the just-released version; install.sh resolves "latest"
+                  # by default which can lag behind a just-published release.
+                  # install.sh runs `dot init` at the end; init requires an
+                  # interactive QR scan and will exit non-zero in headless CI —
+                  # that is expected. The binary is installed before init runs,
+                  # so we tolerate the init failure and verify the binary below.
+                  curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.sh" \
+                      | VERSION="$TAG" bash || true
+                  # Hard-fail here if the binary was not installed — that IS a
+                  # real regression in the install script's download/chmod path.
+                  ls -la "$HOME/.polkadot/bin/dot"
+
+            - name: Compute installed-binary path
+              shell: bash
+              run: echo "DOT_E2E_BINARY=$HOME/.polkadot/bin/dot" >> "$GITHUB_ENV"
+
+            - name: Smoke test the installed binary
+              uses: nick-fields/retry@v3
+              with:
+                  timeout_minutes: 5
+                  max_attempts: 2
+                  retry_wait_seconds: 15
+                  command: pnpm exec vitest run --config e2e/vitest.config.ts e2e/cli/published.test.ts
+              env:
+                  DOT_TAG: e2e-ci-post-release
+                  DOT_TELEMETRY: "1"
+
+            - name: Upload forensic artefacts
+              if: always()
+              continue-on-error: true
+              uses: actions/upload-artifact@v4
+              with:
+                  name: e2e-reports-post-release-smoke
+                  path: e2e-reports/
+                  retention-days: 7
+                  if-no-files-found: ignore
