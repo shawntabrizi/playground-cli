@@ -20,6 +20,7 @@ import { publishToPlayground, normalizeDomain } from "./playground.js";
 import { runContractsPhase, type ContractsPhaseEvent } from "./contracts.js";
 import {
     getOrCreateSessionAccount,
+    persistSessionAccount,
     SESSION_FUND_AMOUNT,
     SESSION_MIN_BALANCE,
 } from "./session-account.js";
@@ -278,6 +279,7 @@ async function maybeRunContracts(
                     client.assetHub.tx.Revive.map_account(),
                     session.account.signer,
                 );
+                await persistSessionAccount(session);
             }
 
             const result = await runContractsPhase({
