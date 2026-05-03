@@ -267,7 +267,17 @@ describe("dot deploy — foundry (requires Paseo + IPFS)", () => {
 	});
 });
 
-describe("dot deploy — CDM (requires Paseo + IPFS)", () => {
+// SKIPPED: the rust-cdm fixture's `target/flipper.contract` is a stub
+// (`{"source":{"hash":"0xabc"}}`) and there is no `target/<crate>.release.polkavm`
+// for the skip-build path to read. A working fixture needs:
+//   1. a real `src/lib.rs` so `cargo metadata` parses the manifest
+//      (currently fails: "no targets specified in the manifest")
+//   2. a committed `target/<crate>.release.polkavm` produced by an
+//      actual `cargo-contract build` of a minimal flipper contract
+// Tracked as Phase 5 follow-up. Until then, CDM detection is covered by
+// the preflight test in `dot deploy — preflight and validation` and the
+// skip-build path itself is unit-tested in `src/utils/deploy/contracts.test.ts`.
+describe.skip("dot deploy — CDM (requires Paseo + IPFS)", () => {
 	test("CDM deploy completes end-to-end", { timeout: 450_000 }, async () => {
 		const domain = E2E_DOMAINS.cdm;
 		const result = await dot([
@@ -275,11 +285,6 @@ describe("dot deploy — CDM (requires Paseo + IPFS)", () => {
 			"--signer", "dev",
 			"--domain", domain,
 			"--buildDir", absBuildDir(rustCdm),
-			// --no-contract-build skips the cargo-contract spawn so we
-			// don't need the rust toolchain on the CI runner. Note: the
-			// cdm skip-build path still calls detectContracts which spawns
-			// `cargo metadata` — tracked as a follow-up. The frontend build
-			// is the trivial mkdir+echo in the fixture; let it run.
 			"--contracts",
 			"--no-contract-build",
 			"--playground",

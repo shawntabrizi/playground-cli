@@ -112,8 +112,10 @@ jobs:
                       pattern: "full pipeline"
                     - cell: pr-deploy-foundry
                       pattern: "deploy — foundry"
-                    - cell: pr-deploy-cdm
-                      pattern: "deploy — CDM"
+                    # pr-deploy-cdm dropped pending fixture upgrade — see the
+                    # describe.skip block in e2e/cli/deploy.test.ts. Phase 5
+                    # follow-up will land a real flipper fixture and re-add
+                    # this cell.
         steps:
             - uses: actions/checkout@v4
 
