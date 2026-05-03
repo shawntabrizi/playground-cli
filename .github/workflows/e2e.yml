@@ -189,6 +189,9 @@ jobs:
                       # testFile scoping skips globalSetup chain-RPC calls (no chain access needed for diagnostic flag tests).
                       pattern: "diagnostic mode"
                       testFile: e2e/cli/diagnostic.test.ts
+                    - cell: nightly-rejections
+                      # source: e2e/cli/deploy.test.ts → describe("dot deploy — rejects --no-contract-build with no artefacts")
+                      pattern: "rejects --no-contract-build"
         steps:
             # checkout must run before the local composite action can be loaded.
             - uses: actions/checkout@v4
