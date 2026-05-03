@@ -45,6 +45,9 @@ jobs:
         outputs:
             tag: ${{ steps.setup.outputs.tag }}
         steps:
+            # checkout must run before the local composite action can be loaded.
+            - uses: actions/checkout@v4
+
             - id: setup
               uses: ./.github/actions/setup-e2e
 
@@ -92,6 +95,9 @@ jobs:
                     # follow-up will land a real flipper fixture and re-add
                     # this cell.
         steps:
+            # checkout must run before the local composite action can be loaded.
+            - uses: actions/checkout@v4
+
             - id: setup
               uses: ./.github/actions/setup-e2e
 
@@ -138,6 +144,9 @@ jobs:
                       pattern: "diagnostic mode"
                       testFile: e2e/cli/diagnostic.test.ts
         steps:
+            # checkout must run before the local composite action can be loaded.
+            - uses: actions/checkout@v4
+
             - id: setup
               uses: ./.github/actions/setup-e2e
 

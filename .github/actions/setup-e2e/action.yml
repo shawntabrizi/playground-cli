@@ -1,5 +1,5 @@
 name: Setup E2E environment
-description: Checkout, install pnpm/node/bun/kubo, run pnpm install, and resolve DOT_TAG from the trigger event.
+description: Install pnpm/node/bun/kubo, run pnpm install, and resolve DOT_TAG from the trigger event. The CALLER must run actions/checkout BEFORE this action — local composite actions can't be located until the repo is on disk.
 
 outputs:
     tag:
@@ -9,8 +9,6 @@ outputs:
 runs:
     using: composite
     steps:
-        - uses: actions/checkout@v4
-
         - uses: pnpm/action-setup@v4
 
         - uses: actions/setup-node@v4
