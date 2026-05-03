@@ -77,6 +77,32 @@ class FileKvStore implements KvStore {
     }
 }
 
+/** In-memory KvStore — used to mint a session key without touching disk. */
+class InMemoryKvStore implements KvStore {
+    private readonly data: Record<string, string> = {};
+
+    async get(key: string): Promise<string | null> {
+        return this.data[key] ?? null;
+    }
+
+    async set(key: string, value: string): Promise<void> {
+        this.data[key] = value;
+    }
+
+    async remove(key: string): Promise<void> {
+        delete this.data[key];
+    }
+
+    async getJSON<T>(key: string): Promise<T | null> {
+        const raw = await this.get(key);
+        return raw === null ? null : (JSON.parse(raw) as T);
+    }
+
+    async setJSON(key: string, value: unknown): Promise<void> {
+        await this.set(key, JSON.stringify(value));
+    }
+}
+
 /** Read the persisted session key; returns null on a miss (does not mint). */
 export async function readSessionAccount(): Promise<SessionKeyInfo | null> {
     const store = new FileKvStore(accountsPath());
@@ -85,17 +111,36 @@ export async function readSessionAccount(): Promise<SessionKeyInfo | null> {
 }
 
 /**
- * Load the persisted session key, or mint + save a fresh one on first call.
- * `created` is true only on the minting call — callers use it to gate the
- * one-time `Revive.map_account` bootstrap.
+ * Load the persisted session key, or mint a fresh one in memory on first call.
+ *
+ * `created` is true only on the minting call — callers MUST:
+ * 1. Submit `Revive.map_account` on-chain (gated by `created === true`).
+ * 2. Call `persistSessionAccount(info)` ONLY AFTER the extrinsic is confirmed.
+ *
+ * Keeping persist separate from create prevents the file from recording a key
+ * whose on-chain mapping was never established.  If `map_account` fails, the
+ * file is untouched so the next retry mints a fresh key and re-attempts mapping.
  */
 export async function getOrCreateSessionAccount(): Promise<{
     info: SessionKeyInfo;
     created: boolean;
 }> {
-    const store = new FileKvStore(accountsPath());
-    const manager = new SessionKeyManager({ store });
-    const existing = await manager.get();
+    const fileStore = new FileKvStore(accountsPath());
+    const fileManager = new SessionKeyManager({ store: fileStore });
+    const existing = await fileManager.get();
     if (existing) return { info: existing, created: false };
-    return { info: await manager.create(), created: true };
+
+    // Mint in memory — do NOT write to disk yet. The caller must call
+    // `persistSessionAccount` after `map_account` succeeds.
+    const memManager = new SessionKeyManager({ store: new InMemoryKvStore() });
+    return { info: await memManager.create(), created: true };
+}
+
+/**
+ * Write a session key to disk.  Call this ONLY after the on-chain
+ * `Revive.map_account` extrinsic for `info` has been confirmed.
+ */
+export async function persistSessionAccount(info: SessionKeyInfo): Promise<void> {
+    const store = new FileKvStore(accountsPath());
+    await store.set("default", info.mnemonic);
 }

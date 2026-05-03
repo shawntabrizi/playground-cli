@@ -106,6 +106,7 @@ vi.mock("./contracts.js", () => ({
 }));
 vi.mock("./session-account.js", () => ({
     getOrCreateSessionAccount: getOrCreateSessionAccountMock,
+    persistSessionAccount: vi.fn(async () => {}),
     SESSION_MIN_BALANCE: 5_000_000_000n,
     SESSION_FUND_AMOUNT: 50_000_000_000n,
 }));
