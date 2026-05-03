@@ -138,6 +138,9 @@ jobs:
                     - cell: nightly-deploy-hardhat
                       # source: e2e/cli/deploy.test.ts → describe("dot deploy — hardhat …")
                       pattern: "deploy — hardhat"
+                    - cell: nightly-deploy-multi
+                      # source: e2e/cli/deploy.test.ts → describe("dot deploy — multi …")
+                      pattern: "deploy — multi"
         steps:
             - uses: actions/checkout@v4
 

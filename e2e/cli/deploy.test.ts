@@ -30,6 +30,48 @@ function absBuildDir(fixture: string, dir = "dist"): string {
 	return resolve(fixture, dir);
 }
 
+/**
+ * Shared helper for contract-deploy end-to-end tests.
+ *
+ * `--no-contract-build` skips the toolchain subprocess (forge / npx hardhat
+ * compile / cargo-contract) so the CI runner doesn't need the EVM/Rust
+ * toolchain installed. Each fixture ships pre-built bytecode in its out/ or
+ * artifacts/ directory.
+ */
+interface ContractDeployTestConfig {
+	/** describe-block discriminator: "foundry", "hardhat", "multi" */
+	name: string;
+	/** E2E_DOMAINS.<name> */
+	domain: string;
+	/** fixturePath() result */
+	fixture: string;
+}
+
+function runContractDeployTest(cfg: ContractDeployTestConfig): void {
+	describe(`dot deploy — ${cfg.name} (requires Paseo + IPFS)`, () => {
+		test(`${cfg.name} deploy completes end-to-end`, { timeout: 450_000 }, async () => {
+			const result = await dot([
+				"deploy",
+				"--signer", "dev",
+				"--domain", cfg.domain,
+				"--buildDir", absBuildDir(cfg.fixture),
+				"--contracts",
+				"--no-contract-build",
+				"--playground",
+				"--suri", SIGNER.suri,
+				"--dir", cfg.fixture,
+			], { timeout: 400_000 });
+
+			expect(
+				result.exitCode,
+				`${cfg.name} deploy failed: ${result.stdout}\n${result.stderr}`,
+			).toBe(0);
+			expect(result.stdout).toContain("Deploy complete");
+			expect(result.stdout).toContain(cfg.domain);
+		});
+	});
+}
+
 describe("dot deploy — preflight and validation", () => {
 	test("reports mainnet not yet supported", async () => {
 		const result = await dot([
@@ -238,61 +280,12 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 	});
 });
 
-describe("dot deploy — foundry (requires Paseo + IPFS)", () => {
-	test("foundry deploy completes end-to-end", { timeout: 450_000 }, async () => {
-		const domain = E2E_DOMAINS.foundry;
-		const result = await dot([
-			"deploy",
-			"--signer", "dev",
-			"--domain", domain,
-			"--buildDir", absBuildDir(foundry),
-			// --no-contract-build skips the forge subprocess so we don't
-			// need the EVM toolchain on the CI runner; the fixture ships
-			// pre-committed bytecode under out/Counter.sol/Counter.json.
-			// The frontend build is the trivial mkdir+echo in the fixture's
-			// package.json — let it run to produce dist/.
-			"--contracts",
-			"--no-contract-build",
-			"--playground",
-			"--suri", SIGNER.suri,
-			"--dir", foundry,
-		], { timeout: 400_000 });
-
-		expect(
-			result.exitCode,
-			`foundry deploy failed: ${result.stdout}\n${result.stderr}`,
-		).toBe(0);
-		expect(result.stdout).toContain("Deploy complete");
-		expect(result.stdout).toContain(domain);
-	});
-});
-
-describe("dot deploy — hardhat (requires Paseo + IPFS)", () => {
-	test("hardhat deploy completes end-to-end", { timeout: 450_000 }, async () => {
-		const domain = E2E_DOMAINS.hardhat;
-		const result = await dot([
-			"deploy",
-			"--signer", "dev",
-			"--domain", domain,
-			"--buildDir", absBuildDir(hardhat),
-			// --no-contract-build skips `npx hardhat compile` (the toolchain
-			// isn't installed on the CI runner). The fixture ships pre-built
-			// bytecode under artifacts/contracts/Lock.sol/Lock.json.
-			"--contracts",
-			"--no-contract-build",
-			"--playground",
-			"--suri", SIGNER.suri,
-			"--dir", hardhat,
-		], { timeout: 400_000 });
-
-		expect(
-			result.exitCode,
-			`hardhat deploy failed: ${result.stdout}\n${result.stderr}`,
-		).toBe(0);
-		expect(result.stdout).toContain("Deploy complete");
-		expect(result.stdout).toContain(domain);
-	});
-});
+// Contract-deploy tests — parametrized via runContractDeployTest
+runContractDeployTest({ name: "foundry", domain: E2E_DOMAINS.foundry, fixture: foundry });
+runContractDeployTest({ name: "hardhat", domain: E2E_DOMAINS.hardhat, fixture: hardhat });
+// Multi-contract foundry project — exercises the contracts-batch publish path
+// (TokenA.sol + TokenB.sol deployed in a single --contracts run).
+runContractDeployTest({ name: "multi", domain: E2E_DOMAINS.multi, fixture: multiContract });
 
 // SKIPPED: the rust-cdm fixture's `target/flipper.contract` is a stub
 // (`{"source":{"hash":"0xabc"}}`) and there is no `target/<crate>.release.polkavm`

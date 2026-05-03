@@ -56,7 +56,7 @@ These are things that aren't self-evident from reading the code and have bitten 
 
 - **Local launcher:** `tools/e2e-local.sh [smoke|pr|nightly]` — also callable via `pnpm test:e2e:smoke`, `pnpm test:e2e:pr`, `pnpm test:e2e:nightly`.
 - **CI workflow:** `.github/workflows/e2e.yml` — runs on PR / push:main / cron 06:00 UTC / workflow_dispatch.
-- **CI matrix:** 9 cells across four matrices — `test-no-publish` (parallel: pr-install, pr-preflight, pr-mod, pr-init-session) + `test-publish` (max-parallel: 1: pr-deploy-frontend, pr-deploy-foundry) + `test-nightly-no-publish` (parallel, schedule/dispatch only: nightly-mod-miss, nightly-diagnostic) + `test-nightly-publish` (max-parallel: 1, schedule/dispatch only: nightly-deploy-hardhat). Each cell runs a subset via `vitest -t "<pattern>"`.
+- **CI matrix:** 10 cells across four matrices — `test-no-publish` (parallel: pr-install, pr-preflight, pr-mod, pr-init-session) + `test-publish` (max-parallel: 1: pr-deploy-frontend, pr-deploy-foundry) + `test-nightly-no-publish` (parallel, schedule/dispatch only: nightly-mod-miss, nightly-diagnostic) + `test-nightly-publish` (max-parallel: 1, schedule/dispatch only: nightly-deploy-hardhat, nightly-deploy-multi). Each cell runs a subset via `vitest -t "<pattern>"`.
 - **Test files:** `e2e/cli/*.test.ts` (vitest, spawned via `bun run src/index.ts`).
 - **Reports directory:** `e2e-reports/junit.xml` + `e2e-reports/dot-runs.log` (gitignored).
 - **Tag prefix:** `DOT_TAG=e2e-{ci|local}-{trigger}` so Sentry dashboards filter test traffic. The CLI plumbs `DOT_TAG` into the `cli.tag` root-span attribute via `src/telemetry-config.ts`.
