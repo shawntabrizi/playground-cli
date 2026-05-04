@@ -14,6 +14,17 @@ function run(cmd: string, opts?: { shell?: string }): Promise<string> {
     });
 }
 
+/**
+ * Prepend `dir` to `process.env.PATH` if not already present. Lets a step that
+ * just installed a binary expose it to the rest of `dot init` without waiting
+ * for a shell restart.
+ */
+export function prependPath(dir: string): void {
+    const segments = (process.env.PATH ?? "").split(":").filter(Boolean);
+    if (segments.includes(dir)) return;
+    process.env.PATH = process.env.PATH ? `${dir}:${process.env.PATH}` : dir;
+}
+
 export async function commandExists(cmd: string): Promise<boolean> {
     if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) {
         throw new Error(`Invalid command name: ${cmd}`);
@@ -80,11 +91,17 @@ export const TOOL_STEPS: ToolStep[] = [
     {
         name: "rustup",
         check: () => commandExists("rustup"),
-        install: (onData) =>
-            runPiped(
+        install: async (onData) => {
+            await runPiped(
                 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
                 onData,
-            ),
+            );
+            // rustup-init writes binaries to $CARGO_HOME/bin (default ~/.cargo/bin)
+            // and updates shell rc files, but those edits don't reach the running
+            // dot process. Prepend the bin dir so the very next step in this same
+            // `dot init` can resolve `rustup`.
+            prependPath(resolve(process.env.CARGO_HOME ?? `${homedir()}/.cargo`, "bin"));
+        },
         manualHint: "https://rustup.rs",
     },
     {
