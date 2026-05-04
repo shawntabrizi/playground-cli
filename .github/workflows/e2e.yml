@@ -110,7 +110,7 @@ jobs:
               shell: bash
               run: |
                   rustup toolchain install stable --profile minimal --component rust-src
-                  cargo install cargo-pvm-contract --version 0.3.0 --locked
+                  cargo install cargo-pvm-contract --git https://github.com/paritytech/cargo-pvm-contract --branch charles/cdm-integration --locked
                   cargo pvm-contract help
 
             - name: Run E2E cell (one retry on transient testnet failures)
