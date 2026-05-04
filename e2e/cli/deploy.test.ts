@@ -14,10 +14,21 @@
  */
 
 import { describe, test, expect } from "vitest";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { dot } from "./helpers/dot.js";
 import { SIGNER, BOB, E2E_DOMAINS } from "./fixtures/accounts.js";
 import { fixturePath } from "./fixtures/templates.js";
+import { getApp } from "./fixtures/registry.js";
+
+/** Pull the metadata CID out of the headless deploy summary. The CLI
+ *  prints `  Metadata CID    bafy...` once per successful deploy
+ *  (see src/commands/deploy/index.ts printFinalResult). Returns null
+ *  if absent — that itself is a meaningful signal. */
+function extractMetadataCid(stdout: string): string | null {
+	const m = stdout.match(/Metadata CID\s+(\S+)/);
+	return m ? m[1] : null;
+}
 
 const frontendOnly = fixturePath("frontend-only");
 const foundry = fixturePath("foundry");
@@ -128,7 +139,14 @@ describe("dot deploy — preflight and validation", () => {
 		).toContain("Checking availability");
 	});
 
-	test("detects multiple contracts in multi-contract project", async () => {
+	test("--contracts works on a multi-contract project", async () => {
+		// Renamed from "detects multiple contracts" — the headless logger
+		// (logHeadlessEvent in src/commands/deploy/index.ts) does not
+		// surface the per-contract names that compile-detected events
+		// carry, so the CLI output cannot prove plurality. We can only
+		// prove the contract-type detector accepted the project. If
+		// per-contract names get logged in headless mode in future, add
+		// `expect(output).toContain("TokenA")` + `"TokenB"` here.
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
@@ -183,7 +201,32 @@ describe("dot deploy — preflight and validation", () => {
 		// Availability banner names the domain; this is the strongest signal we
 		// have that the availability check actually executed against this run's
 		// domain (rather than echoing the arg in a usage/error string).
-		expect(output).toContain(`Checking availability of ${domain}.dot`);
+		const availIdx = output.indexOf(`Checking availability of ${domain}.dot`);
+		expect(
+			availIdx,
+			`availability banner not found:\n${output}`,
+		).toBeGreaterThan(-1);
+		// Verify the *ordering* claim in the test name: availability must
+		// precede any build-runner output. Without this, the test only proves
+		// availability ran, not that it ran first. Build runners emit the
+		// header `> <strategy description>` (see src/commands/build.ts:14)
+		// and bulletin-deploy's storage phase emits `▸ storage-and-dotns…`
+		// (logHeadlessEvent). Either appearing before availability would
+		// break the contract.
+		const buildIdx = output.search(/\n>\s+\w/);
+		const storageIdx = output.indexOf("▸ storage-and-dotns");
+		if (buildIdx > -1) {
+			expect(
+				availIdx,
+				`build header appeared before availability check:\n${output}`,
+			).toBeLessThan(buildIdx);
+		}
+		if (storageIdx > -1) {
+			expect(
+				availIdx,
+				`storage phase started before availability check:\n${output}`,
+			).toBeLessThan(storageIdx);
+		}
 	});
 });
 
@@ -207,6 +250,19 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 		expect(result.stdout).toContain("Deploy complete");
 		expect(result.stdout).toContain("URL");
 		expect(result.stdout).toContain(domain);
+
+		// Don't trust the CLI's own success message — query the registry
+		// independently to prove the entry was actually written. A regression
+		// where deploy prints "Deploy complete" but never sends the registry
+		// extrinsic would otherwise pass.
+		const cliCid = extractMetadataCid(result.stdout);
+		expect(cliCid, "CLI did not print Metadata CID").not.toBeNull();
+		const entry = await getApp(`${domain}.dot`);
+		expect(entry, `registry has no entry for ${domain}.dot`).not.toBeNull();
+		// Belt-and-braces: the on-chain CID should match what the CLI claims
+		// it published. A divergence here means the CLI is reporting one CID
+		// to the user while writing a different one to the chain.
+		expect(entry!.metadataUri).toContain(cliCid!);
 	});
 
 	test("re-deploy same domain succeeds for same owner", { timeout: 900_000 }, async () => {
@@ -222,22 +278,53 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 		], { timeout: 400_000 });
 		expect(first.exitCode, `first deploy failed: ${first.stdout}\n${first.stderr}`).toBe(0);
 		expect(first.stdout).toContain("Deploy complete");
+		const firstCid = extractMetadataCid(first.stdout);
+		expect(firstCid, "first deploy did not print Metadata CID").not.toBeNull();
 
-		const second = await dot([
-			"deploy",
-			"--signer", "dev",
-			"--domain", domain,
-			"--buildDir", absBuildDir(frontendOnly),
-			"--no-build",
-			"--playground",
-			"--suri", SIGNER.suri,
-			"--dir", frontendOnly,
-		], { timeout: 400_000 });
-		expect(
-			second.exitCode,
-			`re-deploy failed: ${second.stdout}\n${second.stderr}`,
-		).toBe(0);
-		expect(second.stdout).toContain("Deploy complete");
+		// Mutate the build output between the two deploys so the second
+		// deploy must produce a DIFFERENT metadata CID. Without this, a
+		// regression where the second deploy silently no-ops (returns the
+		// previous result without re-publishing) would still print
+		// "Deploy complete" with the old CID and the test would pass.
+		const indexHtml = resolve(absBuildDir(frontendOnly), "index.html");
+		const original = readFileSync(indexHtml, "utf8");
+		writeFileSync(
+			indexHtml,
+			`${original}\n<!-- redeploy marker ${Date.now()} -->\n`,
+		);
+
+		try {
+			const second = await dot([
+				"deploy",
+				"--signer", "dev",
+				"--domain", domain,
+				"--buildDir", absBuildDir(frontendOnly),
+				"--no-build",
+				"--playground",
+				"--suri", SIGNER.suri,
+				"--dir", frontendOnly,
+			], { timeout: 400_000 });
+			expect(
+				second.exitCode,
+				`re-deploy failed: ${second.stdout}\n${second.stderr}`,
+			).toBe(0);
+			expect(second.stdout).toContain("Deploy complete");
+			const secondCid = extractMetadataCid(second.stdout);
+			expect(secondCid, "re-deploy did not print Metadata CID").not.toBeNull();
+			// Different content → different metadata CID. If these match,
+			// the second deploy didn't actually re-publish.
+			expect(
+				secondCid,
+				`re-deploy produced same CID as first — content didn't change on chain`,
+			).not.toBe(firstCid);
+			// And the registry should reflect the latest publish.
+			const entry = await getApp(`${domain}.dot`);
+			expect(entry).not.toBeNull();
+			expect(entry!.metadataUri).toContain(secondCid!);
+		} finally {
+			// Restore so subsequent tests see the original fixture content.
+			writeFileSync(indexHtml, original);
+		}
 	});
 
 	test("domain taken by another account shows unavailable", { timeout: 900_000 }, async () => {

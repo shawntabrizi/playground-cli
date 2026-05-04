@@ -16,14 +16,42 @@ export async function setup() {
 	console.log(`[e2e setup] SIGNER (${SIGNER.name}): ${SIGNER.address} (h160 ${SIGNER.h160})`);
 	console.log(`[e2e setup] BOB:    ${BOB.address}`);
 
-	// These require chain connectivity — they'll log warnings if the chain
-	// is unreachable rather than failing the entire suite. This lets the
-	// no-chain tests (install, build) still run in offline environments.
+	// Funding SIGNER is mandatory — every deploy/mod test signs with it,
+	// and if it runs out of PAS the failures surface as cryptic
+	// "Invalid Payment" extrinsic errors deep inside individual tests.
+	// Fail the whole suite up front instead, with a clear message.
+	//
+	// To run only the offline-eligible tests (install, build, --help-style
+	// init checks) without chain connectivity, set E2E_ALLOW_OFFLINE_SETUP=1
+	// — this is for local development on a flaky network, never CI.
+	const allowOffline = process.env.E2E_ALLOW_OFFLINE_SETUP === "1";
 	try {
 		await fundDeployerIfLow();
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		if (allowOffline) {
+			console.warn(
+				`[e2e setup] Funder unreachable (E2E_ALLOW_OFFLINE_SETUP=1 set, ` +
+				`continuing): ${msg}`,
+			);
+		} else {
+			throw new Error(
+				`[e2e setup] Failed to fund SIGNER ${SIGNER.address} from the ` +
+				`production funder chain. All deploy and mod tests will fail ` +
+				`downstream with confusing extrinsic errors. Fix the funder or ` +
+				`set E2E_ALLOW_OFFLINE_SETUP=1 to skip chain-dependent tests.\n\n` +
+				`Underlying error: ${msg}`,
+			);
+		}
+	}
+
+	// Template registration is only consumed by one test (`dot mod` happy
+	// path), which uses `.skipIf(!TEST_DOMAIN)`. A failure here doesn't
+	// block the rest of the suite — log and continue.
+	try {
 		await ensureTemplateRegistered();
 	} catch (err) {
-		console.warn(`[e2e setup] Chain setup failed (offline tests will still run): ${err}`);
+		console.warn(`[e2e setup] Template registration check failed: ${err}`);
 	}
 }
 

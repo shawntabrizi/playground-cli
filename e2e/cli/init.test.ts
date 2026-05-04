@@ -19,7 +19,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { dot } from "./helpers/dot.js";
@@ -75,17 +75,27 @@ describe("dot init — session detection", () => {
 			result.exitCode,
 			`expected non-zero exit while waiting for QR\n${output}`,
 		).not.toBe(0);
-		// Exact string from src/commands/init/index.ts when no existing session
-		// is found. Either we see the QR prompt, or the login service was
-		// unreachable and the CLI logs "Login skipped".
-		expect(output).toMatch(
-			/Scan with the Polkadot mobile app to log in|Login skipped/,
-		);
+		// We expect the QR prompt. If init fell into the "Login skipped"
+		// branch instead, the login service was unreachable from this runner
+		// — the test cannot validate the QR rendering and we should fail
+		// loudly rather than silently accept a degraded path. (Previously
+		// the assertion was a `Scan|Login skipped` regex, which let that
+		// degradation pass invisibly.)
+		if (output.includes("Login skipped")) {
+			throw new Error(
+				"Login service unreachable from runner — cannot validate QR " +
+				"flow. Either fix the runner's network/auth-service access or " +
+				"add an offline session-injection fixture (paritytech/" +
+				"playground-cli#50).\n\n" + output,
+			);
+		}
+		expect(output).toContain("Scan with the Polkadot mobile app to log in");
 	});
 
 	test("init with corrupted session file does not silently succeed", async () => {
 		const sessionFile = join(tempHome, ".polkadot-apps", "dot-cli_SsoSessions.json");
-		writeFileSync(sessionFile, "{{{{not valid json!!");
+		const corrupt = "{{{{not valid json!!";
+		writeFileSync(sessionFile, corrupt);
 
 		const result = await dot(["init"], {
 			home: tempHome,
@@ -94,12 +104,23 @@ describe("dot init — session detection", () => {
 		const output = result.stdout + result.stderr;
 		expect(result.exitCode).not.toBe(0);
 		// A corrupted session file must NOT lead to an "existing session"
-		// branch — that would be a security-relevant failure. We accept either
-		// the fresh-login QR prompt or a login-skipped notice; both prove the
-		// corrupt file was rejected rather than trusted.
-		expect(output).toMatch(
-			/Scan with the Polkadot mobile app to log in|Login skipped/,
-		);
+		// branch. We expect the QR prompt; "Login skipped" again indicates
+		// service unreachable and is treated as an inconclusive run, not a
+		// pass.
+		if (output.includes("Login skipped")) {
+			throw new Error(
+				"Login service unreachable from runner — cannot validate " +
+				"corrupt-session rejection. See no-session test for context.\n\n" +
+				output,
+			);
+		}
+		expect(output).toContain("Scan with the Polkadot mobile app to log in");
+
+		// Defence-in-depth: init must NOT have silently overwritten the
+		// corrupt file with a fresh empty session. A regression that
+		// "fixes" the parse failure by deleting the file would otherwise
+		// pass — and silently erase whatever the user had on disk.
+		expect(readFileSync(sessionFile, "utf8")).toBe(corrupt);
 	});
 });
 
