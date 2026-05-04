@@ -1,9 +1,14 @@
 /**
  * Wrapper around `bulletin-deploy`'s `deploy()` that:
- *   - forces `jsMerkle: true` so we never shell out to Kubo (WebContainer-safe),
  *   - intercepts bulletin-deploy's `console.log` stream and turns it into
  *     typed progress events for the TUI,
  *   - surfaces bulletin-deploy's returned artifact IDs unchanged.
+ *
+ * Note: we deliberately do NOT pass `jsMerkle: true` — bulletin-deploy's
+ * pure-JS merkleizer drops DAG-PB structural blocks under the `rawLeaves`
+ * + `wrapWithDirectory` path we use, leaving deployed sites unparseable.
+ * We rely on the Kubo binary path (installed by `dot init`) until upstream
+ * fixes `merkleizeJS`. See the call site below and CLAUDE.md for context.
  *
  * All retry, nonce recovery, pool authorization, and DAG-PB verification
  * stays inside bulletin-deploy — we do not reimplement any of it here.
