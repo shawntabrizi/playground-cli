@@ -309,18 +309,11 @@ describe("dot deploy — rejects --no-contract-build with no artefacts", () => {
 	});
 });
 
-// SKIPPED: the rust-cdm fixture's `target/flipper.contract` is a stub
-// (`{"source":{"hash":"0xabc"}}`) and there is no `target/<crate>.release.polkavm`
-// for the skip-build path to read. A working fixture needs:
-//   1. a real `src/lib.rs` so `cargo metadata` parses the manifest
-//      (currently fails: "no targets specified in the manifest")
-//   2. a committed `target/<crate>.release.polkavm` produced by an
-//      actual `cargo-contract build` of a minimal flipper contract
-// Tracked as Phase 5 follow-up. Until then, CDM detection is covered by
-// the preflight test in `dot deploy — preflight and validation` and the
-// skip-build path itself is unit-tested in `src/utils/deploy/contracts.test.ts`.
-describe.skip("dot deploy — CDM (requires Paseo + IPFS)", () => {
-	test("CDM deploy completes end-to-end", { timeout: 450_000 }, async () => {
+// CDM runs the real contract build path instead of `--no-contract-build`.
+// That keeps the E2E focused on the Rust/PVM toolchain path; skip-build artifact
+// discovery remains covered by unit tests in `src/utils/deploy/contracts.test.ts`.
+describe("dot deploy — cdm (requires Paseo + IPFS + Rust/PVM toolchain)", () => {
+	test("CDM deploy completes end-to-end", { timeout: 900_000 }, async () => {
 		const domain = E2E_DOMAINS.cdm;
 		const result = await dot([
 			"deploy",
@@ -328,11 +321,10 @@ describe.skip("dot deploy — CDM (requires Paseo + IPFS)", () => {
 			"--domain", domain,
 			"--buildDir", absBuildDir(rustCdm),
 			"--contracts",
-			"--no-contract-build",
 			"--playground",
 			"--suri", SIGNER.suri,
 			"--dir", rustCdm,
-		], { timeout: 400_000 });
+		], { timeout: 850_000 });
 
 		expect(
 			result.exitCode,

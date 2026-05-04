@@ -37,6 +37,8 @@ if [ -z "${PNPM_HOME:-}" ]; then
             ;;
     esac
 fi
+export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
 
 if ! command -v ipfs >/dev/null 2>&1; then
     echo "warning: ipfs (kubo) not found on PATH — deploy-pipeline tests that publish to Bulletin will fail." >&2

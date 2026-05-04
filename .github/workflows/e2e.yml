@@ -94,16 +94,24 @@ jobs:
                     - cell: pr-deploy-foundry
                       # source: e2e/cli/deploy.test.ts → describe("dot deploy — foundry …")
                       pattern: "deploy — foundry"
-                    # pr-deploy-cdm dropped pending fixture upgrade — see the
-                    # describe.skip block in e2e/cli/deploy.test.ts. Phase 5
-                    # follow-up will land a real flipper fixture and re-add
-                    # this cell.
+                    - cell: pr-deploy-cdm
+                      # source: e2e/cli/deploy.test.ts → describe("dot deploy — cdm …")
+                      pattern: "deploy — cdm"
+                      installRustPvm: true
         steps:
             # checkout must run before the local composite action can be loaded.
             - uses: actions/checkout@v4
 
             - id: setup
               uses: ./.github/actions/setup-e2e
+
+            - name: Install Rust/PVM contract toolchain
+              if: matrix.installRustPvm == true
+              shell: bash
+              run: |
+                  rustup toolchain install stable --profile minimal --component rust-src
+                  cargo install cargo-pvm-contract --version 0.3.0 --locked
+                  cargo pvm-contract help
 
             - name: Run E2E cell (one retry on transient testnet failures)
               uses: nick-fields/retry@v3
