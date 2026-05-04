@@ -54,32 +54,31 @@ Flags:
 - `--signer <mode>` — `dev` (fast, uses shared dev keys for upload + DotNS — 0 or 1 phone approval) or `phone` (signs DotNS + publish with your logged-in account — 3 or 4 phone approvals). Interactive prompt if omitted.
 - `--domain <name>` — DotNS label (with or without the `.dot` suffix). Interactive prompt if omitted.
 - `--buildDir <path>` — directory holding the built artifacts (default `dist/`). Interactive prompt if omitted.
+- `--no-build` — skip the frontend build step and deploy whatever is already in `--buildDir`.
+- `--contracts` — also compile and deploy the foundry / hardhat / cdm contract project at the project root (interactive prompt if a contract project is detected and the flag is omitted; skipped automatically when no project is detected).
+- `--no-contract-build` — skip the contract compile step (`forge build --resolc`, `cargo-contract build`, `npx hardhat compile`) and deploy pre-built artifacts. Requires `--contracts` and headless mode (i.e. all of `--signer`, `--domain`, `--buildDir`, `--playground`).
 - `--playground` — publish to the playground registry so the app appears under "my apps". Interactive prompt (default: no) if omitted.
+- `--private` — publish to the playground with private (owner-only) visibility. Requires `--playground`. Not interactively prompted; pass the flag to opt in.
 - `--modable` / `--no-modable` — publish the source repo URL alongside the deploy so others can `dot mod` it. Requires `--playground`. Interactive prompt (default: no) if omitted. When set, `dot deploy` uses the existing `origin` URL without pushing. If there is no `origin`, it ensures `git` and `gh` are installed (auto-installs if missing), confirms `gh` is authenticated (run `gh auth login` first if not — the deploy will fail with a hint otherwise), then runs `gh repo create --public --push` to set one up. The resulting URL is recorded in the Bulletin metadata.
 - `--repo-name <name>` — repo name to use when `--modable` needs to create a new GitHub repo (no existing `origin`). Defaults to the basename of the project directory; validated against GitHub's repository-name rules.
 - `--suri <suri>` — override signer with a dev secret URI (e.g. `//Alice`). Useful for CI.
 - `--env <env>` — `testnet` (default) or `mainnet` (not yet supported).
 
-Passing all four of `--signer`, `--domain`, `--buildDir`, and `--playground` runs in fully non-interactive mode. Any absent flag is filled in by the TUI prompt. `--modable` is independently optional in both modes — its absence means a non-modable deploy.
+Passing all four of `--signer`, `--domain`, `--buildDir`, and `--playground` runs in fully non-interactive mode. Any absent flag is filled in by the TUI prompt. `--modable`, `--private`, and `--contracts` are independently optional in both modes — their absence means a non-modable, public, frontend-only deploy.
 
 **Requirement**: the `ipfs` CLI (Kubo) must be on `PATH`. `dot init` installs it; if you skipped init you can install it manually (`brew install ipfs` or follow [docs.ipfs.tech/install](https://docs.ipfs.tech/install/)). This is a temporary requirement while `bulletin-deploy`'s pure-JS merkleizer has a bug that makes the browser fallback unusable.
 
 The publish step is always signed by the user so the registry contract records their address as the app owner — this is what drives the Playground "my apps" view.
 
-#### CI / automation flags for `dot deploy`
+#### CI / automation usage
 
-These flags are designed for non-interactive (CI) usage. Combining all four of `--signer`, `--domain`, `--buildDir`, and `--playground` triggers fully headless mode; the flags below layer on top.
+For fully non-interactive (CI) runs, combine `--signer`, `--domain`, `--buildDir`, and `--playground` to skip every TUI prompt. Layer the optional flags on top:
 
-| Flag | Effect |
-|---|---|
-| `--signer dev` | Use the dev signer (no phone QR scan). Requires `--suri`. |
-| `--suri <suri>` | Secret URI for the user signer (e.g. `//Alice` or a full mnemonic). Required with `--signer dev`. |
-| `--domain <name>` | DotNS domain. Skips interactive selection. |
-| `--buildDir <path>` | Path to existing built frontend assets. |
-| `--no-build` | Skip the **frontend** build (`pnpm build`). Use pre-built `dist/`. |
-| `--no-contract-build` | Skip the **contract** compile (`forge build --resolc`, `cargo-contract build`, `npx hardhat compile`). Use pre-built `out/` / `target/<crate>.release.polkavm` / `artifacts/contracts/`. Requires `--contracts`. |
-| `--no-modable` | Don't push source to GitHub even if `--modable` would normally apply. |
-| `--playground` | Publish to the playground registry. Required with all the above to trigger the fully-headless code path. |
+- `--suri //Alice` — required with `--signer dev` so the dev signer has a known keypair (works with any dev name or full BIP-39 mnemonic).
+- `--no-build` — reuse pre-built frontend assets in `--buildDir`.
+- `--contracts` + `--no-contract-build` — reuse pre-built contract artefacts in `out/` / `target/<crate>.release.polkavm` / `artifacts/contracts/` (skips `forge build --resolc`, `cargo-contract build`, or `npx hardhat compile`).
+- `--no-modable` — explicitly skip source publishing even if `--modable` would otherwise apply.
+- `--private` — publish to the playground with owner-only visibility.
 
 ### `dot mod`
 
@@ -93,6 +92,10 @@ Flags:
 - `--suri <suri>` — dev signer secret URI (e.g. `//Alice`).
 
 The local directory name is auto-generated as `<slug>-<6 hex chars>` so repeated mods of the same starter never collide (unlike GitHub forks, which were limited to one per account per repo).
+
+### `dot logout`
+
+Sign out of the account paired via `dot init`. Sends a `Disconnected` statement so the paired Polkadot mobile app drops its side of the connection, then clears the local session files under `~/.polkadot-apps/`. If the remote notification fails (statement store unreachable, …), the local files are still cleared and the command surfaces a `partial` status — the mobile app will show a stale pairing until it reconnects. No-op when no session is signed in.
 
 ## Troubleshooting
 
