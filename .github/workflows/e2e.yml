@@ -43,3 +43,70 @@ jobs:
                   TEST_TEMPLATE_DOMAIN: rock-paper-scissors.dot
                   TEST_TEMPLATE_REPO: https://github.com/paritytech/Rock-Paper-Scissors
                   DOT_DEPLOY_VERBOSE: "1"
+
+    init-cold-smoke:
+        # Runs `dot init` inside a fresh ubuntu:22.04 container — no rustup,
+        # no IPFS, no foundry, no cdm pre-installed. The regular `e2e` job
+        # above runs on a GitHub Actions runner that already has most of
+        # those tools on PATH, so it can't catch regressions in the install
+        # / post-install path-config logic (e.g. paritytech/playground-app#118).
+        # This job is the cold-start defence: every dependency must be
+        # installed AND become reachable to subsequent init steps.
+        #
+        # Excluded from per-PR runs because it pulls full toolchains (rustup,
+        # nightly, cdm, foundry, kubo) from the network and takes ~10 min.
+        # Daily cron + manual dispatch only.
+        name: Init cold-start smoke test
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Run dot init in fresh ubuntu container
+              run: |
+                  docker run --rm \
+                    -v "${{ github.workspace }}:/work" \
+                    -w /work \
+                    -e CI=true \
+                    ubuntu:22.04 \
+                    bash -eux -c '
+                      # Minimal prerequisites — anything beyond these is what
+                      # `dot init` is expected to install for itself.
+                      apt-get update -qq
+                      DEBIAN_FRONTEND=noninteractive apt-get install -qq -y --no-install-recommends \
+                        curl ca-certificates bash unzip git build-essential sudo
+
+                      # bun (CLI runtime)
+                      export BUN_INSTALL=/usr/local/bun
+                      curl -fsSL https://bun.sh/install | bash
+                      export PATH="$BUN_INSTALL/bin:$PATH"
+
+                      # pnpm (package manager) — install via standalone script
+                      # so we do not depend on a pre-existing Node.
+                      curl -fsSL https://get.pnpm.io/install.sh | env SHELL=$(which bash) bash -
+                      export PNPM_HOME=/root/.local/share/pnpm
+                      export PATH="$PNPM_HOME:$PATH"
+
+                      pnpm install --frozen-lockfile
+
+                      # ── The actual smoke test ──────────────────────────────
+                      # `dot init -y` runs the dependency installer end-to-end.
+                      # If init reports "setup complete" with no failed rows,
+                      # every tool was installed AND was reachable to the
+                      # next step in the same process — which is the exact
+                      # path config that #118 broke.
+                      bun run src/index.ts init -y 2>&1 | tee /tmp/init.log
+
+                      grep -q "setup complete" /tmp/init.log || {
+                        echo "::error::dot init did not reach '\''setup complete'\''"
+                        exit 1
+                      }
+
+                      # Reject any failed-row markers. Ink renders them with
+                      # ✗ (U+2717) — match common shapes plus the literal word.
+                      if grep -E "✗|✕| failed| error" /tmp/init.log; then
+                        echo "::error::dot init reported a failed dependency"
+                        exit 1
+                      fi
+                    '
