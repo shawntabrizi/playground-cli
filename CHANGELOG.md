@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.16.17
+
+### Patch Changes
+
+- 88d78d3: `dot deploy --modable` now rejects private GitHub repositories at preflight with a clear error message instead of silently failing later. `dot mod` also surfaces a more actionable error when it encounters a private or non-existent repository instead of the misleading "pin one in metadata.branch" hint.
+
 ## 0.16.16
 
 ### Patch Changes
