@@ -68,6 +68,7 @@ function runContractDeployTest(cfg: ContractDeployTestConfig): void {
 				"--contracts",
 				"--no-contract-build",
 				"--playground",
+				"--private",
 				"--suri", SIGNER.suri,
 				"--dir", cfg.fixture,
 			], { timeout: 400_000 });
@@ -102,6 +103,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--domain", E2E_DOMAINS.preflight,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
+			"--private",
 			"--env", "mainnet",
 			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
@@ -127,6 +129,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", foundry,
 		]);
@@ -149,6 +152,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", hardhat,
 		]);
@@ -169,6 +173,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", rustCdm,
 		]);
@@ -189,6 +194,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", multiContract,
 		]);
@@ -209,6 +215,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--no-build",
 			"--contracts",
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		], { timeout: 400_000 });
@@ -228,6 +235,7 @@ describe("dot deploy — preflight and validation", () => {
 			"--domain", domain,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		], { timeout: 400_000 });
@@ -273,6 +281,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--domain", domain,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		], { timeout: 400_000 });
@@ -307,6 +316,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--domain", domain,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		], { timeout: 400_000 });
@@ -322,6 +332,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--buildDir", absBuildDir(frontendOnly),
 			"--no-build",
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		], { timeout: 400_000 });
@@ -355,6 +366,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--domain", domain,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		], { timeout: 400_000 });
@@ -369,6 +381,7 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 			"--domain", domain,
 			"--buildDir", absBuildDir(frontendOnly),
 			"--playground",
+			"--private",
 			"--suri", BOB.suri,
 			"--dir", frontendOnly,
 		], { timeout: 400_000 });
@@ -401,6 +414,7 @@ describe("dot deploy — rejects --no-contract-build with no artefacts", () => {
 			"--contracts",
 			"--no-contract-build",
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", constructorArgs,
 		]);
@@ -432,6 +446,7 @@ describe.skip("dot deploy — CDM (requires Paseo + IPFS)", () => {
 			"--contracts",
 			"--no-contract-build",
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", rustCdm,
 		], { timeout: 400_000 });

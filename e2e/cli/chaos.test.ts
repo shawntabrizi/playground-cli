@@ -42,6 +42,7 @@ function chaosDeployArgs(domain: string, buildDir: string, dir: string): string[
 		"--buildDir",
 		buildDir,
 		"--playground",
+		"--private",
 		"--suri",
 		SIGNER.suri,
 		"--dir",

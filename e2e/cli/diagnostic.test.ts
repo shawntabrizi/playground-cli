@@ -30,6 +30,7 @@ describe("diagnostic mode", () => {
 				"--buildDir", resolve(frontendOnly, "dist"),
 				"--no-build",
 				"--playground",
+				"--private",
 				"--suri", SIGNER.suri,
 				"--dir", frontendOnly,
 			], {
@@ -65,6 +66,7 @@ describe("diagnostic mode", () => {
 			"--buildDir", resolve(frontendOnly, "dist"),
 			"--no-build",
 			"--playground",
+			"--private",
 			"--suri", SIGNER.suri,
 			"--dir", frontendOnly,
 		], {
