@@ -10,7 +10,7 @@ permissions:
 
 jobs:
     release:
-        runs-on: ubuntu-latest
+        runs-on: ${{ github.repository_owner == 'paritytech' && 'parity-default' || 'ubuntu-latest' }}
         steps:
             - uses: actions/checkout@v4
               with:
@@ -31,6 +31,9 @@ jobs:
                   bun build --compile --target=bun-linux-arm64 src/index.ts --outfile dot-linux-arm64
                   bun build --compile --target=bun-darwin-x64 src/index.ts --outfile dot-darwin-x64
                   bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile dot-darwin-arm64
+
+            - name: Ensure gh CLI
+              run: type gh >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y gh)
 
             - name: Delete previous dev release
               run: gh release delete "dev/${{ github.head_ref }}" --cleanup-tag -y 2>/dev/null || true
