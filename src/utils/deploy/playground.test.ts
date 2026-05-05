@@ -166,18 +166,37 @@ describe("readReadme", () => {
 
 describe("buildMetadata", () => {
     it("includes repository when repositoryUrl is non-null", () => {
-        const meta = buildMetadata({ repositoryUrl: "https://github.com/x/y", readme: null });
+        const meta = buildMetadata({
+            repositoryUrl: "https://github.com/x/y",
+            branch: null,
+            readme: null,
+        });
         expect(meta).toEqual({ repository: "https://github.com/x/y" });
     });
 
     it("omits repository entirely when repositoryUrl is null", () => {
-        const meta = buildMetadata({ repositoryUrl: null, readme: null });
+        const meta = buildMetadata({ repositoryUrl: null, branch: null, readme: null });
         expect(meta.repository).toBeUndefined();
+    });
+
+    it("includes branch alongside repository when both are present", () => {
+        const meta = buildMetadata({
+            repositoryUrl: "https://github.com/x/y",
+            branch: "develop",
+            readme: null,
+        });
+        expect(meta).toEqual({ repository: "https://github.com/x/y", branch: "develop" });
+    });
+
+    it("omits branch when repositoryUrl is null (branch alone is meaningless)", () => {
+        const meta = buildMetadata({ repositoryUrl: null, branch: "develop", readme: null });
+        expect(meta.branch).toBeUndefined();
     });
 
     it("includes README when present", () => {
         const meta = buildMetadata({
             repositoryUrl: null,
+            branch: null,
             readme: { kind: "ok", content: "hello", size: 5 },
         });
         expect(meta).toEqual({ readme: "hello" });

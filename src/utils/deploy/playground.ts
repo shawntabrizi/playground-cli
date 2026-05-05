@@ -15,6 +15,7 @@
  * `storeFile` directly is the scalpel we want.
  */
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "polkadot-api";
@@ -129,12 +130,43 @@ export function normalizeDomain(domain: string): { label: string; fullDomain: st
     return { label, fullDomain: `${label}.dot` };
 }
 
+/**
+ * Reads the currently-checked-out branch from a git workspace.
+ *
+ * Returns `null` for detached HEAD or any error (no `.git`, missing `git`,
+ * permission issues). Callers treat `null` as "no branch metadata to record"
+ * — `dot mod` defaults to `main` for that case, which matches the GitHub
+ * default-branch convention.
+ */
+export function readGitBranch(cwd: string): string | null {
+    try {
+        const out = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+            cwd,
+            encoding: "utf8",
+            stdio: ["pipe", "pipe", "pipe"],
+        }).trim();
+        // `git rev-parse --abbrev-ref HEAD` returns the literal string "HEAD"
+        // when in detached-HEAD state. We deliberately don't write that to
+        // metadata — it would mislead `dot mod` consumers into trying to
+        // download a ref called "HEAD".
+        if (!out || out === "HEAD") return null;
+        return out;
+    } catch {
+        return null;
+    }
+}
+
 export function buildMetadata(input: {
     repositoryUrl: string | null;
+    branch: string | null;
     readme: ReadmeStatus | null;
 }): Record<string, string> {
     const meta: Record<string, string> = {};
     if (input.repositoryUrl) meta.repository = input.repositoryUrl;
+    // `branch` is recorded ONLY alongside `repositoryUrl` — without a repo
+    // URL the branch is meaningless, and writing it standalone would just
+    // bloat the JSON.
+    if (input.repositoryUrl && input.branch) meta.branch = input.branch;
     if (input.readme && input.readme.kind === "ok") meta.readme = input.readme.content;
     return meta;
 }
@@ -145,7 +177,17 @@ export async function publishToPlayground(
     const { label, fullDomain } = normalizeDomain(options.domain);
 
     const readme = options.cwd ? readReadme(options.cwd) : null;
-    const metadata = buildMetadata({ repositoryUrl: options.repositoryUrl, readme });
+    // Persist the deploying branch alongside the repo URL so `dot mod` can
+    // construct the codeload tarball URL without a separate
+    // `api.github.com/repos/{o}/{r}` lookup. This eliminates one anonymous
+    // GitHub API call per `dot mod` invocation — see
+    // `src/commands/mod/SetupScreen.tsx`.
+    const branch = options.cwd && options.repositoryUrl ? readGitBranch(options.cwd) : null;
+    const metadata = buildMetadata({
+        repositoryUrl: options.repositoryUrl,
+        branch,
+        readme,
+    });
 
     const metadataBytes = new Uint8Array(Buffer.from(JSON.stringify(metadata), "utf8"));
 

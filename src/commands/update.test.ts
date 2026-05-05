@@ -45,21 +45,32 @@ describe("resolveInstallDir", () => {
 });
 
 describe("fetchLatestTag", () => {
-    it("returns tag_name on a successful response", async () => {
+    it("returns the version with a v-prefix on a successful jsDelivr response", async () => {
         const fakeFetch = vi.fn().mockResolvedValue({
             ok: true,
             status: 200,
-            json: async () => ({ tag_name: "v1.2.3" }),
+            json: async () => ({ version: "1.2.3" }),
         } as unknown as Response);
 
         const tag = await fetchLatestTag(fakeFetch as unknown as typeof fetch);
         expect(tag).toBe("v1.2.3");
         expect(fakeFetch).toHaveBeenCalledWith(
-            expect.stringContaining("/repos/paritytech/playground-cli/releases/latest"),
+            expect.stringContaining("data.jsdelivr.com/v1/packages/gh/paritytech/playground-cli"),
             expect.objectContaining({
                 headers: expect.objectContaining({ Accept: expect.any(String) }),
             }),
         );
+    });
+
+    it("preserves an existing v-prefix rather than doubling it", async () => {
+        const fakeFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({ version: "v1.2.3" }),
+        } as unknown as Response);
+
+        const tag = await fetchLatestTag(fakeFetch as unknown as typeof fetch);
+        expect(tag).toBe("v1.2.3");
     });
 
     it("throws with the HTTP status on non-2xx responses", async () => {
@@ -72,7 +83,7 @@ describe("fetchLatestTag", () => {
         await expect(fetchLatestTag(fakeFetch as unknown as typeof fetch)).rejects.toThrow(/500/);
     });
 
-    it("throws when the body has no tag_name", async () => {
+    it("throws when the body has no version field", async () => {
         const fakeFetch = vi.fn().mockResolvedValue({
             ok: true,
             status: 200,

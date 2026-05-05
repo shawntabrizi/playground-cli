@@ -16,9 +16,9 @@ import { resolve } from "node:path";
 import pkg from "../../package.json" with { type: "json" };
 import { withSpan, errorMessage } from "../telemetry.js";
 import { runCliCommand } from "../cli-runtime.js";
-import { ghAuthHeaders } from "../utils/gh-token.js";
 
 const REPO = "paritytech/playground-cli";
+const JSDELIVR_RESOLVED_URL = `https://data.jsdelivr.com/v1/packages/gh/${REPO}/resolved`;
 
 export function resolveInstallDir(env: NodeJS.ProcessEnv = process.env): string {
     const home = env.HOME;
@@ -40,16 +40,20 @@ export function detectAsset(os: Os = platform() as Os, cpu: Cpu = arch() as Cpu)
 }
 
 export async function fetchLatestTag(fetchImpl: typeof fetch = fetch): Promise<string> {
-    // Opportunistic gh-auth header: `dot update` is the most ironic command
-    // to be denied by GitHub's anonymous rate limiter, so route the request
-    // through the user's 5000/hr quota when they're `gh auth login`'d.
-    const res = await fetchImpl(`https://api.github.com/repos/${REPO}/releases/latest`, {
-        headers: { Accept: "application/vnd.github.v3+json", ...(await ghAuthHeaders()) },
+    // Resolve through jsDelivr's free public CDN rather than
+    // `api.github.com` so this call NEVER consumes the 60/hour anonymous-IP
+    // GitHub API quota — it would have been ironic for the very command
+    // that downloads the new binary to itself be denied on hackathon WiFi.
+    // jsDelivr returns `{ "version": "0.17.0" }` (no `v` prefix); we add
+    // it so the rest of `update.ts` keeps comparing tags consistently with
+    // `package.json`'s `vX.Y.Z` convention.
+    const res = await fetchImpl(JSDELIVR_RESOLVED_URL, {
+        headers: { Accept: "application/json" },
     });
-    if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
-    const data = (await res.json()) as { tag_name?: string };
-    if (!data.tag_name) throw new Error("Could not determine latest release");
-    return data.tag_name;
+    if (!res.ok) throw new Error(`jsDelivr returned ${res.status}`);
+    const data = (await res.json()) as { version?: string };
+    if (!data.version) throw new Error("Could not determine latest release");
+    return data.version.startsWith("v") ? data.version : `v${data.version}`;
 }
 
 async function downloadBinary(

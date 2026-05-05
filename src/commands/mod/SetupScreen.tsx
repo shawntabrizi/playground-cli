@@ -7,11 +7,7 @@ import { StepRunner, type Step } from "../../utils/ui/components/StepRunner.js";
 import { Header, Hint, Row, Section } from "../../utils/ui/theme/index.js";
 import { runCommand } from "../../utils/git.js";
 import { createOptionalGitBaseline } from "../../utils/mod/git-baseline.js";
-import {
-    downloadGitHubTarball,
-    parseGitHubRepoUrl,
-    resolveDefaultBranch,
-} from "../../utils/mod/source.js";
+import { downloadGitHubTarball, parseGitHubRepoUrl } from "../../utils/mod/source.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 
 interface AppMetadata {
@@ -77,7 +73,12 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                         `Only GitHub-hosted source is supported for dot mod today (got ${repoUrl}).`,
                     );
                 }
-                const branch = meta.branch ?? (await resolveDefaultBranch(ref));
+                // `meta.branch` is written by `dot deploy --modable` from
+                // `git rev-parse --abbrev-ref HEAD` at deploy time. The "main"
+                // fallback handles the rare case of an old deploy that
+                // pre-dates the metadata field — codeload returns 404 for a
+                // wrong branch, which surfaces as a clear download error.
+                const branch = meta.branch ?? "main";
                 log(`downloading github.com/${ref.owner}/${ref.repo} (${branch})…`);
                 await downloadGitHubTarball({
                     owner: ref.owner,
