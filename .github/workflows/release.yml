@@ -6,81 +6,48 @@ on:
 
 permissions:
     contents: write
+    pull-requests: write
 
 jobs:
     release:
-        if: github.actor != 'github-actions[bot]'
         runs-on: ${{ github.repository_owner == 'paritytech' && 'parity-default' || 'ubuntu-latest' }}
         steps:
             - uses: actions/checkout@v4
               with:
                   fetch-depth: 0
 
-            - name: Check for changesets
-              id: changesets
-              run: |
-                  if ls .changeset/*.md 2>/dev/null | grep -qv README.md; then
-                    echo "found=true" >> $GITHUB_OUTPUT
-                  else
-                    echo "found=false" >> $GITHUB_OUTPUT
-                  fi
-
-            - if: steps.changesets.outputs.found == 'true'
-              uses: oven-sh/setup-bun@v2
+            - uses: oven-sh/setup-bun@v2
               with:
                   bun-version: "1.2.x"
-            - if: steps.changesets.outputs.found == 'true'
-              uses: pnpm/action-setup@v4
-            - if: steps.changesets.outputs.found == 'true'
-              uses: actions/setup-node@v4
+            - uses: pnpm/action-setup@v4
+            - uses: actions/setup-node@v4
               with:
                   node-version: "22"
 
-            - if: steps.changesets.outputs.found == 'true'
-              run: pnpm install
+            - run: pnpm install
 
-            - name: Version packages
-              if: steps.changesets.outputs.found == 'true'
-              run: pnpm changeset version
-
-            - name: Format
-              if: steps.changesets.outputs.found == 'true'
-              run: pnpm format
-
-            - name: Commit version changes
-              if: steps.changesets.outputs.found == 'true'
-              run: |
-                  git config user.name "github-actions[bot]"
-                  git config user.email "github-actions[bot]@users.noreply.github.com"
-                  git add -A
-                  git diff --cached --quiet || git commit -m "chore: version packages"
-                  git push
-
-            - name: Compile CLI binaries
-              if: steps.changesets.outputs.found == 'true'
-              run: |
-                  bun build --compile --target=bun-linux-x64 src/index.ts --outfile dot-linux-x64
-                  bun build --compile --target=bun-linux-arm64 src/index.ts --outfile dot-linux-arm64
-                  bun build --compile --target=bun-darwin-x64 src/index.ts --outfile dot-darwin-x64
-                  bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile dot-darwin-arm64
-
-            - name: Generate release tag
-              if: steps.changesets.outputs.found == 'true'
-              id: tag
-              run: |
-                  VERSION=$(node -p "require('./package.json').version")
-                  TAG="v${VERSION}"
-                  echo "tag=$TAG" >> $GITHUB_OUTPUT
-
-            - name: Create GitHub Release
-              if: steps.changesets.outputs.found == 'true'
-              uses: softprops/action-gh-release@v2
+            # changesets/action has two modes, gated by whether any pending
+            # `.changeset/*.md` files exist on the current commit:
+            #
+            #   1. Pending changesets present → opens / updates a "Version
+            #      Packages" PR that bumps versions, regenerates CHANGELOG,
+            #      and deletes the consumed changeset files. The PR goes
+            #      through the normal protected-branch flow (signed commits,
+            #      required status checks, review) — no direct push to main.
+            #
+            #   2. No pending changesets → invokes the `publish` script,
+            #      which is what fires once the Version Packages PR has been
+            #      merged. Our publish script tags the release, builds the
+            #      four SEA binaries, and creates the GitHub Release.
+            #
+            # Replaces the previous shell-only flow that committed and
+            # `git push`'d directly to main as `github-actions[bot]`. That
+            # path was incompatible with branch protection requiring signed
+            # commits + PR review (see the failed runs in PRs #120/#121/#122).
+            - name: Create version PR or release
+              uses: changesets/action@v1
               with:
-                  tag_name: ${{ steps.tag.outputs.tag }}
-                  name: Release ${{ steps.tag.outputs.tag }}
-                  files: |
-                      dot-linux-x64
-                      dot-linux-arm64
-                      dot-darwin-x64
-                      dot-darwin-arm64
-                  generate_release_notes: true
+                  version: pnpm exec changeset version && pnpm format
+                  publish: bash scripts/release.sh
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
