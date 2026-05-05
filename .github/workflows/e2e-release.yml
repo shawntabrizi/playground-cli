@@ -15,7 +15,7 @@ permissions:
 jobs:
     smoke:
         name: "E2E · release-smoke"
-        runs-on: ubuntu-latest
+        runs-on: ${{ github.repository_owner == 'paritytech' && 'parity-default' || 'ubuntu-latest' }}
         timeout-minutes: 15
         env:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -40,6 +40,9 @@ jobs:
                       TAG="${{ github.event.release.tag_name }}"
                   fi
                   echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+            - name: Ensure gh CLI
+              run: type gh >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y gh)
 
             - name: Wait for SEA asset to be uploaded
               shell: /usr/bin/bash -euo pipefail {0}
