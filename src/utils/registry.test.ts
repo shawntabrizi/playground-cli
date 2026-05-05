@@ -48,9 +48,12 @@ describe("getRegistryContract", () => {
 
         await getRegistryContract(rawClient, fakeSigner);
 
-        expect(withRequiredLiveContractAddressesMock).toHaveBeenCalledWith(cdmJson, rawClient, [
-            "@w3s/playground-registry",
-        ]);
+        expect(withRequiredLiveContractAddressesMock).toHaveBeenCalledWith(
+            cdmJson,
+            rawClient,
+            ["@w3s/playground-registry"],
+            { defaultOrigin: fakeSigner.address },
+        );
         expect(fromClientMock).toHaveBeenCalledWith(patchedManifest, rawClient, {
             defaultSigner: fakeSigner.signer,
             defaultOrigin: fakeSigner.address,

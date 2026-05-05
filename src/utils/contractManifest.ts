@@ -102,14 +102,27 @@ function patchContractAddresses(
     return patched;
 }
 
+/**
+ * Options for the meta-registry lookup. `defaultOrigin` is forwarded to the
+ * underlying contract handle so the read-only `getAddress` dry-run uses the
+ * caller's logged-in account instead of the dev fallback (Alice). Without it,
+ * `@polkadot-apps/contracts` emits a misleading `[contracts] No origin
+ * configured` warning even when the user has signed in via `dot init`.
+ */
+export interface LiveContractLookupOptions {
+    defaultOrigin?: string;
+}
+
 export async function resolveLiveContractAddresses(
     assetHub: PolkadotClient,
     libraries: readonly string[] = LIVE_CONTRACTS,
+    options: LiveContractLookupOptions = {},
 ): Promise<Record<string, HexString>> {
     const registry = await createContractFromClient(
         assetHub,
         CDM_REGISTRY_ADDRESS,
         CDM_REGISTRY_ABI,
+        { defaultOrigin: options.defaultOrigin },
     );
     const entries = await withoutReviveTraceNoise(() =>
         Promise.all(
@@ -133,8 +146,9 @@ export async function withLiveContractAddresses(
     manifest: CdmJson,
     assetHub: PolkadotClient,
     libraries: readonly string[] = LIVE_CONTRACTS,
+    options: LiveContractLookupOptions = {},
 ): Promise<CdmJson> {
-    const liveAddresses = await resolveLiveContractAddresses(assetHub, libraries);
+    const liveAddresses = await resolveLiveContractAddresses(assetHub, libraries, options);
     return patchContractAddresses(manifest, liveAddresses);
 }
 
@@ -142,8 +156,9 @@ export async function withRequiredLiveContractAddresses(
     manifest: CdmJson,
     assetHub: PolkadotClient,
     libraries: readonly string[] = LIVE_CONTRACTS,
+    options: LiveContractLookupOptions = {},
 ): Promise<CdmJson> {
-    const liveAddresses = await resolveLiveContractAddresses(assetHub, libraries);
+    const liveAddresses = await resolveLiveContractAddresses(assetHub, libraries, options);
     const missing = libraries.filter((library) => !liveAddresses[library]);
     if (missing.length > 0) {
         throw new Error(`CDM meta-registry did not return live address for ${missing.join(", ")}`);

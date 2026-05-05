@@ -80,8 +80,29 @@ describe("resolveLiveContractAddresses", () => {
             expect.arrayContaining([
                 expect.objectContaining({ name: "getAddress", type: "function" }),
             ]),
+            expect.any(Object),
         );
         expect(getAddressQueryMock).toHaveBeenCalledWith(PLAYGROUND_REGISTRY_CONTRACT);
+    });
+
+    it("forwards defaultOrigin to createContractFromClient when provided", async () => {
+        getAddressQueryMock.mockResolvedValue({
+            success: true,
+            value: { isSome: true, value: liveAddress },
+        });
+
+        const assetHub = {} as any;
+        const origin = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
+        await resolveLiveContractAddresses(assetHub, [PLAYGROUND_REGISTRY_CONTRACT], {
+            defaultOrigin: origin,
+        });
+
+        expect(createContractFromClientMock).toHaveBeenCalledWith(
+            assetHub,
+            CDM_REGISTRY_ADDRESS,
+            expect.any(Array),
+            expect.objectContaining({ defaultOrigin: origin }),
+        );
     });
 
     it("omits libraries when the live registry has no address", async () => {
@@ -135,5 +156,48 @@ describe("withLiveContractAddresses", () => {
                 PLAYGROUND_REGISTRY_CONTRACT,
             ]),
         ).rejects.toThrow(/CDM meta-registry did not return live address/);
+    });
+
+    it("forwards defaultOrigin through withLiveContractAddresses", async () => {
+        getAddressQueryMock.mockResolvedValue({
+            success: true,
+            value: { isSome: true, value: liveAddress },
+        });
+
+        const assetHub = {} as any;
+        const origin = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
+        await withLiveContractAddresses(manifest(), assetHub, [PLAYGROUND_REGISTRY_CONTRACT], {
+            defaultOrigin: origin,
+        });
+
+        expect(createContractFromClientMock).toHaveBeenCalledWith(
+            assetHub,
+            CDM_REGISTRY_ADDRESS,
+            expect.any(Array),
+            expect.objectContaining({ defaultOrigin: origin }),
+        );
+    });
+
+    it("forwards defaultOrigin through withRequiredLiveContractAddresses", async () => {
+        getAddressQueryMock.mockResolvedValue({
+            success: true,
+            value: { isSome: true, value: liveAddress },
+        });
+
+        const assetHub = {} as any;
+        const origin = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
+        await withRequiredLiveContractAddresses(
+            manifest(),
+            assetHub,
+            [PLAYGROUND_REGISTRY_CONTRACT],
+            { defaultOrigin: origin },
+        );
+
+        expect(createContractFromClientMock).toHaveBeenCalledWith(
+            assetHub,
+            CDM_REGISTRY_ADDRESS,
+            expect.any(Array),
+            expect.objectContaining({ defaultOrigin: origin }),
+        );
     });
 });

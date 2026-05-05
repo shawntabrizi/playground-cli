@@ -10,6 +10,7 @@ import { AppBrowser, type AppEntry } from "./AppBrowser.js";
 import { SetupScreen } from "./SetupScreen.js";
 import { defaultRepoName } from "../../utils/git/repoName.js";
 import { runCliCommand } from "../../cli-runtime.js";
+import { assertPublicGitHubRepo, ModablePreflightError } from "../../utils/deploy/modable.js";
 
 export const modCommand = new Command("mod")
     .description("Mod a playground app — clone the source as a fresh project to customise")
@@ -54,6 +55,41 @@ async function runModCommand(
             }
             domain = picked.domain;
             metadata = picked;
+        }
+
+        // Lazy verify that the picked app's source repository is publicly
+        // reachable. The picker filters apps that have NO repository URL, but
+        // a publisher can flip a repo to private after deploying, which would
+        // break the anonymous codeload download a few steps down. Bail here
+        // with a clean message so the user can pick a different app before we
+        // mount SetupScreen and start writing files.
+        //
+        // The direct-domain path (`dot mod some-domain.dot`) has no metadata
+        // at this point and falls through to SetupScreen, where the same
+        // 404/401 surfaces from `resolveDefaultBranch` as a step failure.
+        // Slightly less polished UX, but lifting the metadata fetch up here
+        // just for symmetry would be a larger refactor.
+        if (metadata?.repository) {
+            const repoUrl = metadata.repository;
+            try {
+                await withSpan(
+                    "cli.mod.repo-check",
+                    "verify repository is public",
+                    { "cli.mod.repo": repoUrl },
+                    () => assertPublicGitHubRepo(repoUrl),
+                );
+            } catch (err) {
+                if (err instanceof ModablePreflightError) {
+                    console.error();
+                    console.error(`  ${err.message}.`);
+                    console.error(
+                        `  Pick a different app or ask the publisher to make the repo public.`,
+                    );
+                    process.exitCode = 1;
+                    return;
+                }
+                throw err;
+            }
         }
 
         const targetDir = await withSpan("cli.mod.resolve-target", "resolve target directory", () =>

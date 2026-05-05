@@ -21,9 +21,12 @@ export async function getRegistryContract(
 ) {
     let manifest: CdmJson;
     try {
-        manifest = await withRequiredLiveContractAddresses(cdmJson, rawClient, [
-            PLAYGROUND_REGISTRY_CONTRACT,
-        ]);
+        manifest = await withRequiredLiveContractAddresses(
+            cdmJson,
+            rawClient,
+            [PLAYGROUND_REGISTRY_CONTRACT],
+            { defaultOrigin: signer.address },
+        );
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(
