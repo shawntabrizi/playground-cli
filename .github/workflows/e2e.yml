@@ -115,6 +115,11 @@ jobs:
               if: matrix.installRustPvm == true
               shell: bash
               run: |
+                  if ! command -v rustup >/dev/null 2>&1; then
+                    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+                    echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+                    source "$HOME/.cargo/env"
+                  fi
                   rustup toolchain install nightly --profile minimal --component rust-src
                   rustup default nightly
                   cargo install cargo-pvm-contract --git https://github.com/paritytech/cargo-pvm-contract --branch charles/cdm-integration --locked
