@@ -1,20 +1,40 @@
 name: Release
 
+# Triggered when a maintainer creates a GitHub Release in the UI (or via
+# `gh release create`). Builds the four SEA binaries from the tagged
+# commit and attaches them to that Release as assets.
+#
+# Why no auto-bump-and-push-to-main:
+#
+# Branch protection on `main` requires verified signatures, required
+# status checks, and PRs (no direct pushes). The previous release flow
+# pushed a `chore: version packages` commit straight to `main` as
+# `github-actions[bot]`, which fails all three rules — the last three
+# releases (PRs #120 / #121 / #122) were blocked because of this.
+#
+# Mirrors the pattern used in `paritytech/bulletin-deploy` exactly:
+# version bumps land via a normal human-merged PR, then the maintainer
+# creates the Release manually, then THIS workflow attaches binaries.
+# No automation ever pushes to `main`. See bulletin-deploy/CLAUDE.md
+# §"Release" for the playbook.
+
 on:
-    push:
-        branches: [main]
+    release:
+        types: [created]
 
 permissions:
-    contents: write
-    pull-requests: write
+    contents: write # required to upload assets to the release
 
 jobs:
-    release:
+    attach-binaries:
         runs-on: ${{ github.repository_owner == 'paritytech' && 'parity-default' || 'ubuntu-latest' }}
         steps:
             - uses: actions/checkout@v4
               with:
-                  fetch-depth: 0
+                  # Build from the exact commit the Release tagged, not from
+                  # the latest `main`. Protects against a race where someone
+                  # merges another PR between tag creation and this run.
+                  ref: ${{ github.event.release.tag_name }}
 
             - uses: oven-sh/setup-bun@v2
               with:
@@ -26,28 +46,21 @@ jobs:
 
             - run: pnpm install
 
-            # changesets/action has two modes, gated by whether any pending
-            # `.changeset/*.md` files exist on the current commit:
-            #
-            #   1. Pending changesets present → opens / updates a "Version
-            #      Packages" PR that bumps versions, regenerates CHANGELOG,
-            #      and deletes the consumed changeset files. The PR goes
-            #      through the normal protected-branch flow (signed commits,
-            #      required status checks, review) — no direct push to main.
-            #
-            #   2. No pending changesets → invokes the `publish` script,
-            #      which is what fires once the Version Packages PR has been
-            #      merged. Our publish script tags the release, builds the
-            #      four SEA binaries, and creates the GitHub Release.
-            #
-            # Replaces the previous shell-only flow that committed and
-            # `git push`'d directly to main as `github-actions[bot]`. That
-            # path was incompatible with branch protection requiring signed
-            # commits + PR review (see the failed runs in PRs #120/#121/#122).
-            - name: Create version PR or release
-              uses: changesets/action@v1
-              with:
-                  version: pnpm exec changeset version && pnpm format
-                  publish: bash scripts/release.sh
+            - name: Build SEA binaries
+              run: |
+                  bun build --compile --target=bun-linux-x64    src/index.ts --outfile dot-linux-x64
+                  bun build --compile --target=bun-linux-arm64  src/index.ts --outfile dot-linux-arm64
+                  bun build --compile --target=bun-darwin-x64   src/index.ts --outfile dot-darwin-x64
+                  bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile dot-darwin-arm64
+
+            - name: Attach binaries to release
               env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  TAG: ${{ github.event.release.tag_name }}
+              run: |
+                  # `--clobber` overwrites any existing assets with the same
+                  # name — makes the workflow idempotent if it has to be
+                  # re-run after a transient build failure.
+                  gh release upload "$TAG" \
+                      dot-linux-x64 dot-linux-arm64 dot-darwin-x64 dot-darwin-arm64 \
+                      --clobber
