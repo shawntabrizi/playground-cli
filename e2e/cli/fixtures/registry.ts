@@ -13,6 +13,9 @@ import {
 	suppressReviveTraceNoise,
 	withRequiredLiveContractAddresses,
 } from "../../../src/utils/contractManifest.js";
+import { resolveSigner } from "../../../src/utils/signer.js";
+import { publishToPlayground } from "../../../src/utils/deploy/playground.js";
+import { SIGNER } from "./accounts.js";
 
 import cdmJson from "../../../cdm.json";
 
@@ -105,8 +108,17 @@ export async function waitForApp(domain: string, timeoutMs = 30_000): Promise<Ap
 }
 
 /**
- * Verify that a domain is registered in the registry.
- * Throws if not found.
+ * Ensure the test template fixture is registered against the live playground
+ * registry contract. The mod test is read-only (it does not publish), so unlike
+ * the deploy fixtures — which the deploy tests re-publish on every run — this
+ * fixture would otherwise drift out of existence whenever the registry contract
+ * is redeployed. Register-if-missing keeps the suite self-healing across
+ * registry redeploys without ever burning a fresh DotNS entry: same domain,
+ * same owner, idempotent re-publish (no-op if already registered).
+ *
+ * Soft-fails into globalSetup's catch — non-mod tests should still run on a
+ * degraded chain. The mod test will fail loudly downstream if the registration
+ * itself failed.
  */
 export async function ensureTemplateRegistered(): Promise<void> {
 	const domain = process.env.TEST_TEMPLATE_DOMAIN;
@@ -115,11 +127,35 @@ export async function ensureTemplateRegistered(): Promise<void> {
 		return;
 	}
 
-	const entry = await getApp(domain);
-	if (!entry) {
+	const existing = await getApp(domain);
+	if (existing) {
+		console.log(`[e2e setup] Template "${domain}" already registered`);
+		return;
+	}
+
+	const repositoryUrl = process.env.TEST_TEMPLATE_REPO;
+	if (!repositoryUrl) {
 		throw new Error(
-			`Test template app "${domain}" not registered in the playground registry — run setup script first.`,
+			`Test template "${domain}" is not registered and TEST_TEMPLATE_REPO is unset — ` +
+				`cannot bootstrap. Set TEST_TEMPLATE_REPO to the upstream source repository.`,
 		);
 	}
-	console.log(`[e2e setup] Template "${domain}" verified in registry`);
+
+	console.log(
+		`[e2e setup] Template "${domain}" missing — registering against the live registry contract…`,
+	);
+	// Same SIGNER the rest of the suite uses — it's already funded by
+	// fundDeployerIfLow() earlier in globalSetup, so no extra balance check
+	// here. Mirrors tools/register-e2e-fixtures.ts.
+	const signer = await resolveSigner({ suri: SIGNER.suri });
+	try {
+		const result = await publishToPlayground({
+			domain,
+			publishSigner: signer,
+			repositoryUrl,
+		});
+		console.log(`[e2e setup] Template "${domain}" registered (cid ${result.metadataCid})`);
+	} finally {
+		signer.destroy();
+	}
 }
