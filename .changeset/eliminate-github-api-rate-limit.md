@@ -9,3 +9,5 @@ Eliminates every remaining `api.github.com` call from the unauthenticated path s
 - `dot update` resolves the latest CLI version through jsDelivr's `/resolved` endpoint instead of `api.github.com/.../releases/latest`. The binary download stays on `github.com/.../releases/download/...` (also non-API).
 
 The `gh auth token` opportunistic-header utility and the end-of-`dot init` rate-limit advisory banner are removed — both were workarounds for API quota issues that no longer exist on the unauthenticated path. `gh auth login` is still required for the one remaining authenticated call site (`gh repo create --public --push` when a fresh modable repo is created), and `dot init`'s dependency-list row continues to advise it.
+
+`install.sh` is updated to resolve the latest tag through jsDelivr first (with the github.com `releases/latest` redirect probe as fallback) so concurrent first-time installs at a hackathon — every attendee on the same NAT — never touch `api.github.com` at all. The previous `api.github.com/repos/.../releases?per_page=1` fallback is removed entirely.
