@@ -6,6 +6,8 @@ const make = (domain: string, repository: string | null): AppEntry => ({
     name: null,
     description: null,
     repository,
+    branch: null,
+    tag: null,
 });
 
 describe("filterModable", () => {

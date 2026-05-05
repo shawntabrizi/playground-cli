@@ -38,9 +38,12 @@ async function probePublicGithub(repoUrl: string): Promise<{ ok: boolean; status
     const match = repoUrl.match(/github\.com[:/]+([^/]+)\/([^/.]+)/);
     if (!match) return { ok: false, status: 0 };
     const [, owner, repo] = match;
-    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-        headers: { Accept: "application/vnd.github.v3+json" },
-    });
+    // HEAD on the HTML page rather than a GET on `api.github.com` — same
+    // 200/404 signal, but doesn't consume GitHub's 60/hour anonymous-IP
+    // API quota. Mirrors `src/utils/deploy/modable.ts::assertPublicGitHubRepo`
+    // so a maintainer running this tool burns the same kind of probe their
+    // CLI does at modable-preflight time.
+    const res = await fetch(`https://github.com/${owner}/${repo}`, { method: "HEAD" });
     return { ok: res.ok, status: res.status };
 }
 

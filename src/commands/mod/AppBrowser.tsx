@@ -60,6 +60,8 @@ export function AppBrowser({ registry, onSelect, onCancel, modableOnly }: Props)
                 name: null,
                 description: null,
                 repository: null,
+                branch: null,
+                tag: null,
             }));
 
             setApps((prev) => [...prev, ...entries]);
@@ -82,6 +84,8 @@ export function AppBrowser({ registry, onSelect, onCancel, modableOnly }: Props)
                                       name: meta.name ?? null,
                                       description: meta.description ?? null,
                                       repository: meta.repository ?? null,
+                                      branch: meta.branch ?? null,
+                                      tag: meta.tag ?? null,
                                   }
                                 : a,
                         ),

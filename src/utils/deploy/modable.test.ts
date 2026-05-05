@@ -41,34 +41,26 @@ describe("decideRepositoryAction", () => {
 });
 
 describe("assertPublicGitHubRepo", () => {
-    it("does nothing for a public repo", async () => {
-        const mockFetch: typeof fetch = async () =>
-            new Response(JSON.stringify({ private: false }), { status: 200 });
+    // After the rate-limit-elimination work this function probes the regular
+    // `github.com/{owner}/{repo}` HTML page (200/404 status, no body) instead
+    // of `api.github.com`, so the mocks here only inspect status codes.
+    it("does nothing on a 2xx response (repo is public)", async () => {
+        let calledUrl = "";
+        const mockFetch: typeof fetch = async (url) => {
+            calledUrl = String(url);
+            return new Response(null, { status: 200 });
+        };
         await expect(
             assertPublicGitHubRepo("https://github.com/foo/bar", mockFetch),
         ).resolves.toBeUndefined();
+        expect(calledUrl).toBe("https://github.com/foo/bar");
     });
 
-    it("throws for a private repo (API reports private: true)", async () => {
-        const mockFetch: typeof fetch = async () =>
-            new Response(JSON.stringify({ private: true }), { status: 200 });
-        await expect(
-            assertPublicGitHubRepo("https://github.com/org/secret", mockFetch),
-        ).rejects.toThrow(ModablePreflightError);
-    });
-
-    it("throws for a 404 response (private or missing)", async () => {
+    it("throws on 404 (private or missing — GitHub returns the same status for both)", async () => {
         const mockFetch: typeof fetch = async () => new Response("Not Found", { status: 404 });
         await expect(
             assertPublicGitHubRepo("https://github.com/org/ghost", mockFetch),
         ).rejects.toThrow(/private or does not exist/i);
-    });
-
-    it("throws for a 401 response", async () => {
-        const mockFetch: typeof fetch = async () => new Response("Unauthorized", { status: 401 });
-        await expect(
-            assertPublicGitHubRepo("https://github.com/org/ghost", mockFetch),
-        ).rejects.toThrow(ModablePreflightError);
     });
 
     it("does nothing for a non-GitHub URL", async () => {
@@ -80,7 +72,7 @@ describe("assertPublicGitHubRepo", () => {
         ).resolves.toBeUndefined();
     });
 
-    it("does nothing on network error (fail open)", async () => {
+    it("does nothing on network error (fail open — codeload reveals truth later)", async () => {
         const mockFetch: typeof fetch = async () => {
             throw new Error("ECONNREFUSED");
         };
@@ -89,26 +81,15 @@ describe("assertPublicGitHubRepo", () => {
         ).resolves.toBeUndefined();
     });
 
-    it("throws an actionable error on an explicit rate-limit (403 with x-ratelimit-remaining: 0)", async () => {
-        const mockFetch: typeof fetch = async () =>
-            new Response("rate limited", {
-                status: 403,
-                headers: { "x-ratelimit-remaining": "0" },
-            });
-        await expect(
-            assertPublicGitHubRepo("https://github.com/foo/bar", mockFetch),
-        ).rejects.toThrow(/rate limit exceeded.*gh auth login/is);
-    });
-
-    it("does not throw on ambiguous 403 (e.g. abuse detection without rate-limit headers)", async () => {
-        const mockFetch: typeof fetch = async () => new Response("forbidden", { status: 403 });
+    it("does not throw on 5xx (transient server error)", async () => {
+        const mockFetch: typeof fetch = async () => new Response("oops", { status: 502 });
         await expect(
             assertPublicGitHubRepo("https://github.com/foo/bar", mockFetch),
         ).resolves.toBeUndefined();
     });
 
-    it("does not throw on 5xx (transient server error)", async () => {
-        const mockFetch: typeof fetch = async () => new Response("oops", { status: 502 });
+    it("does not throw on 403 (anti-abuse throttling — let downstream surface the truth)", async () => {
+        const mockFetch: typeof fetch = async () => new Response("forbidden", { status: 403 });
         await expect(
             assertPublicGitHubRepo("https://github.com/foo/bar", mockFetch),
         ).resolves.toBeUndefined();
@@ -123,10 +104,8 @@ describe("resolveRepositoryUrl", () => {
         tmp = null;
     });
 
-    const publicFetch: typeof fetch = async () =>
-        new Response(JSON.stringify({ private: false }), { status: 200 });
-    const privateFetch: typeof fetch = async () =>
-        new Response(JSON.stringify({ private: true }), { status: 200 });
+    const publicFetch: typeof fetch = async () => new Response(null, { status: 200 });
+    const privateFetch: typeof fetch = async () => new Response("Not Found", { status: 404 });
 
     it("uses an existing origin without pushing", async () => {
         tmp = mkdtempSync(join(tmpdir(), "pg-modable-origin-"));

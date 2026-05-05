@@ -11,7 +11,6 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { commandExists, TOOL_STEPS } from "../toolchain.js";
 import { parseGitHubRepoUrl } from "../mod/source.js";
-import { ghAuthHeaders } from "../gh-token.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -93,15 +92,25 @@ export interface ResolveRepoOptions {
 /**
  * Verifies that a GitHub repository URL is publicly accessible.
  *
- * Adds an `Authorization: Bearer <token>` header opportunistically when the
- * user is `gh auth login`'d so the request lands against their personal
- * 5000/hour quota instead of the shared 60/hour anonymous-IP quota — the
- * only reliable defence against blanket rate-limiting on hackathon WiFi
- * (see `src/utils/gh-token.ts`).
+ * Issues a `HEAD https://github.com/{owner}/{repo}` against the regular
+ * HTML page rather than `api.github.com/repos/{owner}/{repo}` — the HTML
+ * surface is NOT subject to the 60/hour anonymous-IP API rate limit that
+ * gets exhausted on shared networks (hackathon WiFi, conference NATs).
+ * The HTML pages have their own anti-abuse throttling but it's measured
+ * in thousands per hour, far above what `dot deploy --modable` and
+ * `dot mod` plausibly hit per IP. We get the same public/private signal
+ * via HTTP status: 200 = public, 404 = private OR missing (GitHub
+ * deliberately refuses to disambiguate to avoid leaking private-repo
+ * existence). 5xx and other transient failures fall through so the
+ * downstream codeload tarball reveals the truth.
  *
- * Throws ModablePreflightError for private/missing repos and for explicit
- * rate-limit responses (so we never silently pass off a private repo as
- * public). Stays lenient for ambiguous 5xx errors.
+ * Throws ModablePreflightError on 404 with the same message as before so
+ * existing callers / tests continue to pattern-match on the wording.
+ *
+ * Note on redirects: `fetch` follows 30x redirects by default, which is the
+ * behaviour we want here — GitHub returns 301 → new location for renamed
+ * repos, and the codeload tarball download will follow the same rename, so
+ * accepting the redirect mirrors the eventual download behaviour.
  */
 export async function assertPublicGitHubRepo(url: string, f: typeof fetch = fetch): Promise<void> {
     const ref = parseGitHubRepoUrl(url);
@@ -109,35 +118,20 @@ export async function assertPublicGitHubRepo(url: string, f: typeof fetch = fetc
 
     let res: Response;
     try {
-        res = await f(`https://api.github.com/repos/${ref.owner}/${ref.repo}`, {
-            headers: { Accept: "application/vnd.github+json", ...(await ghAuthHeaders()) },
-        });
+        res = await f(`https://github.com/${ref.owner}/${ref.repo}`, { method: "HEAD" });
     } catch {
         return; // network error — can't verify, let downstream fail
     }
 
-    if (res.ok) {
-        const body = (await res.json()) as { private?: boolean };
-        if (body.private) {
-            throw new ModablePreflightError(
-                `${ref.owner}/${ref.repo} is a private repository — modable apps must use a public repository so users can clone the source`,
-            );
-        }
-        return;
-    }
+    if (res.ok) return;
 
-    if (res.status === 404 || res.status === 401) {
+    if (res.status === 404) {
         throw new ModablePreflightError(
             `${ref.owner}/${ref.repo} is private or does not exist — modable apps must use a public repository`,
         );
     }
-    if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") {
-        throw new ModablePreflightError(
-            "GitHub rate limit exceeded for unauthenticated requests — could not verify that the repository is public. " +
-                'Run "gh auth login" to use your personal 5000/hour quota, then retry.',
-        );
-    }
-    // other non-ok status (5xx, transient server error) — skip check
+    // 5xx, 403 anti-abuse, etc. — skip and let the downstream codeload
+    // download surface a clearer error if the repo is actually broken.
 }
 
 export async function resolveRepositoryUrl(opts: ResolveRepoOptions): Promise<string> {

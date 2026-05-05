@@ -96,10 +96,9 @@ export function shouldSkip(
 export function formatBanner(currentVersion: string, latestVersion: string): string {
     const current = `v${normalizeVersion(currentVersion)}`;
     const latest = `v${normalizeVersion(latestVersion)}`;
-    // Intentionally a single-line `⚠` glyph rather than the rounded-box
-    // Callout used by `dot init`'s gh-auth advisory — this banner fires on
-    // EVERY invocation, so a heavier visual treatment would quickly become
-    // noise. Don't "harmonise" the two by upgrading this to a box.
+    // Intentionally a single-line `⚠` glyph rather than a rounded-box
+    // Callout — this banner fires on EVERY `dot` invocation, so a heavier
+    // visual treatment would quickly become noise.
     return (
         `\n  ${ANSI_YELLOW}${GLYPH.warn}${ANSI_RESET}  Update available: ${current} → ${latest}\n` +
         `     Run ${ANSI_BOLD}dot update${ANSI_RESET} to upgrade.\n`

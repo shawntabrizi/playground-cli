@@ -5,8 +5,6 @@ import { captureWarning, withSpan, errorMessage } from "../../telemetry.js";
 import { runCliCommand } from "../../cli-runtime.js";
 import { InitScreen } from "./InitScreen.js";
 import { connect, type LoginHandle } from "../../utils/auth.js";
-import { getGhToken } from "../../utils/gh-token.js";
-import { formatGhAuthBanner } from "./gh-auth-banner.js";
 
 export const initCommand = new Command("init")
     .description("Install prerequisites and login via mobile QR")
@@ -51,13 +49,5 @@ export const initCommand = new Command("init")
             await withSpan("cli.init.setup", "run init setup", () => app.waitUntilExit());
 
             console.log();
-
-            // The dependency list above already flags `gh auth login` as a
-            // single-row warning, but that doesn't convey why it matters for
-            // hackathons / shared WiFi. Print an explicit explanation at the
-            // very bottom for users who are still logged out, so the
-            // recommendation has the context it needs to land.
-            const token = await getGhToken();
-            if (!token) process.stderr.write(formatGhAuthBanner());
         }),
     );
