@@ -53,8 +53,6 @@ interface DeployOpts {
     contracts?: boolean;
     /** Publish the source repo so others can `dot mod` it. Commander auto-negates: `--no-modable` ⇒ false. */
     modable?: boolean;
-    /** Repo name to use when `--modable` creates a new GitHub repo. */
-    repoName?: string;
     env?: Env;
     /** Project root. Hidden — defaults to cwd. */
     dir?: string;
@@ -86,10 +84,9 @@ export const deployCommand = new Command("deploy")
     )
     .option(
         "--modable",
-        "Publish the source repo so others can `dot mod` it. Requires --playground and a public GitHub remote.",
+        "Publish the source repo so others can `dot mod` it. Requires --playground and a public GitHub `origin`.",
     )
     .option("--no-modable", "Explicitly skip publishing source (the default).")
-    .option("--repo-name <name>", "Repo name to use if --modable creates a new GitHub repo")
     .option("--suri <suri>", "Secret URI for the user signer (e.g. //Alice for dev)")
     .addOption(
         new Option("--env <env>", "Target environment")
@@ -330,7 +327,6 @@ async function runHeadless(ctx: {
                 await ensureGitInstalled();
                 return resolveRepositoryUrl({
                     cwd: ctx.projectDir,
-                    repoName: ctx.opts.repoName ?? null,
                     onLog: (line) => process.stdout.write(`${line}\n`),
                 });
             },
@@ -456,7 +452,6 @@ function runInteractive(ctx: {
                 deployContracts: ctx.opts.contracts !== undefined ? ctx.opts.contracts : null,
                 modable:
                     ctx.opts.modable === true ? true : ctx.opts.modable === false ? false : null,
-                repoName: ctx.opts.repoName ?? null,
                 userSigner: ctx.userSigner,
                 onDone: (outcome: DeployOutcome | null) => {
                     if (settled) return;

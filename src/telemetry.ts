@@ -73,7 +73,7 @@ export function sanitizeSentryTransaction<T extends Record<string, unknown>>(eve
 }
 
 export function isExpectedCliError(message: string): boolean {
-    return /badregistrylookup|signer.*not available|run "dot init"|account is not mapped|storage allowance is exhausted|invalid domain|already owned|reserved|insufficient balance|github cli is not authenticated|no foundry\/hardhat\/cdm project was detected|github api returned|download failed/i.test(
+    return /badregistrylookup|signer.*not available|run "dot init"|account is not mapped|storage allowance is exhausted|invalid domain|already owned|reserved|insufficient balance|no github origin configured|must use a public github repository|private or does not exist|no foundry\/hardhat\/cdm project was detected|github api returned|download failed/i.test(
         message,
     );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Box } from "ink";
 import { Row, LogTail, Section, type MarkKind } from "../../utils/ui/theme/index.js";
-import { TOOL_STEPS, isGhAuthenticated } from "../../utils/toolchain.js";
+import { TOOL_STEPS } from "../../utils/toolchain.js";
 
 type Status = "pending" | "checking" | "installing" | "ok" | "failed" | "warning";
 
@@ -31,14 +31,13 @@ function toMark(status: Status): MarkKind {
 }
 
 export function DependencyList({ onDone }: { onDone: () => void }) {
-    const [steps, setSteps] = useState<StepState[]>([
-        ...TOOL_STEPS.map((s) => ({
+    const [steps, setSteps] = useState<StepState[]>(
+        TOOL_STEPS.map((s) => ({
             name: s.name,
             status: "pending" as Status,
             hint: s.manualHint,
         })),
-        { name: "authenticated", status: "pending" as Status },
-    ]);
+    );
     const [output, setOutput] = useState<string[]>([]);
     const [complete, setComplete] = useState(false);
 
@@ -76,22 +75,6 @@ export function DependencyList({ onDone }: { onDone: () => void }) {
                         );
                     }
                 }
-            }
-
-            // gh auth check (advisory — not auto-login)
-            const authIdx = TOOL_STEPS.length;
-            if (await isGhAuthenticated()) {
-                setSteps((prev) =>
-                    prev.map((s, j) => (j === authIdx ? { ...s, status: "ok" } : s)),
-                );
-            } else {
-                setSteps((prev) =>
-                    prev.map((s, j) =>
-                        j === authIdx
-                            ? { ...s, status: "warning", message: "run: gh auth login" }
-                            : s,
-                    ),
-                );
             }
 
             setComplete(true);

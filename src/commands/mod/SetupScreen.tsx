@@ -87,7 +87,7 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                     targetDir,
                 });
 
-                await createOptionalGitBaseline(targetDir, domain, log, sourceLogFile);
+                await createOptionalGitBaseline(targetDir, log, sourceLogFile);
 
                 stripPostinstall(targetDir);
                 writeDotJson(targetDir, meta.name ?? domain.replace(/\.dot$/, ""), meta);

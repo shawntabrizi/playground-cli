@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,28 +11,24 @@ function tmpProject(): string {
     return dir;
 }
 
-function git(dir: string, args: string[]): string {
-    return execFileSync("git", args, { cwd: dir, encoding: "utf8" }).trim();
-}
-
 describe("createOptionalGitBaseline", () => {
-    it("creates an unsigned baseline commit even when signing is globally required", async () => {
+    it("runs `git init` and creates no commit", async () => {
         const dir = tmpProject();
         const logs: string[] = [];
         try {
-            git(dir, ["init"]);
-            git(dir, ["config", "user.name", "dot mod"]);
-            git(dir, ["config", "user.email", "dot-mod@example.invalid"]);
-            git(dir, ["config", "commit.gpgsign", "true"]);
+            await createOptionalGitBaseline(dir, (line) => logs.push(line));
 
-            await createOptionalGitBaseline(dir, "rock-paper-scissors.dot", (line) =>
-                logs.push(line),
-            );
+            // .git directory is created by `git init`.
+            expect(existsSync(join(dir, ".git"))).toBe(true);
 
-            expect(git(dir, ["log", "-1", "--pretty=%s"])).toBe(
-                "Initial commit from rock-paper-scissors.dot",
-            );
-            expect(logs.join("\n")).toContain("creating unsigned baseline commit");
+            // No commits exist on HEAD — `git log` exits non-zero with the
+            // "does not have any commits yet" wording on every supported git
+            // version. We assert via execFileSync throwing.
+            expect(() =>
+                execFileSync("git", ["log"], { cwd: dir, stdio: "pipe" }),
+            ).toThrow();
+
+            expect(logs.join("\n")).toContain("initializing fresh git history");
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -41,9 +37,7 @@ describe("createOptionalGitBaseline", () => {
     it("logs and continues when the optional git baseline cannot be created", async () => {
         const logs: string[] = [];
         await expect(
-            createOptionalGitBaseline("/path/that/does/not/exist", "broken.dot", (line) =>
-                logs.push(line),
-            ),
+            createOptionalGitBaseline("/path/that/does/not/exist", (line) => logs.push(line)),
         ).resolves.toBeUndefined();
         expect(logs.join("\n")).toContain("git baseline skipped");
     });
