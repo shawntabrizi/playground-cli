@@ -62,9 +62,8 @@ Read `CLAUDE.md` alongside this file when you need the full rationale for repo-s
 ## Mod And GitHub Behavior
 
 - `dot mod` is GitHub-tarball-only. Do not reintroduce `git clone`, `gh repo fork`, or tooling requirements for the public-repo path.
-- `ensureGhAuthed()` must not shell out to `gh auth login` from inside Ink. Fail with the existing actionable message instead.
+- `dot` never invokes `gh`. `dot deploy --modable` reads an existing `origin` and validates it's a public GitHub URL via `HEAD https://github.com/{o}/{r}`; missing `origin`, private repos, and non-GitHub URLs hard-fail with actionable messages from `src/utils/deploy/modable.ts`. Do not reintroduce auto-create, `gh auth` checks, or any `gh`-shell-out path — the user is responsible for setting up the public GitHub repo themselves.
 - `metadata.repository` is written only when `--modable` is explicitly opted in.
-- When `--modable` needs a repository, deploy either pushes to existing `origin` or creates a public repo with `gh repo create --public --push`; failed pushes must fail the deploy.
 
 ## Sentry Telemetry
 

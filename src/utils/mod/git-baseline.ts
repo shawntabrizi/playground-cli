@@ -3,13 +3,19 @@ import { commandExists } from "../toolchain.js";
 
 type Log = (line: string) => void;
 
-function shellQuote(value: string): string {
-    return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
+/**
+ * Initialise an empty git history in the freshly-extracted mod tree so the
+ * user can start tracking changes immediately. We deliberately do NOT create
+ * a baseline commit — that would require `user.name`/`user.email` to be
+ * configured globally, and the user is going to commit + push to their own
+ * GitHub repo anyway as part of the `dot deploy --modable` workflow.
+ *
+ * `git init` is purely local: no network, no auth, no GitHub credentials.
+ * If `git` is not on PATH we just log and continue — the directory still
+ * works without version control.
+ */
 export async function createOptionalGitBaseline(
     targetDir: string,
-    domain: string,
     log: Log,
     logFile?: string,
 ): Promise<void> {
@@ -21,13 +27,6 @@ export async function createOptionalGitBaseline(
 
         log("initializing fresh git history…");
         await runCommand("git init", { cwd: targetDir, log, logFile });
-        await runCommand("git add -A", { cwd: targetDir, log, logFile });
-
-        log("creating unsigned baseline commit…");
-        await runCommand(
-            `git commit --no-gpg-sign -m ${shellQuote(`Initial commit from ${domain}`)}`,
-            { cwd: targetDir, log, logFile },
-        );
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         log(`git baseline skipped: ${message}`);

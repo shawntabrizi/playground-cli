@@ -1,5 +1,5 @@
 /**
- * Git and GitHub CLI utilities.
+ * Git utilities.
  */
 
 import { exec } from "node:child_process";

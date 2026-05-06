@@ -44,15 +44,7 @@ import type { ResolvedSigner } from "../../utils/signer.js";
 import type { ContractsType } from "../../utils/build/detect.js";
 import { DEFAULT_BUILD_DIR } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
-import {
-    ensureGitInstalled,
-    ensureGhInstalled,
-    ensureGhAuthed,
-    readOrigin,
-    resolveRepositoryUrl,
-} from "../../utils/deploy/modable.js";
-import { basename } from "node:path";
-import { validateRepoName } from "../../utils/git/repoName.js";
+import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/modable.js";
 
 export interface DeployScreenInputs {
     projectDir: string;
@@ -69,8 +61,6 @@ export interface DeployScreenInputs {
     deployContracts: boolean | null;
     /** Pre-set modable from `--modable` / `--no-modable`. null = ask. */
     modable: boolean | null;
-    /** Pre-set repo name from `--repo-name`. null = use cwd basename / prompt when needed. */
-    repoName: string | null;
     userSigner: ResolvedSigner | null;
     onDone: (outcome: DeployOutcome | null) => void;
 }
@@ -84,6 +74,7 @@ export type Stage =
     | { kind: "prompt-publish" }
     | { kind: "prompt-modable" }
     | { kind: "modable-preflight" }
+    | { kind: "modable-error"; message: string }
     | { kind: "prompt-contracts" }
     | { kind: "confirm" }
     | { kind: "running" }
@@ -112,7 +103,6 @@ export function DeployScreen({
     contractsType,
     deployContracts: initialDeployContracts,
     modable: initialModable,
-    repoName: initialRepoName,
     userSigner,
     onDone,
 }: DeployScreenInputs) {
@@ -345,8 +335,6 @@ export function DeployScreen({
                     onSelect={(yes) => {
                         setModable(yes);
                         if (yes) {
-                            // ModablePreflightStage probes origin internally
-                            // and only asks for a repo name when one is needed.
                             setStage({ kind: "modable-preflight" });
                         } else {
                             advance(
@@ -366,7 +354,6 @@ export function DeployScreen({
             {stage.kind === "modable-preflight" && (
                 <ModablePreflightStage
                     projectDir={projectDir}
-                    repoName={initialRepoName}
                     onResolved={(url) => {
                         setRepositoryUrl(url);
                         advance(
@@ -381,9 +368,13 @@ export function DeployScreen({
                         );
                     }}
                     onError={(msg) => {
-                        setStage({ kind: "error", message: msg });
+                        setStage({ kind: "modable-error", message: msg });
                     }}
                 />
+            )}
+
+            {stage.kind === "modable-error" && (
+                <ModableErrorStage message={stage.message} onExit={() => onDone(null)} />
             )}
 
             {stage.kind === "prompt-contracts" && contractsType !== null && (
@@ -508,22 +499,15 @@ export function pickNextStage(
 
 function ModablePreflightStage({
     projectDir,
-    repoName: initialRepoName,
     onResolved,
     onError,
 }: {
     projectDir: string;
-    repoName: string | null;
     onResolved: (url: string) => void;
     onError: (message: string) => void;
 }) {
-    type Phase = "preparing" | "needs-repo-name" | "resolving";
-    const [phase, setPhase] = useState<Phase>("preparing");
     const [status, setStatus] = useState<string>("checking git…");
 
-    // Existing origins do not need gh auth. Only the no-origin branch checks
-    // gh before asking for a repo name, because that path has to create and
-    // push a new public GitHub repo.
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -532,72 +516,52 @@ function ModablePreflightStage({
                 await ensureGitInstalled();
                 if (cancelled) return;
 
-                // Decide whether to prompt for a repo name. We prompt only
-                // when origin doesn't already point somewhere AND the caller
-                // didn't pre-supply one via --repo-name.
-                const origin = readOrigin(projectDir);
-                if (origin === null) {
-                    setStatus("ensuring gh is installed…");
-                    await ensureGhInstalled();
-                    if (cancelled) return;
-
-                    setStatus("checking gh authentication…");
-                    await ensureGhAuthed();
-                    if (cancelled) return;
-
-                    if (initialRepoName === null) {
-                        setPhase("needs-repo-name");
-                        return;
-                    }
-                }
-                runResolve(initialRepoName);
+                setStatus("resolving repository…");
+                const url = await resolveRepositoryUrl({
+                    cwd: projectDir,
+                    onLog: (line) => {
+                        if (!cancelled) setStatus(line);
+                    },
+                });
+                if (cancelled) return;
+                onResolved(url);
             } catch (err) {
                 if (cancelled) return;
-                const msg = err instanceof Error ? err.message : String(err);
-                onError(msg);
+                onError(err instanceof Error ? err.message : String(err));
             }
         })();
         return () => {
             cancelled = true;
         };
-        // `runResolve` is called from the initial effect and from the repo-name
-        // prompt, so keep it outside the dependency list to avoid replaying the
-        // preflight when the component re-renders.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectDir, initialRepoName]);
-
-    function runResolve(repoName: string | null) {
-        setPhase("resolving");
-        setStatus("resolving repository…");
-        resolveRepositoryUrl({
-            cwd: projectDir,
-            repoName,
-            onLog: (line) => setStatus(line),
-        })
-            .then((url) => onResolved(url))
-            .catch((err) => onError(err instanceof Error ? err.message : String(err)));
-    }
-
-    if (phase === "needs-repo-name") {
-        return (
-            <Box flexDirection="column">
-                <Section>
-                    <Row mark="ok" label="git + gh ready" tone="muted" />
-                </Section>
-                <Input
-                    label="github repo name"
-                    initial={basename(projectDir)}
-                    validate={validateRepoName}
-                    onSubmit={(name) => runResolve(name)}
-                />
-            </Box>
-        );
-    }
+    }, [projectDir]);
 
     return (
         <Section>
             <Row mark="run" label={status} tone="muted" />
         </Section>
+    );
+}
+
+/**
+ * Formal warning stage shown when the modable preflight cannot proceed —
+ * almost always because the user hasn't set up a public GitHub `origin` yet.
+ * Renders the actionable error inside a yellow Callout (matching the
+ * "check your phone" banner) so it visually registers as a setup requirement
+ * rather than a deploy crash. Pressing Enter or Esc exits the deploy.
+ */
+function ModableErrorStage({ message, onExit }: { message: string; onExit: () => void }) {
+    useInput((_input, key) => {
+        if (key.return || key.escape) onExit();
+    });
+    return (
+        <Box flexDirection="column">
+            <Callout tone="warning" title="modable setup needed">
+                <Text>{message}</Text>
+            </Callout>
+            <Box marginTop={1}>
+                <Hint>{"enter or esc to exit"}</Hint>
+            </Box>
+        </Box>
     );
 }
 
