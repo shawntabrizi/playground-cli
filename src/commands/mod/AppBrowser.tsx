@@ -31,7 +31,11 @@ export function AppBrowser({ registry, onSelect, onCancel, modableOnly }: Props)
     const [fetching, setFetching] = useState(true);
     // Offset (in reverse-chronological order) of the next page to request.
     // Contract's `getApps(start, count)` treats `start` as a REVERSE offset —
-    // `start=0` returns the newest batch, `start=BATCH` the next page, etc.
+    // `start=0` returns the newest batch, and the next page resumes at
+    // `start + scanned` (NOT `start + count`). With visibility filtering the
+    // contract may walk more storage slots than it returns entries for —
+    // `scanned` is how far it advanced; using `count` would re-scan the
+    // already-walked region and yield duplicates / never reach the end.
     // `null` = no more pages.
     const nextStart = useRef<number | null>(0);
 
@@ -49,11 +53,17 @@ export function AppBrowser({ registry, onSelect, onCancel, modableOnly }: Props)
                 owner: string;
             }>;
             const totalFromResp = res.value.total as number;
+            const scannedFromResp = res.value.scanned as number;
             // Always set — React bails on same-value updates.
             setTotal(totalFromResp);
 
-            // Contract returns newest-first; preserve that order for display.
-            nextStart.current = start + BATCH < totalFromResp ? start + BATCH : null;
+            // Resume from where the contract stopped scanning, not where it
+            // would have stopped if it returned a full BATCH. Defensive guard
+            // on `scanned > 0` so a misbehaving contract can't trap us in an
+            // infinite re-fetch loop.
+            const nextOffset = start + scannedFromResp;
+            nextStart.current =
+                scannedFromResp > 0 && nextOffset < totalFromResp ? nextOffset : null;
 
             const entries: AppEntry[] = rawEntries.map((e) => ({
                 domain: e.domain,
