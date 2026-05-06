@@ -66,8 +66,15 @@ export async function dotWithSuri(
 // ── Internal ────────────────────────────────────────────────────────────────
 
 async function run(args: string[], options?: DotOptions): Promise<DotResult> {
+	const dotTag = process.env.DOT_TAG ?? "e2e-local";
 	const env: Record<string, string> = {
-		DOT_TAG: process.env.DOT_TAG ?? "e2e-local",
+		DOT_TAG: dotTag,
+		// Forward a bulletin-deploy telemetry tag so deploy-pipeline spans are
+		// tagged as playground-CLI E2E traffic (e2e-cli-*) rather than real-user
+		// traffic. The e2e-cli- prefix distinguishes us from bulletin-deploy's own
+		// E2E suite, which uses bare e2e-* tags. Respect any explicit DEPLOY_TAG
+		// override (e.g. e2e-ci-post-release set by the post-release workflow).
+		DEPLOY_TAG: process.env.DEPLOY_TAG ?? "e2e-cli-" + dotTag.replace(/^e2e-/, ""),
 		DOT_TELEMETRY: process.env.DOT_TELEMETRY ?? "1",
 		...options?.env,
 	};
