@@ -43,10 +43,7 @@ export interface StorageDeployOptions {
     onLogEvent?: (event: DeployLogEvent) => void;
     /** Target environment — currently only `testnet` is supported. */
     env?: Env;
-    /**
-     * Extra telemetry attributes merged into bulletin-deploy's deploy span.
-     * Defaults to `{ "deploy.source": "playground-cli" }`.
-     */
+    /** Extra telemetry attributes merged into bulletin-deploy's deploy span. */
     attributes?: Record<string, string>;
 }
 
@@ -76,10 +73,7 @@ export async function runStorageDeploy(options: StorageDeployOptions): Promise<D
             // WebContainer-safe path for metadata upload.
             rpc: cfg.bulletinRpc,
             ...options.auth,
-            attributes: {
-                "deploy.source": "playground-cli",
-                ...options.attributes,
-            },
+            attributes: options.attributes,
         });
     } finally {
         restore();
