@@ -6,7 +6,7 @@
  */
 
 import { execa as execaFn } from "execa";
-import { appendFileSync, existsSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../../");
@@ -99,12 +99,9 @@ async function run(args: string[], options?: DotOptions): Promise<DotResult> {
 }
 
 function appendForensicLog(args: string[], result: DotResult, durationMs: number): void {
-	// Best-effort: only write if e2e-reports/ exists. Don't create the dir
-	// eagerly — tests that don't care about forensic capture shouldn't get
-	// a stray dir in their cwd.
 	const reportsDir = resolve(REPO_ROOT, "e2e-reports");
-	if (!existsSync(reportsDir)) return;
 	try {
+		mkdirSync(reportsDir, { recursive: true });
 		const entry = [
 			`# ${new Date().toISOString()}  exit=${result.exitCode}  durationMs=${durationMs}`,
 			`# args: ${args.map((a) => (/\s/.test(a) ? `'${a}'` : a)).join(" ")}`,

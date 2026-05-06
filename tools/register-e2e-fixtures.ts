@@ -13,7 +13,7 @@
  *
  * Usage:
  *   bun tools/register-e2e-fixtures.ts                        # register all 5
- *   bun tools/register-e2e-fixtures.ts --domain e2e-cli-foundry   # one only
+ *   bun tools/register-e2e-fixtures.ts --domain e2efnd00      # one only
  *   bun tools/register-e2e-fixtures.ts --suri //Alice         # custom signer
  *
  * Auto-tops-up SIGNER from the CLI's funder chain if balance is too low to
@@ -48,22 +48,22 @@ const FIXTURES: readonly Fixture[] = [
 		purpose: "dot mod E2E fixture (clones into a fresh repo)",
 	},
 	{
-		domain: "e2e-cli-foundry",
+		domain: "e2efnd00",
 		repositoryUrl: null,
 		purpose: "pr-deploy-foundry cell",
 	},
 	{
-		domain: "e2e-cli-cdm",
+		domain: "e2ecdm00",
 		repositoryUrl: null,
 		purpose: "pr-deploy-cdm cell",
 	},
 	{
-		domain: "e2e-cli-hardhat",
+		domain: "e2ehat00",
 		repositoryUrl: null,
 		purpose: "nightly-deploy-hardhat cell",
 	},
 	{
-		domain: "e2e-cli-multi",
+		domain: "e2emul00",
 		repositoryUrl: null,
 		purpose: "nightly-deploy-multi cell",
 	},

@@ -7,7 +7,7 @@ settings:
 overrides:
   '@parity/dotns-cli>@polkadot-api/descriptors': file:./stubs/papi-descriptors-stub
 
-packageExtensionsChecksum: sha256-oMEmOn6/gh31fPcPAoVQ/IzD+qg89O0LjR6VDPc8YnE=
+packageExtensionsChecksum: sha256-ljSj9zGzknhHBNQiEaDbi0E0TTdSTDaOShPcycvMRhk=
 
 importers:
 
@@ -17,8 +17,8 @@ importers:
         specifier: latest
         version: 1.0.1(@novasamatech/host-api@0.6.17)(@polkadot-api/ink-contracts@0.6.1)(postcss@8.5.10)(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)
       '@parity/dotns-cli':
-        specifier: 0.5.6
-        version: 0.5.6(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)
+        specifier: 0.6.0
+        version: 0.6.0(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)
       '@polkadot-api/sdk-ink':
         specifier: ^0.6.2
         version: 0.6.2(@polkadot-api/ink-contracts@0.6.1)(polkadot-api@1.23.3(postcss@8.5.10)(rxjs@7.8.2)(yaml@2.8.3))(rxjs@7.8.2)(typescript@5.9.3)
@@ -56,8 +56,8 @@ importers:
         specifier: ^9.47.1
         version: 9.47.1
       bulletin-deploy:
-        specifier: 0.7.6
-        version: 0.7.6(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)
+        specifier: 0.7.10
+        version: 0.7.10(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -1140,8 +1140,8 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.1.0
 
-  '@parity/dotns-cli@0.5.6':
-    resolution: {integrity: sha512-8NAlJCVIxXPg7sPSnb67bhB1H4TzHccvQGPzBSeBEB34Mw+EzecdS2gi+nj3tsGLeE2xN4NIkb70wjO3IjSAqQ==}
+  '@parity/dotns-cli@0.6.0':
+    resolution: {integrity: sha512-DSsE6m15QvuXUOc48CbeR5wwadN2U82qklf/VJavclvvs/tvDrax3WngiJJ/cJiEIaobiBfQAUKA0+J8bsL1HA==}
     engines: {bun: '>=1.2.6'}
     hasBin: true
 
@@ -2131,8 +2131,8 @@ packages:
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
 
-  bulletin-deploy@0.7.6:
-    resolution: {integrity: sha512-rVJnPTjMya26oqkUO/KScsOC5ZlYKtkE3SDP3VE9t/s66Sydm2ODtvzVoQzB6acpB07sFBC2fvP2sUakbG/c4A==}
+  bulletin-deploy@0.7.10:
+    resolution: {integrity: sha512-ojh8hp2GmlyoStrCIbjozrtnEX2WVAvjfl92VYly9NHwHh2DsMYfmmw2FYm/bq5DmwNUASmRresCjX+sTk3Cgw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -6223,7 +6223,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
 
-  '@parity/dotns-cli@0.5.6(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)':
+  '@parity/dotns-cli@0.6.0(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)':
     dependencies:
       '@chainsafe/libp2p-noise': 17.0.0
       '@chainsafe/libp2p-yamux': 8.0.1
@@ -7028,7 +7028,7 @@ snapshots:
 
   '@polkadot/util-crypto@13.5.9(@polkadot/util@13.5.9)':
     dependencies:
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@polkadot/networks': 13.5.9
       '@polkadot/util': 13.5.9
@@ -7776,12 +7776,12 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bulletin-deploy@0.7.6(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3):
+  bulletin-deploy@0.7.10(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3):
     dependencies:
       '@ipld/car': 5.4.3
       '@ipld/dag-pb': 4.1.5
       '@noble/hashes': 1.8.0
-      '@parity/dotns-cli': 0.5.6(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)
+      '@parity/dotns-cli': 0.6.0(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)
       '@polkadot-api/substrate-bindings': 0.16.6
       '@polkadot-labs/hdkd': 0.0.25
       '@polkadot-labs/hdkd-helpers': 0.0.26

@@ -94,22 +94,40 @@ jobs:
             max-parallel: 1                  # serial — share SIGNER + registry domains
             matrix:
                 include:
+                    - cell: pr-deploy-cdm
+                      # source: e2e/cli/deploy.test.ts → describe("dot deploy — cdm …")
+                      pattern: "deploy — cdm"
                     - cell: pr-deploy-frontend
                       # source: e2e/cli/deploy.test.ts → describe("dot deploy --playground — full pipeline …")
                       pattern: "full pipeline"
                     - cell: pr-deploy-foundry
                       # source: e2e/cli/deploy.test.ts → describe("dot deploy — foundry …")
                       pattern: "deploy — foundry"
-                    # pr-deploy-cdm dropped pending fixture upgrade — see the
-                    # describe.skip block in e2e/cli/deploy.test.ts. Phase 5
-                    # follow-up will land a real flipper fixture and re-add
-                    # this cell.
         steps:
             # checkout must run before the local composite action can be loaded.
             - uses: actions/checkout@v4
 
             - id: setup
               uses: ./.github/actions/setup-e2e
+
+            - name: Install Rust/CDM toolchain
+              if: matrix.cell == 'pr-deploy-cdm'
+              shell: bash
+              run: |
+                  sudo apt-get update -q
+                  sudo apt-get install -y -q --no-install-recommends build-essential pkg-config
+                  if ! command -v rustup >/dev/null 2>&1; then
+                    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+                    echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+                    source "$HOME/.cargo/env"
+                  fi
+                  rustup toolchain install nightly --profile minimal --component rust-src
+                  rustup default nightly
+                  curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | bash
+                  echo "$HOME/.cdm/bin" >> "$GITHUB_PATH"
+                  export PATH="$HOME/.cdm/bin:$PATH"
+                  command -v cdm
+                  cargo pvm-contract --help
 
             - name: Run E2E cell (one retry on transient testnet failures)
               uses: nick-fields/retry@v3

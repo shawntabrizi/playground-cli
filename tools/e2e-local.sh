@@ -24,9 +24,32 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Keep pnpm's managed CLI cache outside the isolated test HOME. pnpm 10 uses
+# packageManager self-switching and stores shims under PNPM_HOME; if HOME is
+# replaced first, local runs can fail before Vitest starts.
+if [ -z "${PNPM_HOME:-}" ]; then
+    case "$(uname -s)" in
+        Darwin)
+            export PNPM_HOME="$HOME/Library/pnpm"
+            ;;
+        Linux)
+            export PNPM_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/pnpm"
+            ;;
+    esac
+fi
+export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+
 if ! command -v ipfs >/dev/null 2>&1; then
     echo "warning: ipfs (kubo) not found on PATH — deploy-pipeline tests that publish to Bulletin will fail." >&2
     echo "         install with: brew install ipfs   (macOS), or follow https://docs.ipfs.tech/install/" >&2
+    echo "" >&2
+fi
+
+if ! cargo pvm-contract help >/dev/null 2>&1; then
+    echo "warning: cargo-pvm-contract not found — CDM contract tests will be skipped." >&2
+    echo "         install with: rustup toolchain install nightly --component rust-src && rustup default nightly" >&2
+    echo "                       cargo install cargo-pvm-contract --git https://github.com/paritytech/cargo-pvm-contract --branch charles/cdm-integration --locked" >&2
     echo "" >&2
 fi
 
@@ -37,6 +60,10 @@ _MODE="${1:-smoke}"
 case "$_MODE" in
 	smoke|pr|nightly)
 		export DOT_TAG="${DOT_TAG:-e2e-local-${_MODE}}"
+		shift
+		;;
+	--)
+		export DOT_TAG="${DOT_TAG:-e2e-local-smoke}"
 		shift
 		;;
 	*)

@@ -197,7 +197,7 @@ pnpm format:check  # check only
 
 - `@polkadot-apps/*` are pinned to `latest` intentionally — they are our own packages and we want the lockfile to track head.
 - `@polkadot-api/sdk-ink` is pinned to `^0.6.2` and `polkadot-api` to `^1.23.3` because `chain-client` currently embeds an internal `PolkadotClient` shape that breaks with newer versions. Bump together with `chain-client` only.
-- `bulletin-deploy` is pinned to an explicit version — not `latest`. Currently `0.7.6`. Previously `latest` pointed at 0.6.8 which had a WebSocket heartbeat bug (40s default < 60s chunk timeout) that tore chunk uploads down as `WS halt (3)`; keeping the pin explicit avoids ever sliding back onto that. When bumping, check the release notes for any changes to `deploy()` / `DotNS` APIs we rely on.
+- `bulletin-deploy` is pinned to an explicit version — not `latest`. Currently `0.7.10`. Previously `latest` pointed at 0.6.8 which had a WebSocket heartbeat bug (40s default < 60s chunk timeout) that tore chunk uploads down as `WS halt (3)`; keeping the pin explicit avoids ever sliding back onto that. When bumping, check the release notes for any changes to `deploy()` / `DotNS` APIs we rely on.
 
 ## Architecture Highlights
 
