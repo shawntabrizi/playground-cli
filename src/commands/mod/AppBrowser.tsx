@@ -3,14 +3,14 @@ import { Box, Text, useInput, useStdout } from "ink";
 import { getGateway, fetchJson } from "@polkadot-apps/bulletin";
 import { Mark, Hint, COLOR } from "../../utils/ui/theme/index.js";
 
-import { filterModable, type AppEntry } from "./browserFilter.js";
+import { filterModdable, type AppEntry } from "./browserFilter.js";
 export type { AppEntry };
 
 interface Props {
     registry: any;
     onSelect: (app: AppEntry) => void;
     onCancel?: () => void;
-    modableOnly?: boolean;
+    moddableOnly?: boolean;
 }
 
 const BATCH = 10;
@@ -20,7 +20,7 @@ function pad(s: string, w: number): string {
     return s.length > w ? s.slice(0, w - 1) + "…" : s.padEnd(w);
 }
 
-export function AppBrowser({ registry, onSelect, onCancel, modableOnly }: Props) {
+export function AppBrowser({ registry, onSelect, onCancel, moddableOnly }: Props) {
     const { stdout } = useStdout();
     const viewH = Math.max((stdout?.rows ?? 24) - 6, 5);
 
@@ -115,7 +115,7 @@ export function AppBrowser({ registry, onSelect, onCancel, modableOnly }: Props)
         loadBatch(0);
     }, [loadBatch]);
 
-    const filtered = filterModable(apps, Boolean(modableOnly));
+    const filtered = filterModdable(apps, Boolean(moddableOnly));
 
     useEffect(() => {
         if (cursor >= filtered.length - 3 && nextStart.current !== null && !fetching) {
@@ -181,13 +181,13 @@ export function AppBrowser({ registry, onSelect, onCancel, modableOnly }: Props)
             )}
             {!fetching && filtered.length === 0 && nextStart.current === null && (
                 <Box marginTop={1}>
-                    <Text dimColor>No modable apps in the registry yet.</Text>
+                    <Text dimColor>No moddable apps in the registry yet.</Text>
                 </Box>
             )}
             <Box marginTop={fetching ? 0 : 1}>
                 <Hint>{`↑↓ navigate  ·  ⏎ select  ·  q quit  ·  ${
-                    modableOnly
-                        ? `(${filtered.length} modable, ${apps.length}/${total} scanned)`
+                    moddableOnly
+                        ? `(${filtered.length} moddable, ${apps.length}/${total} scanned)`
                         : `(${apps.length}/${total})`
                 }`}</Hint>
             </Box>

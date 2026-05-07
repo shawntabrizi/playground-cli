@@ -5,7 +5,7 @@
  * (`data.jsdelivr.com/v1/packages/gh/<owner>/<repo>/resolved`) instead of the
  * GitHub releases API — jsDelivr is rate-limit-effectively-unlimited for our
  * scale and isn't shared with the GitHub anonymous-IP quota that `dot mod`
- * and `dot deploy --modable` already chip away at on hackathon WiFi.
+ * and `dot deploy --moddable` already chip away at on hackathon WiFi.
  *
  * No on-disk cache: the call is fire-and-forget on command start with a 1 s
  * `AbortSignal.timeout`, so an unreachable jsDelivr cannot delay exit.

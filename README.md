@@ -59,11 +59,11 @@ Flags:
 - `--no-contract-build` — skip the contract compile step (`forge build --resolc`, `cargo-contract build`, `npx hardhat compile`) and deploy pre-built artifacts. Requires `--contracts` and headless mode (i.e. all of `--signer`, `--domain`, `--buildDir`, `--playground`).
 - `--playground` — publish to the playground registry so the app appears under "my apps". Interactive prompt (default: no) if omitted.
 - `--private` — publish to the playground with private (owner-only) visibility. Requires `--playground`. Not interactively prompted; pass the flag to opt in.
-- `--modable` / `--no-modable` — publish the source repo URL alongside the deploy so others can `dot mod` it. Requires `--playground`. Interactive prompt (default: no) if omitted. The CLI reads your existing `origin` and records its URL in the Bulletin metadata; it never creates a repo or pushes for you. The deploy fails with an actionable message if `origin` is unset, points to a private repo, or points to anything other than GitHub (since `dot mod` only fetches from `codeload.github.com`). Set up the repo yourself before re-running: create a public repo on GitHub, then `git remote add origin https://github.com/<user>/<repo>` followed by `git push -u origin main`. (If you happen to have `gh` installed, `gh repo create my-app --public --source=. --push` does both in one shot — `dot` does not require `gh`.)
+- `--moddable` / `--no-moddable` — publish the source repo URL alongside the deploy so others can `dot mod` it. Requires `--playground`. Interactive prompt (default: no) if omitted. The CLI reads your existing `origin` and records its URL in the Bulletin metadata; it never creates a repo or pushes for you. The deploy fails with an actionable message if `origin` is unset, points to a private repo, or points to anything other than GitHub (since `dot mod` only fetches from `codeload.github.com`). Set up the repo yourself before re-running: create a public repo on GitHub, then `git remote add origin https://github.com/<user>/<repo>` followed by `git push -u origin main`. (If you happen to have `gh` installed, `gh repo create my-app --public --source=. --push` does both in one shot — `dot` does not require `gh`.)
 - `--suri <suri>` — override signer with a dev secret URI (e.g. `//Alice`). Useful for CI.
 - `--env <env>` — `testnet` (default) or `mainnet` (not yet supported).
 
-Passing all four of `--signer`, `--domain`, `--buildDir`, and `--playground` runs in fully non-interactive mode. Any absent flag is filled in by the TUI prompt. `--modable`, `--private`, and `--contracts` are independently optional in both modes — their absence means a non-modable, public, frontend-only deploy.
+Passing all four of `--signer`, `--domain`, `--buildDir`, and `--playground` runs in fully non-interactive mode. Any absent flag is filled in by the TUI prompt. `--moddable`, `--private`, and `--contracts` are independently optional in both modes — their absence means a non-moddable, public, frontend-only deploy.
 
 **Requirement**: the `ipfs` CLI (Kubo) must be on `PATH`. `dot init` installs it; if you skipped init you can install it manually (`brew install ipfs` or follow [docs.ipfs.tech/install](https://docs.ipfs.tech/install/)). This is a temporary requirement while `bulletin-deploy`'s pure-JS merkleizer has a bug that makes the browser fallback unusable.
 
@@ -76,18 +76,18 @@ For fully non-interactive (CI) runs, combine `--signer`, `--domain`, `--buildDir
 - `--suri //Alice` — required with `--signer dev` so the dev signer has a known keypair (works with any dev name or full BIP-39 mnemonic).
 - `--no-build` — reuse pre-built frontend assets in `--buildDir`.
 - `--contracts` + `--no-contract-build` — reuse pre-built contract artefacts in `out/` / `target/<crate>.release.polkavm` / `artifacts/contracts/` (skips `forge build --resolc`, `cargo-contract build`, or `npx hardhat compile`).
-- `--no-modable` — explicitly skip source publishing even if `--modable` would otherwise apply.
+- `--no-moddable` — explicitly skip source publishing even if `--moddable` would otherwise apply.
 - `--private` — publish to the playground with owner-only visibility.
 
 ### `dot mod`
 
-Pull a modable playground app's source into a fresh local project so you can customise and re-deploy it. The interactive picker only shows apps that opted into modable at deploy time; non-modable apps surface a clear "this app is not modable" error if you target them by domain.
+Pull a moddable playground app's source into a fresh local project so you can customise and re-deploy it. The interactive picker only shows apps that opted into moddable at deploy time; non-moddable apps surface a clear "this app is not moddable" error if you target them by domain.
 
 The implementation is GitHub-only and **requires no CLI tooling** — neither `git` nor `gh` is needed. Source is downloaded as a tarball over HTTPS from `codeload.github.com` (no auth needed for public repos), extracted into the target dir, then `git init`'d as a fresh empty history *if* `git` happens to be on `PATH`. No baseline commit is created, so you can stage and commit your first revision however you like. With `git` absent, the directory still works — you just don't get version control until you install git yourself.
 
 Flags:
 
-- `[domain]` — positional; interactive picker over the registry if omitted. `.dot` suffix optional. The picker is filtered to modable apps only.
+- `[domain]` — positional; interactive picker over the registry if omitted. `.dot` suffix optional. The picker is filtered to moddable apps only.
 - `--suri <suri>` — dev signer secret URI (e.g. `//Alice`).
 
 The local directory name is auto-generated as `<slug>-<6 hex chars>` so repeated mods of the same starter never collide (unlike GitHub forks, which were limited to one per account per repo).

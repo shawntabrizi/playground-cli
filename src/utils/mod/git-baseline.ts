@@ -8,7 +8,7 @@ type Log = (line: string) => void;
  * user can start tracking changes immediately. We deliberately do NOT create
  * a baseline commit — that would require `user.name`/`user.email` to be
  * configured globally, and the user is going to commit + push to their own
- * GitHub repo anyway as part of the `dot deploy --modable` workflow.
+ * GitHub repo anyway as part of the `dot deploy --moddable` workflow.
  *
  * `git init` is purely local: no network, no auth, no GitHub credentials.
  * If `git` is not on PATH we just log and continue — the directory still

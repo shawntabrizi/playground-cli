@@ -26,7 +26,7 @@ import { loadDetectInput } from "../../utils/build/runner.js";
 import { readSessionAccount, SESSION_MIN_BALANCE } from "../../utils/deploy/session-account.js";
 import { checkBalance } from "../../utils/account/funding.js";
 import { DEFAULT_BUILD_DIR, type Env } from "../../config.js";
-import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/modable.js";
+import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
 
 interface DeployOpts {
     suri?: string;
@@ -51,8 +51,8 @@ interface DeployOpts {
     contractBuild?: boolean;
     /** Deploy the project's contracts alongside the frontend. Defaults to false. */
     contracts?: boolean;
-    /** Publish the source repo so others can `dot mod` it. Commander auto-negates: `--no-modable` ⇒ false. */
-    modable?: boolean;
+    /** Publish the source repo so others can `dot mod` it. Commander auto-negates: `--no-moddable` ⇒ false. */
+    moddable?: boolean;
     env?: Env;
     /** Project root. Hidden — defaults to cwd. */
     dir?: string;
@@ -83,10 +83,10 @@ export const deployCommand = new Command("deploy")
         "Publish to the playground with private visibility (owner-only). Requires --playground.",
     )
     .option(
-        "--modable",
+        "--moddable",
         "Publish the source repo so others can `dot mod` it. Requires --playground and a public GitHub `origin`.",
     )
-    .option("--no-modable", "Explicitly skip publishing source (the default).")
+    .option("--no-moddable", "Explicitly skip publishing source (the default).")
     .option("--suri <suri>", "Secret URI for the user signer (e.g. //Alice for dev)")
     .addOption(
         new Option("--env <env>", "Target environment")
@@ -311,18 +311,18 @@ async function runHeadless(ctx: {
     }
     process.stdout.write(`✔ ${formatAvailability(availability)}\n`);
 
-    const modable = ctx.opts.modable === true;
+    const moddable = ctx.opts.moddable === true;
 
     let repositoryUrl: string | null = null;
-    if (modable) {
+    if (moddable) {
         if (!publishToPlayground) {
             throw new Error(
-                "--modable requires --playground (no metadata is published without it).",
+                "--moddable requires --playground (no metadata is published without it).",
             );
         }
         repositoryUrl = await withSpan(
-            "cli.deploy.modable",
-            "prepare modable repository",
+            "cli.deploy.moddable",
+            "prepare moddable repository",
             async () => {
                 await ensureGitInstalled();
                 return resolveRepositoryUrl({
@@ -357,7 +357,7 @@ async function runHeadless(ctx: {
         buildDir,
         skipBuild,
         publishToPlayground,
-        modable,
+        moddable,
         repositoryUrl,
         approvals: setup.approvals,
     });
@@ -369,7 +369,7 @@ async function runHeadless(ctx: {
         {
             "cli.deploy.mode": mode,
             "cli.deploy.playground": publishToPlayground ? "true" : "false",
-            "cli.deploy.modable": modable ? "true" : "false",
+            "cli.deploy.moddable": moddable ? "true" : "false",
             "cli.deploy.contracts": deployContracts ? "true" : "false",
         },
         () =>
@@ -381,7 +381,7 @@ async function runHeadless(ctx: {
                 mode,
                 publishToPlayground,
                 playgroundPrivate: Boolean(ctx.opts.private),
-                modable,
+                moddable,
                 repositoryUrl,
                 deployContracts,
                 skipContractBuild,
@@ -450,8 +450,8 @@ function runInteractive(ctx: {
                 skipBuild: ctx.opts.build === false ? true : null,
                 contractsType,
                 deployContracts: ctx.opts.contracts !== undefined ? ctx.opts.contracts : null,
-                modable:
-                    ctx.opts.modable === true ? true : ctx.opts.modable === false ? false : null,
+                moddable:
+                    ctx.opts.moddable === true ? true : ctx.opts.moddable === false ? false : null,
                 userSigner: ctx.userSigner,
                 onDone: (outcome: DeployOutcome | null) => {
                     if (settled) return;

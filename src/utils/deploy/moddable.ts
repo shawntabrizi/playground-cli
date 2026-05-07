@@ -1,5 +1,5 @@
 /**
- * `dot deploy --modable` preflight: resolves the public GitHub URL we'll
+ * `dot deploy --moddable` preflight: resolves the public GitHub URL we'll
  * record in the Bulletin metadata.
  *
  * The contract is intentionally narrow: the user is responsible for setting
@@ -13,12 +13,12 @@ import { execFileSync } from "node:child_process";
 import { commandExists, TOOL_STEPS } from "../toolchain.js";
 import { parseGitHubRepoUrl } from "../mod/source.js";
 
-export class ModablePreflightError extends Error {}
+export class ModdablePreflightError extends Error {}
 
 export async function ensureGitInstalled(onLog?: (line: string) => void): Promise<void> {
     if (await commandExists("git")) return;
     const step = TOOL_STEPS.find((s) => s.name === "git");
-    if (!step) throw new ModablePreflightError("internal: git step missing from TOOL_STEPS");
+    if (!step) throw new ModdablePreflightError("internal: git step missing from TOOL_STEPS");
     await step.install(onLog);
 }
 
@@ -42,17 +42,17 @@ export interface ResolveRepoOptions {
 }
 
 const NO_ORIGIN_MESSAGE =
-    "--modable: no GitHub origin configured. Create a public GitHub repository, " +
+    "--moddable: no GitHub origin configured. Create a public GitHub repository, " +
     "commit and push your code, set it as `origin` (e.g. `git remote add origin " +
     "https://github.com/<user>/<repo>` followed by `git push -u origin main`), " +
-    "and re-run. Pass --no-modable to skip publishing source.";
+    "and re-run. Pass --no-moddable to skip publishing source.";
 
 /**
  * Verifies that a repository URL is a publicly accessible GitHub repo.
  *
  * - Non-GitHub URLs (GitLab, Bitbucket, self-hosted, anything `parseGitHubRepoUrl`
  *   refuses) hard-fail. `dot mod` only fetches from `codeload.github.com`, so a
- *   non-GitHub URL would publish a "modable" app that nobody can actually mod.
+ *   non-GitHub URL would publish a "moddable" app that nobody can actually mod.
  * - For GitHub URLs we issue a `HEAD https://github.com/{owner}/{repo}` against
  *   the regular HTML page rather than `api.github.com/repos/{owner}/{repo}` —
  *   the HTML surface is NOT subject to the 60/hour anonymous-IP API rate limit
@@ -70,8 +70,8 @@ const NO_ORIGIN_MESSAGE =
 export async function assertPublicGitHubRepo(url: string, f: typeof fetch = fetch): Promise<void> {
     const ref = parseGitHubRepoUrl(url);
     if (!ref) {
-        throw new ModablePreflightError(
-            `modable apps must use a public GitHub repository (got: ${url})`,
+        throw new ModdablePreflightError(
+            `moddable apps must use a public GitHub repository (got: ${url})`,
         );
     }
 
@@ -85,8 +85,8 @@ export async function assertPublicGitHubRepo(url: string, f: typeof fetch = fetc
     if (res.ok) return;
 
     if (res.status === 404) {
-        throw new ModablePreflightError(
-            `${ref.owner}/${ref.repo} is private or does not exist — modable apps must use a public repository`,
+        throw new ModdablePreflightError(
+            `${ref.owner}/${ref.repo} is private or does not exist — moddable apps must use a public repository`,
         );
     }
     // 5xx, 403 anti-abuse, etc. — skip and let the downstream codeload
@@ -96,7 +96,7 @@ export async function assertPublicGitHubRepo(url: string, f: typeof fetch = fetc
 export async function resolveRepositoryUrl(opts: ResolveRepoOptions): Promise<string> {
     const f = opts.fetch ?? fetch;
     const origin = readOrigin(opts.cwd);
-    if (!origin) throw new ModablePreflightError(NO_ORIGIN_MESSAGE);
+    if (!origin) throw new ModdablePreflightError(NO_ORIGIN_MESSAGE);
     const normalised = origin.replace(/\.git$/, "");
     opts.onLog?.(`using existing origin (${normalised})…`);
     await assertPublicGitHubRepo(normalised, f);

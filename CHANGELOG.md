@@ -10,7 +10,7 @@
 
 ### Minor Changes
 
-- 10b2abf: `dot deploy --modable` no longer auto-creates a GitHub repository. The CLI now requires the user to set up a public GitHub `origin` themselves and fails with a clear message if `origin` is unset, points to a private repo, or points to a non-GitHub URL. The `--repo-name` flag is removed, the `gh` CLI dependency is dropped (no longer installed by `dot init`, no longer probed for authentication), and `dot mod` now initialises an empty git history without a baseline commit so users can stage and commit their first revision however they like.
+- 10b2abf: `dot deploy --moddable` no longer auto-creates a GitHub repository. The CLI now requires the user to set up a public GitHub `origin` themselves and fails with a clear message if `origin` is unset, points to a private repo, or points to a non-GitHub URL. The `--repo-name` flag is removed, the `gh` CLI dependency is dropped (no longer installed by `dot init`, no longer probed for authentication), and `dot mod` now initialises an empty git history without a baseline commit so users can stage and commit their first revision however they like.
 
 ## 0.18.2
 
@@ -28,13 +28,13 @@
 
 ### Minor Changes
 
-- 82036ef: Eliminates every remaining `api.github.com` call from the unauthenticated path so `dot mod`, `dot deploy --modable`, and `dot update` no longer contribute to GitHub's 60 req/hour anonymous-IP rate limit. On shared networks (hackathon WiFi, conference NATs) the CLI now works regardless of how many other users are on the same public IP.
+- 82036ef: Eliminates every remaining `api.github.com` call from the unauthenticated path so `dot mod`, `dot deploy --moddable`, and `dot update` no longer contribute to GitHub's 60 req/hour anonymous-IP rate limit. On shared networks (hackathon WiFi, conference NATs) the CLI now works regardless of how many other users are on the same public IP.
 
-  - `dot deploy --modable` writes the deploying branch to metadata as `meta.branch` (read via `git rev-parse --abbrev-ref HEAD`). `dot mod` reads that field and constructs the codeload tarball URL directly, skipping the previous `api.github.com/repos/{o}/{r}` lookup. Old apps without `meta.branch` fall back to `main`.
+  - `dot deploy --moddable` writes the deploying branch to metadata as `meta.branch` (read via `git rev-parse --abbrev-ref HEAD`). `dot mod` reads that field and constructs the codeload tarball URL directly, skipping the previous `api.github.com/repos/{o}/{r}` lookup. Old apps without `meta.branch` fall back to `main`.
   - `assertPublicGitHubRepo` now issues a `HEAD https://github.com/{o}/{r}` against the regular HTML page rather than the API. Same public/private signal (200 vs 404) at zero API quota cost. Anti-abuse limits on the HTML surface are orders of magnitude more generous.
   - `dot update` resolves the latest CLI version through jsDelivr's `/resolved` endpoint instead of `api.github.com/.../releases/latest`. The binary download stays on `github.com/.../releases/download/...` (also non-API).
 
-  The `gh auth token` opportunistic-header utility and the end-of-`dot init` rate-limit advisory banner are removed — both were workarounds for API quota issues that no longer exist on the unauthenticated path. `gh auth login` is still required for the one remaining authenticated call site (`gh repo create --public --push` when a fresh modable repo is created), and `dot init`'s dependency-list row continues to advise it.
+  The `gh auth token` opportunistic-header utility and the end-of-`dot init` rate-limit advisory banner are removed — both were workarounds for API quota issues that no longer exist on the unauthenticated path. `gh auth login` is still required for the one remaining authenticated call site (`gh repo create --public --push` when a fresh moddable repo is created), and `dot init`'s dependency-list row continues to advise it.
 
   `install.sh` is updated to resolve the latest tag through jsDelivr first (with the github.com `releases/latest` redirect probe as fallback) so concurrent first-time installs at a hackathon — every attendee on the same NAT — never touch `api.github.com` at all. The previous `api.github.com/repos/.../releases?per_page=1` fallback is removed entirely.
 
@@ -44,9 +44,9 @@
 
 - eb9760c: Every `dot` invocation now shows a one-line "Update available" banner at the bottom when a newer release exists. The check resolves the latest version through jsDelivr's free public CDN (not GitHub's rate-limited API) with a 1 s timeout, so a flaky network never delays the command. Suppressed in CI / piped output, when running `dot update` itself, and when `DOT_NO_UPDATE_CHECK=1`.
 
-  `dot mod` and `dot deploy --modable` now opportunistically pass an `Authorization: Bearer <token>` header read from `gh auth token` when available — logged-in users get GitHub's per-user 5000/hour quota instead of contributing to the shared 60/hour anonymous-IP quota that gets exhausted quickly on hackathon WiFi. Anonymous users continue to work as before.
+  `dot mod` and `dot deploy --moddable` now opportunistically pass an `Authorization: Bearer <token>` header read from `gh auth token` when available — logged-in users get GitHub's per-user 5000/hour quota instead of contributing to the shared 60/hour anonymous-IP quota that gets exhausted quickly on hackathon WiFi. Anonymous users continue to work as before.
 
-  `dot deploy --modable` now fails with an explicit "GitHub rate limit exceeded — run `gh auth login`" error when the public-repo preflight is denied by the rate limiter, instead of silently passing the check and risking a private repo being published as modable. Ambiguous 403s and transient 5xx responses still skip the check (unchanged).
+  `dot deploy --moddable` now fails with an explicit "GitHub rate limit exceeded — run `gh auth login`" error when the public-repo preflight is denied by the rate limiter, instead of silently passing the check and risking a private repo being published as moddable. Ambiguous 403s and transient 5xx responses still skip the check (unchanged).
 
   `dot init` ends with an explicit advisory banner (visually consistent with the new "Update available" banner) explaining the IP-based GitHub rate limit and recommending `gh auth login`, but only when the user is not currently authed. The single-row dependency-list warning was too terse to convey why this matters on hackathon / shared-network setups.
 
@@ -58,7 +58,7 @@
 
 ### Patch Changes
 
-- 88d78d3: `dot deploy --modable` now rejects private GitHub repositories at preflight with a clear error message instead of silently failing later. `dot mod` also surfaces a more actionable error when it encounters a private or non-existent repository instead of the misleading "pin one in metadata.branch" hint.
+- 88d78d3: `dot deploy --moddable` now rejects private GitHub repositories at preflight with a clear error message instead of silently failing later. `dot mod` also surfaces a more actionable error when it encounters a private or non-existent repository instead of the misleading "pin one in metadata.branch" hint.
 
 ## 0.16.16
 
@@ -174,7 +174,7 @@
 
 ### Patch Changes
 
-- 7151157: Avoid GitHub auth and `git push` during `dot deploy --modable` when the project already has an `origin`; the existing repository URL is recorded directly.
+- 7151157: Avoid GitHub auth and `git push` during `dot deploy --moddable` when the project already has an `origin`; the existing repository URL is recorded directly.
 
 ## 0.15.3
 
@@ -237,9 +237,9 @@
 
 - b9ec23b: `dot mod` now downloads source as a fresh project from GitHub via HTTPS — multiple mods of the same starter no longer collide via GitHub's one-fork-per-account limit. `git` and `gh` are no longer required to mod an app.
 
-  `dot deploy --playground` now asks before publishing source. Pass `--modable` (or answer "yes" to the prompt) to publish a public GitHub source repo alongside the deploy so others can `dot mod` it. Use `--no-modable` to skip the prompt non-interactively. The default is non-modable. Pass `--repo-name <name>` to skip the repo-name prompt when creating a fresh repo.
+  `dot deploy --playground` now asks before publishing source. Pass `--moddable` (or answer "yes" to the prompt) to publish a public GitHub source repo alongside the deploy so others can `dot mod` it. Use `--no-moddable` to skip the prompt non-interactively. The default is non-moddable. Pass `--repo-name <name>` to skip the repo-name prompt when creating a fresh repo.
 
-  The interactive registry picker (`dot mod` with no domain) now hides apps that aren't modable.
+  The interactive registry picker (`dot mod` with no domain) now hides apps that aren't moddable.
 
   Removed: `dot mod --clone`, `--repo-name`, `--yes` flags (no longer needed).
 

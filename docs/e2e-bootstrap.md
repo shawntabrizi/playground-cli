@@ -196,8 +196,8 @@ entries.
 
 ### Per-run rotating state (Phase 5e, not yet shipped)
 
-When Phase 5e (`nightly-deploy-modable`) ships, each run will create:
-- A `e2e-cli-modable-<runId>` registry domain
+When Phase 5e (`nightly-deploy-moddable`) ships, each run will create:
+- A `e2e-cli-moddable-<runId>` registry domain
 - A GitHub repo tagged `e2e-test-fixture`
 
 These are swept by `.github/workflows/e2e-cleanup.yml` (Sunday 04:00 UTC)

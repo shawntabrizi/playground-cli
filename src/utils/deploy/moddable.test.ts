@@ -3,7 +3,11 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveRepositoryUrl, assertPublicGitHubRepo, ModablePreflightError } from "./modable.js";
+import {
+    resolveRepositoryUrl,
+    assertPublicGitHubRepo,
+    ModdablePreflightError,
+} from "./moddable.js";
 
 describe("assertPublicGitHubRepo", () => {
     // After the rate-limit-elimination work this function probes the regular
@@ -73,7 +77,7 @@ describe("resolveRepositoryUrl", () => {
     const privateFetch: typeof fetch = async () => new Response("Not Found", { status: 404 });
 
     it("returns the existing origin when it points to a public GitHub repo", async () => {
-        tmp = mkdtempSync(join(tmpdir(), "pg-modable-origin-"));
+        tmp = mkdtempSync(join(tmpdir(), "pg-moddable-origin-"));
         execFileSync("git", ["init"], { cwd: tmp, stdio: "ignore" });
         execFileSync("git", ["remote", "add", "origin", "git@github.com:foo/bar.git"], {
             cwd: tmp,
@@ -86,7 +90,7 @@ describe("resolveRepositoryUrl", () => {
     });
 
     it("throws when the existing origin is a private GitHub repo", async () => {
-        tmp = mkdtempSync(join(tmpdir(), "pg-modable-private-"));
+        tmp = mkdtempSync(join(tmpdir(), "pg-moddable-private-"));
         execFileSync("git", ["init"], { cwd: tmp, stdio: "ignore" });
         execFileSync("git", ["remote", "add", "origin", "https://github.com/org/secret.git"], {
             cwd: tmp,
@@ -94,12 +98,12 @@ describe("resolveRepositoryUrl", () => {
         });
 
         await expect(resolveRepositoryUrl({ cwd: tmp, fetch: privateFetch })).rejects.toThrow(
-            ModablePreflightError,
+            ModdablePreflightError,
         );
     });
 
     it("throws when the existing origin is non-GitHub", async () => {
-        tmp = mkdtempSync(join(tmpdir(), "pg-modable-gitlab-"));
+        tmp = mkdtempSync(join(tmpdir(), "pg-moddable-gitlab-"));
         execFileSync("git", ["init"], { cwd: tmp, stdio: "ignore" });
         execFileSync("git", ["remote", "add", "origin", "https://gitlab.com/foo/bar"], {
             cwd: tmp,
@@ -112,7 +116,7 @@ describe("resolveRepositoryUrl", () => {
     });
 
     it("throws with an actionable message when no origin is set", async () => {
-        tmp = mkdtempSync(join(tmpdir(), "pg-modable-no-origin-"));
+        tmp = mkdtempSync(join(tmpdir(), "pg-moddable-no-origin-"));
         execFileSync("git", ["init"], { cwd: tmp, stdio: "ignore" });
 
         await expect(resolveRepositoryUrl({ cwd: tmp, fetch: publicFetch })).rejects.toThrow(

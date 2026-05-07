@@ -65,7 +65,7 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                 const repoUrl = meta.repository;
                 if (!repoUrl)
                     throw new Error(
-                        `App "${domain}" is not modable — no source repository published.`,
+                        `App "${domain}" is not moddable — no source repository published.`,
                     );
                 const ref = parseGitHubRepoUrl(repoUrl);
                 if (!ref) {
@@ -73,7 +73,7 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                         `Only GitHub-hosted source is supported for dot mod today (got ${repoUrl}).`,
                     );
                 }
-                // `meta.branch` is written by `dot deploy --modable` from
+                // `meta.branch` is written by `dot deploy --moddable` from
                 // `git rev-parse --abbrev-ref HEAD` at deploy time. The "main"
                 // fallback handles the rare case of an old deploy that
                 // pre-dates the metadata field — codeload returns 404 for a

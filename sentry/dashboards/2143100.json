@@ -650,7 +650,7 @@
         {
             "id": "451743",
             "title": "Deploy Options",
-            "description": "Deploy options matrix \u2014 combinations of mode/playground/modable/contracts. Useful to find a regression that only appears in one combination.",
+            "description": "Deploy options matrix \u2014 combinations of mode/playground/moddable/contracts. Useful to find a regression that only appears in one combination.",
             "displayType": "table",
             "thresholds": null,
             "interval": "5m",
@@ -663,7 +663,7 @@
                     "fields": [
                         "cli.deploy.mode",
                         "cli.deploy.playground",
-                        "cli.deploy.modable",
+                        "cli.deploy.moddable",
                         "cli.deploy.contracts",
                         "count()",
                         "avg(span.duration)"
@@ -675,7 +675,7 @@
                     "columns": [
                         "cli.deploy.mode",
                         "cli.deploy.playground",
-                        "cli.deploy.modable",
+                        "cli.deploy.moddable",
                         "cli.deploy.contracts"
                     ],
                     "fieldAliases": [],

@@ -23,7 +23,7 @@
         {"op": "set_description", "widgetId": "451742",
          "value": "Phase breakdown for cli.deploy.*. Order by avg duration to find which phase is the bottleneck. Storage-and-DotNS dominates by design — chunk uploads + DotNS commit-reveal both span seconds."},
         {"op": "set_description", "widgetId": "451743",
-         "value": "Deploy options matrix — combinations of mode/playground/modable/contracts. Useful to find a regression that only appears in one combination."},
+         "value": "Deploy options matrix — combinations of mode/playground/moddable/contracts. Useful to find a regression that only appears in one combination."},
         {"op": "set_description", "widgetId": "451744",
          "value": "Sub-phase breakdown of the playground publish — metadata upload vs registry contract publish. Registry publish has a 3-attempt retry loop; high counts here without proportional warning events suggest the retry path is not hitting captureWarning."},
         {"op": "set_description", "widgetId": "451745",

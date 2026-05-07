@@ -36,16 +36,16 @@ describe("expected CLI errors", () => {
         expect(isExpectedCliError("Bulletin storage allowance is exhausted")).toBe(true);
         expect(
             isExpectedCliError(
-                "--modable: no GitHub origin configured. Create a public GitHub repository…",
+                "--moddable: no GitHub origin configured. Create a public GitHub repository…",
             ),
         ).toBe(true);
         expect(
             isExpectedCliError(
-                "modable apps must use a public GitHub repository (got: https://gitlab.com/foo/bar)",
+                "moddable apps must use a public GitHub repository (got: https://gitlab.com/foo/bar)",
             ),
         ).toBe(true);
         expect(
-            isExpectedCliError("foo/bar is private or does not exist — modable apps must use…"),
+            isExpectedCliError("foo/bar is private or does not exist — moddable apps must use…"),
         ).toBe(true);
         expect(isExpectedCliError('Invalid domain "bad_domain"')).toBe(true);
         expect(isExpectedCliError("No foundry/hardhat/cdm project was detected")).toBe(true);

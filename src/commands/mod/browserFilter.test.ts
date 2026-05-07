@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterModable, type AppEntry } from "./browserFilter.js";
+import { filterModdable, type AppEntry } from "./browserFilter.js";
 
 const make = (domain: string, repository: string | null): AppEntry => ({
     domain,
@@ -10,20 +10,20 @@ const make = (domain: string, repository: string | null): AppEntry => ({
     tag: null,
 });
 
-describe("filterModable", () => {
-    it("hides entries without a repository when modableOnly is true", () => {
+describe("filterModdable", () => {
+    it("hides entries without a repository when moddableOnly is true", () => {
         const apps = [make("a.dot", "https://github.com/x/a"), make("b.dot", null)];
-        expect(filterModable(apps, true)).toEqual([apps[0]]);
+        expect(filterModdable(apps, true)).toEqual([apps[0]]);
     });
 
-    it("returns everything when modableOnly is false", () => {
+    it("returns everything when moddableOnly is false", () => {
         const apps = [make("a.dot", "https://github.com/x/a"), make("b.dot", null)];
-        expect(filterModable(apps, false)).toEqual(apps);
+        expect(filterModdable(apps, false)).toEqual(apps);
     });
 
-    it("treats empty-string repository as non-modable", () => {
+    it("treats empty-string repository as non-moddable", () => {
         const apps = [make("a.dot", "")];
-        expect(filterModable(apps, true)).toEqual([]);
+        expect(filterModdable(apps, true)).toEqual([]);
     });
 
     it("preserves order", () => {
@@ -32,6 +32,6 @@ describe("filterModable", () => {
             make("b.dot", null),
             make("c.dot", "https://github.com/x/c"),
         ];
-        expect(filterModable(apps, true)).toEqual([apps[0], apps[2]]);
+        expect(filterModdable(apps, true)).toEqual([apps[0], apps[2]]);
     });
 });

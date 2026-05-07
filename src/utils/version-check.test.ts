@@ -94,7 +94,7 @@ describe("shouldSkip", () => {
 
     it("does not skip on a normal command", () => {
         expect(shouldSkip(["init"], baseEnv, true)).toBe(false);
-        expect(shouldSkip(["deploy", "--modable"], baseEnv, true)).toBe(false);
+        expect(shouldSkip(["deploy", "--moddable"], baseEnv, true)).toBe(false);
     });
 });
 

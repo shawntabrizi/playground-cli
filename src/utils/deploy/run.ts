@@ -76,9 +76,9 @@ export interface RunDeployOptions {
     publishToPlayground: boolean;
     /** Publish to the playground with private visibility (owner-only). Ignored when `publishToPlayground` is false. */
     playgroundPrivate?: boolean;
-    /** Whether the deploy should publish source as modable. */
-    modable?: boolean;
-    /** Resolved public repository URL to record in metadata (modable=true) or `null` (modable=false). */
+    /** Whether the deploy should publish source as moddable. */
+    moddable?: boolean;
+    /** Resolved public repository URL to record in metadata (moddable=true) or `null` (moddable=false). */
     repositoryUrl?: string | null;
     /** Compile + deploy foundry/hardhat/cdm contracts alongside the frontend. */
     deployContracts?: boolean;

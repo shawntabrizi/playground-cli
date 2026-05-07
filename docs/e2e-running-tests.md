@@ -283,8 +283,8 @@ tools/e2e-local.sh -- e2e/cli/mod.test.ts
 **"The cleanup cron — what does it do?"**
 
 `.github/workflows/e2e-cleanup.yml` runs Sunday 04:00 UTC. It is currently a stub
-— there is nothing to sweep until Phase 5e (modable deploy testing) ships. When
-that lands, it will sweep `e2e-cli-modable-*` GH repos and registry domains older
+— there is nothing to sweep until Phase 5e (moddable deploy testing) ships. When
+that lands, it will sweep `e2e-cli-moddable-*` GH repos and registry domains older
 than 14 days.
 
 ---

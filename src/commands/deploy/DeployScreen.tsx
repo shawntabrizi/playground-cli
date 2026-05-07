@@ -44,7 +44,7 @@ import type { ResolvedSigner } from "../../utils/signer.js";
 import type { ContractsType } from "../../utils/build/detect.js";
 import { DEFAULT_BUILD_DIR } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
-import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/modable.js";
+import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
 
 export interface DeployScreenInputs {
     projectDir: string;
@@ -59,8 +59,8 @@ export interface DeployScreenInputs {
     contractsType: ContractsType | null;
     /** Whether to deploy the project's contracts. null = ask the user. */
     deployContracts: boolean | null;
-    /** Pre-set modable from `--modable` / `--no-modable`. null = ask. */
-    modable: boolean | null;
+    /** Pre-set moddable from `--moddable` / `--no-moddable`. null = ask. */
+    moddable: boolean | null;
     userSigner: ResolvedSigner | null;
     onDone: (outcome: DeployOutcome | null) => void;
 }
@@ -72,9 +72,9 @@ export type Stage =
     | { kind: "prompt-domain" }
     | { kind: "validate-domain"; domain: string }
     | { kind: "prompt-publish" }
-    | { kind: "prompt-modable" }
-    | { kind: "modable-preflight" }
-    | { kind: "modable-error"; message: string }
+    | { kind: "prompt-moddable" }
+    | { kind: "moddable-preflight" }
+    | { kind: "moddable-error"; message: string }
     | { kind: "prompt-contracts" }
     | { kind: "confirm" }
     | { kind: "running" }
@@ -88,7 +88,7 @@ interface Resolved {
     publishToPlayground: boolean;
     skipBuild: boolean;
     deployContracts: boolean;
-    modable: boolean;
+    moddable: boolean;
     repositoryUrl: string | null;
 }
 
@@ -102,7 +102,7 @@ export function DeployScreen({
     skipBuild: initialSkipBuild,
     contractsType,
     deployContracts: initialDeployContracts,
-    modable: initialModable,
+    moddable: initialModdable,
     userSigner,
     onDone,
 }: DeployScreenInputs) {
@@ -115,7 +115,7 @@ export function DeployScreen({
     const [deployContracts, setDeployContracts] = useState<boolean | null>(
         contractsType === null ? false : initialDeployContracts,
     );
-    const [modable, setModable] = useState<boolean | null>(initialModable);
+    const [moddable, setModdable] = useState<boolean | null>(initialModdable);
     const [repositoryUrl, setRepositoryUrl] = useState<string | null>(null);
     const [domainError, setDomainError] = useState<string | null>(null);
     // Captured from the availability check; feeds `resolveSignerSetup` so
@@ -130,7 +130,7 @@ export function DeployScreen({
             initialDomain,
             initialPublish,
             contractsType === null ? false : initialDeployContracts,
-            initialModable,
+            initialModdable,
             null,
         ),
     );
@@ -147,7 +147,7 @@ export function DeployScreen({
         nextDomain: string | null = domain,
         nextPublish: boolean | null = publishToPlayground,
         nextDeployContracts: boolean | null = deployContracts,
-        nextModable: boolean | null = modable,
+        nextModdable: boolean | null = moddable,
         nextRepoUrl: string | null = repositoryUrl,
     ) => {
         const s = pickNextStage(
@@ -157,7 +157,7 @@ export function DeployScreen({
             nextDomain,
             nextPublish,
             nextDeployContracts,
-            nextModable,
+            nextModdable,
             nextRepoUrl,
         );
         setStage(s);
@@ -171,7 +171,7 @@ export function DeployScreen({
             publishToPlayground === null ||
             skipBuild === null ||
             deployContracts === null ||
-            modable === null
+            moddable === null
         )
             return null;
         return {
@@ -181,7 +181,7 @@ export function DeployScreen({
             publishToPlayground,
             skipBuild,
             deployContracts,
-            modable,
+            moddable,
             repositoryUrl,
         };
     }, [
@@ -191,7 +191,7 @@ export function DeployScreen({
         publishToPlayground,
         skipBuild,
         deployContracts,
-        modable,
+        moddable,
         repositoryUrl,
     ]);
 
@@ -306,7 +306,7 @@ export function DeployScreen({
                     initialIndex={0}
                     onSelect={(yes) => {
                         setPublishToPlayground(yes);
-                        if (!yes) setModable(false);
+                        if (!yes) setModdable(false);
                         advance(
                             skipBuild,
                             mode,
@@ -314,15 +314,15 @@ export function DeployScreen({
                             domain,
                             yes,
                             deployContracts,
-                            yes ? modable : false,
+                            yes ? moddable : false,
                         );
                     }}
                 />
             )}
 
-            {stage.kind === "prompt-modable" && (
+            {stage.kind === "prompt-moddable" && (
                 <Select<boolean>
-                    label="make this app modable? (anyone in the playground can dot mod it)"
+                    label="make this app moddable? (anyone in the playground can dot mod it)"
                     options={[
                         {
                             value: false,
@@ -333,9 +333,9 @@ export function DeployScreen({
                     ]}
                     initialIndex={0}
                     onSelect={(yes) => {
-                        setModable(yes);
+                        setModdable(yes);
                         if (yes) {
-                            setStage({ kind: "modable-preflight" });
+                            setStage({ kind: "moddable-preflight" });
                         } else {
                             advance(
                                 skipBuild,
@@ -351,8 +351,8 @@ export function DeployScreen({
                 />
             )}
 
-            {stage.kind === "modable-preflight" && (
-                <ModablePreflightStage
+            {stage.kind === "moddable-preflight" && (
+                <ModdablePreflightStage
                     projectDir={projectDir}
                     onResolved={(url) => {
                         setRepositoryUrl(url);
@@ -368,13 +368,13 @@ export function DeployScreen({
                         );
                     }}
                     onError={(msg) => {
-                        setStage({ kind: "modable-error", message: msg });
+                        setStage({ kind: "moddable-error", message: msg });
                     }}
                 />
             )}
 
-            {stage.kind === "modable-error" && (
-                <ModableErrorStage message={stage.message} onExit={() => onDone(null)} />
+            {stage.kind === "moddable-error" && (
+                <ModdableErrorStage message={stage.message} onExit={() => onDone(null)} />
             )}
 
             {stage.kind === "prompt-contracts" && contractsType !== null && (
@@ -456,7 +456,7 @@ function pickInitialStage(
     domain: string | null,
     publish: boolean | null,
     deployContracts: boolean | null,
-    modable: boolean | null,
+    moddable: boolean | null,
     repositoryUrl: string | null,
 ): Stage {
     return pickNextStage(
@@ -466,7 +466,7 @@ function pickInitialStage(
         domain,
         publish,
         deployContracts,
-        modable,
+        moddable,
         repositoryUrl,
     );
 }
@@ -478,7 +478,7 @@ export function pickNextStage(
     domain: string | null,
     publish: boolean | null,
     deployContracts: boolean | null,
-    modable: boolean | null,
+    moddable: boolean | null,
     repositoryUrl: string | null,
 ): Stage {
     if (skipBuild === null) return { kind: "prompt-build" };
@@ -486,18 +486,18 @@ export function pickNextStage(
     if (buildDir === null) return { kind: "prompt-buildDir" };
     if (domain === null) return { kind: "prompt-domain" };
     if (publish === null) return { kind: "prompt-publish" };
-    if (publish && modable === null) return { kind: "prompt-modable" };
-    // --modable=true via flag: skip the prompt and drive into the preflight.
-    if (publish && modable === true && repositoryUrl === null) {
-        return { kind: "modable-preflight" };
+    if (publish && moddable === null) return { kind: "prompt-moddable" };
+    // --moddable=true via flag: skip the prompt and drive into the preflight.
+    if (publish && moddable === true && repositoryUrl === null) {
+        return { kind: "moddable-preflight" };
     }
     if (deployContracts === null) return { kind: "prompt-contracts" };
     return { kind: "confirm" };
 }
 
-// ── Modable preflight ────────────────────────────────────────────────────────
+// ── Moddable preflight ────────────────────────────────────────────────────────
 
-function ModablePreflightStage({
+function ModdablePreflightStage({
     projectDir,
     onResolved,
     onError,
@@ -543,19 +543,19 @@ function ModablePreflightStage({
 }
 
 /**
- * Formal warning stage shown when the modable preflight cannot proceed —
+ * Formal warning stage shown when the moddable preflight cannot proceed —
  * almost always because the user hasn't set up a public GitHub `origin` yet.
  * Renders the actionable error inside a yellow Callout (matching the
  * "check your phone" banner) so it visually registers as a setup requirement
  * rather than a deploy crash. Pressing Enter or Esc exits the deploy.
  */
-function ModableErrorStage({ message, onExit }: { message: string; onExit: () => void }) {
+function ModdableErrorStage({ message, onExit }: { message: string; onExit: () => void }) {
     useInput((_input, key) => {
         if (key.return || key.escape) onExit();
     });
     return (
         <Box flexDirection="column">
-            <Callout tone="warning" title="modable setup needed">
+            <Callout tone="warning" title="moddable setup needed">
                 <Text>{message}</Text>
             </Callout>
             <Box marginTop={1}>
@@ -709,7 +709,7 @@ function ConfirmStage({
         buildDir: inputs.buildDir,
         skipBuild: inputs.skipBuild,
         publishToPlayground: inputs.publishToPlayground,
-        modable: inputs.modable,
+        moddable: inputs.moddable,
         repositoryUrl: inputs.repositoryUrl,
         approvals: "approvals" in setup ? setup.approvals : [],
         contracts: contractsType
@@ -883,7 +883,7 @@ function RunningStage({
                     mode: inputs.mode,
                     publishToPlayground: inputs.publishToPlayground,
                     playgroundPrivate,
-                    modable: inputs.modable,
+                    moddable: inputs.moddable,
                     repositoryUrl: inputs.repositoryUrl,
                     deployContracts: inputs.deployContracts,
                     contractsFundingNeeded:

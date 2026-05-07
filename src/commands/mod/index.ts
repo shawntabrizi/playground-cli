@@ -10,7 +10,7 @@ import { AppBrowser, type AppEntry } from "./AppBrowser.js";
 import { SetupScreen } from "./SetupScreen.js";
 import { defaultRepoName } from "../../utils/git/repoName.js";
 import { runCliCommand } from "../../cli-runtime.js";
-import { assertPublicGitHubRepo, ModablePreflightError } from "../../utils/deploy/modable.js";
+import { assertPublicGitHubRepo, ModdablePreflightError } from "../../utils/deploy/moddable.js";
 
 export const modCommand = new Command("mod")
     .description("Mod a playground app — clone the source as a fresh project to customise")
@@ -46,7 +46,7 @@ async function runModCommand(
         if (rawDomain) {
             domain = rawDomain.endsWith(".dot") ? rawDomain : `${rawDomain}.dot`;
         } else {
-            const picked = await withSpan("cli.mod.browse", "browse modable apps", () =>
+            const picked = await withSpan("cli.mod.browse", "browse moddable apps", () =>
                 browseAndPick(registry),
             );
             if (!picked) {
@@ -79,7 +79,7 @@ async function runModCommand(
                     () => assertPublicGitHubRepo(repoUrl),
                 );
             } catch (err) {
-                if (err instanceof ModablePreflightError) {
+                if (err instanceof ModdablePreflightError) {
                     console.error();
                     console.error(`  ${err.message}.`);
                     console.error(
@@ -149,7 +149,7 @@ function browseAndPick(registry: any): Promise<AppEntry | null> {
         const app = render(
             React.createElement(AppBrowser, {
                 registry,
-                modableOnly: true,
+                moddableOnly: true,
                 onSelect: (selected: AppEntry) => {
                     app.unmount();
                     resolve(selected);

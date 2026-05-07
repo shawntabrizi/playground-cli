@@ -14,7 +14,7 @@ export interface AppEntry {
     tag: string | null;
 }
 
-export function filterModable(apps: AppEntry[], modableOnly: boolean): AppEntry[] {
-    if (!modableOnly) return apps;
+export function filterModdable(apps: AppEntry[], moddableOnly: boolean): AppEntry[] {
+    if (!moddableOnly) return apps;
     return apps.filter((a) => Boolean(a.repository));
 }

@@ -62,8 +62,8 @@ Read `CLAUDE.md` alongside this file when you need the full rationale for repo-s
 ## Mod And GitHub Behavior
 
 - `dot mod` is GitHub-tarball-only. Do not reintroduce `git clone`, `gh repo fork`, or tooling requirements for the public-repo path.
-- `dot` never invokes `gh`. `dot deploy --modable` reads an existing `origin` and validates it's a public GitHub URL via `HEAD https://github.com/{o}/{r}`; missing `origin`, private repos, and non-GitHub URLs hard-fail with actionable messages from `src/utils/deploy/modable.ts`. Do not reintroduce auto-create, `gh auth` checks, or any `gh`-shell-out path — the user is responsible for setting up the public GitHub repo themselves.
-- `metadata.repository` is written only when `--modable` is explicitly opted in.
+- `dot` never invokes `gh`. `dot deploy --moddable` reads an existing `origin` and validates it's a public GitHub URL via `HEAD https://github.com/{o}/{r}`; missing `origin`, private repos, and non-GitHub URLs hard-fail with actionable messages from `src/utils/deploy/moddable.ts`. Do not reintroduce auto-create, `gh auth` checks, or any `gh`-shell-out path — the user is responsible for setting up the public GitHub repo themselves.
+- `metadata.repository` is written only when `--moddable` is explicitly opted in.
 
 ## Sentry Telemetry
 
