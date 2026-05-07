@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.19.4
+
+### Patch Changes
+
+- 33bef5c: Improve error reporting when the CDM meta-registry fails to return a live contract address.
+
 ## 0.19.3
 
 ### Patch Changes
