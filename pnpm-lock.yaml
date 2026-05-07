@@ -7,7 +7,7 @@ settings:
 overrides:
   '@parity/dotns-cli>@polkadot-api/descriptors': file:./stubs/papi-descriptors-stub
 
-packageExtensionsChecksum: sha256-ljSj9zGzknhHBNQiEaDbi0E0TTdSTDaOShPcycvMRhk=
+packageExtensionsChecksum: sha256-5kFizeo3I6H2CVRj4QUVAyiCzU8qy1z7hyXyxOdzCw8=
 
 importers:
 
@@ -56,8 +56,8 @@ importers:
         specifier: ^9.47.1
         version: 9.47.1
       bulletin-deploy:
-        specifier: 0.7.10
-        version: 0.7.10(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)
+        specifier: 0.7.12
+        version: 0.7.12(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -2131,8 +2131,8 @@ packages:
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
 
-  bulletin-deploy@0.7.10:
-    resolution: {integrity: sha512-ojh8hp2GmlyoStrCIbjozrtnEX2WVAvjfl92VYly9NHwHh2DsMYfmmw2FYm/bq5DmwNUASmRresCjX+sTk3Cgw==}
+  bulletin-deploy@0.7.12:
+    resolution: {integrity: sha512-WTn20QiqWLEU89KstiVMTqEAVq018PEy933VQ/bm3+eJCNzNpAF5xGkjZ4Lz5Yo6XLClWrJTvpLkkkNXVcy2cQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -7776,7 +7776,7 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bulletin-deploy@0.7.10(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3):
+  bulletin-deploy@0.7.12(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.3):
     dependencies:
       '@ipld/car': 5.4.3
       '@ipld/dag-pb': 4.1.5
