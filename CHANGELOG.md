@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.19.3
+
+### Patch Changes
+
+- e3c587f: Read current Bulletin authorization allowance fields correctly during deploy preflight.
+
 ## 0.19.2
 
 ### Patch Changes
