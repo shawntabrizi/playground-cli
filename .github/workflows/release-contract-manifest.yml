@@ -1,0 +1,162 @@
+name: Release Contract Manifest
+
+on:
+    repository_dispatch:
+        types: [playground-registry-deployed]
+    workflow_dispatch:
+        inputs:
+            network:
+                description: "CDM network to install from"
+                required: false
+                default: "paseo"
+                type: string
+
+permissions:
+    contents: write
+
+env:
+    CDM_NETWORK: ${{ github.event.client_payload.network || github.event.inputs.network || 'paseo' }}
+
+concurrency:
+    group: release-contract-manifest-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    sync:
+        runs-on: ${{ github.repository_owner == 'paritytech' && 'parity-default' || 'ubuntu-latest' }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: main
+                  fetch-depth: 0
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: "1.2.x"
+
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+
+            - run: pnpm install
+
+            - name: Install CDM CLI
+              run: |
+                  curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | bash
+                  echo "$HOME/.cdm/bin" >> "$GITHUB_PATH"
+                  export PATH="$HOME/.cdm/bin:$PATH"
+                  cdm --version
+
+            - name: Install latest contract manifest
+              run: cdm i -n "${CDM_NETWORK}"
+
+            - name: Detect manifest changes
+              id: manifest
+              run: |
+                  if git diff --quiet -- cdm.json; then
+                    echo "changed=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "changed=true" >> "$GITHUB_OUTPUT"
+                    echo "cdm.json changed after cdm i -n ${CDM_NETWORK}." >> "$GITHUB_STEP_SUMMARY"
+                  fi
+
+            - name: Check current release
+              if: steps.manifest.outputs.changed == 'false'
+              id: current_release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  TAG="v${VERSION}"
+                  COMMIT=$(git rev-parse HEAD)
+
+                  echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+                  echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
+
+                  EXPECTED_ASSETS=(dot-linux-x64 dot-linux-arm64 dot-darwin-x64 dot-darwin-arm64)
+                  if ! RELEASE_ASSETS=$(gh release view "${TAG}" --json assets --jq '.assets[].name' 2>/dev/null); then
+                    echo "missing=true" >> "$GITHUB_OUTPUT"
+                    echo "cdm.json is unchanged, but ${TAG} has no GitHub release. Rebuilding the current version." >> "$GITHUB_STEP_SUMMARY"
+                    exit 0
+                  fi
+
+                  missing_assets=()
+                  for asset in "${EXPECTED_ASSETS[@]}"; do
+                    if ! grep -Fxq "${asset}" <<< "${RELEASE_ASSETS}"; then
+                      missing_assets+=("${asset}")
+                    fi
+                  done
+
+                  if [ "${#missing_assets[@]}" -eq 0 ]; then
+                    echo "missing=false" >> "$GITHUB_OUTPUT"
+                    echo "cdm.json already matches the latest ${CDM_NETWORK} contract manifest and ${TAG} already has all binary assets." >> "$GITHUB_STEP_SUMMARY"
+                  else
+                    echo "missing=true" >> "$GITHUB_OUTPUT"
+                    echo "${TAG} is missing binary assets: ${missing_assets[*]}. Rebuilding the current version." >> "$GITHUB_STEP_SUMMARY"
+                  fi
+
+            - name: Create patch changeset
+              if: steps.manifest.outputs.changed == 'true'
+              run: |
+                  mkdir -p .changeset
+                  CHANGESET=".changeset/release-contract-manifest-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.md"
+                  {
+                    echo '---'
+                    echo '"playground-cli": patch'
+                    echo '---'
+                    echo ''
+                    echo 'Refresh the bundled Playground contract manifest.'
+                  } > "$CHANGESET"
+                  echo "Created $CHANGESET" >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Version packages
+              if: steps.manifest.outputs.changed == 'true'
+              run: pnpm changeset version
+
+            - name: Format
+              if: steps.manifest.outputs.changed == 'true'
+              run: pnpm format
+
+            - name: Generate release tag
+              if: steps.manifest.outputs.changed == 'true'
+              id: tag
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  TAG="v${VERSION}"
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+            - name: Compile CLI binaries
+              if: steps.manifest.outputs.changed == 'true' || steps.current_release.outputs.missing == 'true'
+              run: |
+                  bun build --compile --target=bun-linux-x64 src/index.ts --outfile dot-linux-x64
+                  bun build --compile --target=bun-linux-arm64 src/index.ts --outfile dot-linux-arm64
+                  bun build --compile --target=bun-darwin-x64 src/index.ts --outfile dot-darwin-x64
+                  bun build --compile --target=bun-darwin-arm64 src/index.ts --outfile dot-darwin-arm64
+
+            - name: Commit release changes
+              if: steps.manifest.outputs.changed == 'true'
+              id: commit
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git add cdm.json package.json CHANGELOG.md pnpm-lock.yaml
+                  git diff --cached --quiet || git commit -m "chore: release contract manifest update"
+                  echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+                  git push origin HEAD:main
+
+            - name: Create GitHub Release
+              if: steps.manifest.outputs.changed == 'true' || steps.current_release.outputs.missing == 'true'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ steps.manifest.outputs.changed == 'true' && steps.tag.outputs.tag || steps.current_release.outputs.tag }}
+                  target_commitish: ${{ steps.manifest.outputs.changed == 'true' && steps.commit.outputs.commit || steps.current_release.outputs.commit }}
+                  name: Release ${{ steps.manifest.outputs.changed == 'true' && steps.tag.outputs.tag || steps.current_release.outputs.tag }}
+                  files: |
+                      dot-linux-x64
+                      dot-linux-arm64
+                      dot-darwin-x64
+                      dot-darwin-arm64
+                  overwrite_files: true
+                  generate_release_notes: true
