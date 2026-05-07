@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.19.2
+
+### Patch Changes
+
+- 1dfc53d: Rename the deploy source-publishing option and related CLI language to moddable.
+
 ## 0.19.1
 
 ### Patch Changes
