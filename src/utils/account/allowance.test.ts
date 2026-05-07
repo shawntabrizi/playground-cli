@@ -58,20 +58,45 @@ describe("checkAllowance", () => {
         expect(result.remainingBytes).toBe(0n);
     });
 
-    it("returns authorized with remaining quota", async () => {
+    it("returns remaining quota from current runtime allowance fields", async () => {
         const { client } = makeClient({
-            extent: { transactions: 500, bytes: 50_000_000n },
+            extent: {
+                transactions: 250,
+                transactions_allowance: 1000,
+                bytes: 12_500_000n,
+                bytes_allowance: 100_000_000n,
+            },
             expiration: 999999,
         });
         const result = await checkAllowance(client, "5GrwvaEF...");
         expect(result.authorized).toBe(true);
-        expect(result.remainingTxs).toBe(500);
-        expect(result.remainingBytes).toBe(50_000_000n);
+        expect(result.remainingTxs).toBe(750);
+        expect(result.remainingBytes).toBe(87_500_000n);
+    });
+
+    it("clamps current runtime remaining quota at zero", async () => {
+        const { client } = makeClient({
+            extent: {
+                transactions: 1000,
+                transactions_allowance: 1000,
+                bytes: 100_000_000n,
+                bytes_allowance: 100_000_000n,
+            },
+            expiration: 999999,
+        });
+        const result = await checkAllowance(client, "5GrwvaEF...");
+        expect(result.remainingTxs).toBe(0);
+        expect(result.remainingBytes).toBe(0n);
     });
 
     it("returns authorized even with low remaining txs", async () => {
         const { client } = makeClient({
-            extent: { transactions: 5, bytes: 1_000_000n },
+            extent: {
+                transactions: 95,
+                transactions_allowance: 100,
+                bytes: 0n,
+                bytes_allowance: 1_000_000n,
+            },
             expiration: 100,
         });
         const result = await checkAllowance(client, "5GrwvaEF...");
@@ -93,7 +118,12 @@ describe("ensureAllowance", () => {
     it("skips granting when allowance is sufficient", async () => {
         mockSubmitAndWatch.mockClear();
         const { client } = makeClient({
-            extent: { transactions: 500, bytes: 50_000_000n },
+            extent: {
+                transactions: 500,
+                transactions_allowance: 1000,
+                bytes: 50_000_000n,
+                bytes_allowance: 100_000_000n,
+            },
             expiration: 999999,
         });
         await ensureAllowance(client, "5GrwvaEF...");
@@ -118,7 +148,12 @@ describe("ensureAllowance", () => {
     it(`re-grants allowance when remaining txs are below LOW_TX_THRESHOLD (${LOW_TX_THRESHOLD})`, async () => {
         mockSubmitAndWatch.mockClear();
         const { client } = makeClient({
-            extent: { transactions: LOW_TX_THRESHOLD - 5, bytes: 1_000_000n },
+            extent: {
+                transactions: 95,
+                transactions_allowance: LOW_TX_THRESHOLD + 90,
+                bytes: 0n,
+                bytes_allowance: 1_000_000n,
+            },
             expiration: 100,
         });
         await ensureAllowance(client, "5GrwvaEF...");
@@ -128,7 +163,12 @@ describe("ensureAllowance", () => {
     it(`skips granting at exactly LOW_TX_THRESHOLD (${LOW_TX_THRESHOLD})`, async () => {
         mockSubmitAndWatch.mockClear();
         const { client } = makeClient({
-            extent: { transactions: LOW_TX_THRESHOLD, bytes: 10_000_000n },
+            extent: {
+                transactions: 90,
+                transactions_allowance: LOW_TX_THRESHOLD + 90,
+                bytes: 0n,
+                bytes_allowance: 10_000_000n,
+            },
             expiration: 100,
         });
         await ensureAllowance(client, "5GrwvaEF...");
