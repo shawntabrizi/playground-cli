@@ -139,7 +139,15 @@ describe("checkAttestation", () => {
 
     it("derives remainingBlocks from expiration - currentBlock", async () => {
         const client = makeClient(
-            { extent: { transactions: 500, bytes: 50_000_000n }, expiration: 1000 },
+            {
+                extent: {
+                    transactions: 500,
+                    transactions_allowance: 1000,
+                    bytes: 50_000_000n,
+                    bytes_allowance: 100_000_000n,
+                },
+                expiration: 1000,
+            },
             200,
         );
         const s = await checkAttestation(client, "5GrwvaEF");
@@ -151,9 +159,35 @@ describe("checkAttestation", () => {
         expect(s.remainingBytes).toBe(50_000_000n);
     });
 
+    it("normalizes current runtime allowance fields to remaining quota", async () => {
+        const client = makeClient(
+            {
+                extent: {
+                    transactions: 10,
+                    transactions_allowance: 100,
+                    bytes: 25_000_000n,
+                    bytes_allowance: 100_000_000n,
+                },
+                expiration: 1000,
+            },
+            200,
+        );
+        const s = await checkAttestation(client, "5GrwvaEF");
+        expect(s.remainingTxs).toBe(90);
+        expect(s.remainingBytes).toBe(75_000_000n);
+    });
+
     it("marks as expired when expiration has passed", async () => {
         const client = makeClient(
-            { extent: { transactions: 10, bytes: 1_000_000n }, expiration: 200 },
+            {
+                extent: {
+                    transactions: 0,
+                    transactions_allowance: 10,
+                    bytes: 0n,
+                    bytes_allowance: 1_000_000n,
+                },
+                expiration: 200,
+            },
             500,
         );
         const s = await checkAttestation(client, "5GrwvaEF");

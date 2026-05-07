@@ -8,6 +8,7 @@
 import { Enum } from "polkadot-api";
 import { submitAndWatch, createDevSigner } from "@polkadot-apps/tx";
 import type { PaseoClient } from "../connection.js";
+import { remainingAuthorizationExtent } from "./authorizationExtent.js";
 
 const AT_BEST = { at: "best" as const };
 
@@ -39,10 +40,11 @@ export async function checkAllowance(
         return { authorized: false, remainingTxs: 0, remainingBytes: 0n };
     }
 
+    const remaining = remainingAuthorizationExtent(raw.extent);
     return {
         authorized: true,
-        remainingTxs: raw.extent.transactions,
-        remainingBytes: raw.extent.bytes,
+        remainingTxs: remaining.transactions,
+        remainingBytes: remaining.bytes,
     };
 }
 

@@ -13,6 +13,7 @@
 
 import { Enum } from "polkadot-api";
 import type { PaseoClient } from "../connection.js";
+import { remainingAuthorizationExtent } from "./authorizationExtent.js";
 
 const AT_BEST = { at: "best" as const };
 
@@ -51,13 +52,14 @@ export async function checkAttestation(
     }
 
     const remainingBlocks = Math.max(0, raw.expiration - currentBlock);
+    const remaining = remainingAuthorizationExtent(raw.extent);
     return {
         authorized: true,
         expired: remainingBlocks === 0,
         remainingBlocks,
         expiresAt: raw.expiration,
-        remainingTxs: raw.extent.transactions,
-        remainingBytes: raw.extent.bytes,
+        remainingTxs: remaining.transactions,
+        remainingBytes: remaining.bytes,
     };
 }
 
