@@ -64,6 +64,24 @@ describe("isBenignUnsubscriptionError", () => {
         expect(isBenignUnsubscriptionError({ name: "UnsubscriptionError" })).toBe(false);
     });
 
+    it("matches a bare DestroyedError (the dot-logout polkadot-api raw-client teardown case)", () => {
+        // `@polkadot-api/raw-client`'s `disconnect()` errors every still-pending
+        // request with a fresh `DestroyedError("Client destroyed")`. This shape
+        // is exclusive to that one teardown path — matching the class alone is
+        // safe.
+        const err = new Error("Client destroyed");
+        err.name = "DestroyedError";
+        expect(isBenignUnsubscriptionError(err)).toBe(true);
+    });
+
+    it("does NOT match a generic Error with the same message but a different name", () => {
+        // Defensive: only the actual `DestroyedError` class is benign; any
+        // other error happening to carry the string "Client destroyed" must
+        // still escalate.
+        const err = new Error("Client destroyed");
+        expect(isBenignUnsubscriptionError(err)).toBe(false);
+    });
+
     it("accepts string entries inside the errors array (rxjs permits them)", () => {
         const err = new Error("x");
         err.name = "UnsubscriptionError";

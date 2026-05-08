@@ -149,19 +149,26 @@ function logSuppressedBenign(reason: unknown): void {
  * True for the specific rxjs / polkadot-api errors we see on `client.destroy()`
  * when a still-live chainHead (or similar) subscription's teardown tries to
  * send a cancel RPC after the chainHead follow has already been disjointed or
- * the WS closed — by design, because we just destroyed the client. Two shapes
+ * the WS closed — by design, because we just destroyed the client. Three shapes
  * surface in practice:
  *
  *   1. `UnsubscriptionError` wrapping inner `Not connected` errors (rxjs).
  *   2. `DisjointError: ChainHead disjointed` from polkadot-api's substrate
  *      client when an outstanding chainHead operation races the unfollow.
+ *   3. `DestroyedError: Client destroyed` from `@polkadot-api/raw-client`'s
+ *      `disconnect()` (`responses.forEach(r => r.onError(new DestroyedError()))`),
+ *      surfaced during `dot logout` when `@parity/product-sdk-terminal::destroy()`
+ *      tears down the polkadot-api client while a statement-store subscription
+ *      still has an in-flight RPC. This shape is exclusive to PAPI raw-client
+ *      teardown, so matching the bare error class is safe.
  *
- * Both look terrifying but are already the expected outcome. Keeping the match
- * narrow so a genuinely new failure still escalates.
+ * All three look terrifying but are already the expected outcome. Keeping the
+ * match narrow so a genuinely new failure still escalates.
  */
 export function isBenignUnsubscriptionError(reason: unknown): boolean {
     if (!(reason instanceof Error)) return false;
     if (reason.name === "DisjointError") return true;
+    if (reason.name === "DestroyedError") return true;
     if (reason.name !== "UnsubscriptionError") return false;
     const errors = (reason as Error & { errors?: unknown }).errors;
     if (!Array.isArray(errors) || errors.length === 0) return false;
