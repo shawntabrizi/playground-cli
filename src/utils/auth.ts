@@ -122,8 +122,9 @@ type PjsSignRawPayload = {
 /**
  * Hook for transaction signing — translates PAPI's `SignerPayloadJSON` into
  * host-papp's `SigningPayloadRequest` and routes to `session.signPayload`.
- * Exported so the regression tests in `auth.test.ts` can assert this is the
- * function PAPI hands tx payloads to (and that `signRaw` is never reached).
+ *
+ * @internal Exported only for `auth.test.ts`'s BadProof regression guards;
+ * not part of the public surface of this module.
  */
 export function makeSignPayloadCallback(session: UserSession, productAccountId: [string, number]) {
     return async (
@@ -169,6 +170,8 @@ export function makeSignPayloadCallback(session: UserSession, productAccountId: 
  * Hook for arbitrary-byte signing — routes to `session.signRaw`. The mobile
  * applies the `<Bytes>...</Bytes>` envelope, which is correct for free-form
  * data but wrong for tx payloads (see {@link makeSignPayloadCallback}).
+ *
+ * @internal Exported only for `auth.test.ts`; not part of the public surface.
  */
 export function makeSignRawCallback(session: UserSession, productAccountId: [string, number]) {
     return async (

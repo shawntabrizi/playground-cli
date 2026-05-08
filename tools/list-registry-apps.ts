@@ -12,28 +12,7 @@ import { ContractManager, type CdmJson } from "@parity/product-sdk-contracts";
 import { createDevSigner, getDevPublicKey } from "@parity/product-sdk-tx";
 import { ss58Encode } from "@parity/product-sdk-address";
 import type { HexString } from "polkadot-api";
-
-// `@parity/product-sdk-bulletin`'s `queryJson` only supports the host-bound
-// preimage strategy and throws `BulletinHostUnavailableError` outside a
-// Polkadot host (this script runs as a plain Bun process). Hit Paseo's public
-// IPFS gateway directly instead — equivalent to what `@polkadot-apps/bulletin`'s
-// `getGateway("paseo") + fetchJson(uri, gateway)` resolved to before the migration.
-const PASEO_BULLETIN_GATEWAY = "https://paseo-ipfs.polkadot.io/ipfs/";
-const FETCH_TIMEOUT_MS = 30_000;
-
-async function fetchJsonFromGateway<T>(cid: string): Promise<T> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    try {
-        const res = await fetch(`${PASEO_BULLETIN_GATEWAY}${cid}`, { signal: controller.signal });
-        if (!res.ok) {
-            throw new Error(`Gateway returned ${res.status}: ${res.statusText}`);
-        }
-        return JSON.parse(new TextDecoder().decode(new Uint8Array(await res.arrayBuffer())));
-    } finally {
-        clearTimeout(timer);
-    }
-}
+import { fetchBulletinJson, getBulletinGateway } from "../src/utils/bulletinGateway.js";
 import { getConnection, destroyConnection } from "../src/utils/connection.js";
 import {
     PLAYGROUND_REGISTRY_CONTRACT,
@@ -87,11 +66,12 @@ async function main(): Promise<number> {
         const value = res.value as { entries: RegistryEntry[]; total: number };
         console.log(`live registry has ${value.total} app(s); inspecting up to 100:\n`);
 
+        const gateway = getBulletinGateway();
         for (const entry of value.entries) {
             let meta: AppMetadata = {};
             let metaErr = "";
             try {
-                meta = await fetchJsonFromGateway<AppMetadata>(entry.metadata_uri);
+                meta = await fetchBulletinJson<AppMetadata>(entry.metadata_uri, gateway);
             } catch (e) {
                 metaErr = e instanceof Error ? e.message.slice(0, 60) : String(e).slice(0, 60);
             }
