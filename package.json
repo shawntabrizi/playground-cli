@@ -61,18 +61,6 @@
         "overrides": {
             "@parity/dotns-cli>@polkadot-api/descriptors": "file:./stubs/papi-descriptors-stub",
             "@polkadot-api/json-rpc-provider": "^0.2.0"
-        },
-        "packageExtensions": {
-            "bulletin-deploy@0.7.12": {
-                "dependencies": {
-                    "@polkadot/util": "13.5.9"
-                }
-            },
-            "@parity/dotns-cli@0.6.0": {
-                "dependencies": {
-                    "@polkadot/util": "14.0.3"
-                }
-            }
         }
     }
 }
