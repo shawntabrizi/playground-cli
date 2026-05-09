@@ -1,0 +1,22 @@
+name: License Headers
+
+on:
+    pull_request:
+    push:
+        branches: [main]
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: license-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    check:
+        name: Check
+        runs-on: ${{ github.repository_owner == 'paritytech' && 'parity-default' || 'ubuntu-latest' }}
+        steps:
+            - uses: actions/checkout@v4
+            - run: ./scripts/check-license-headers.sh

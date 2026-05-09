@@ -2,6 +2,18 @@
 
 Refer to the **Contributing** and **Architecture Highlights** sections of [README.md](./README.md) for development workflows, release process, and repo conventions.
 
+## Verification before committing
+
+Before claiming a task complete, opening a PR, or merging, run these three checks. The first two are enforced by CI; the third catches regressions:
+
+```bash
+pnpm format:check
+pnpm lint:license
+pnpm test
+```
+
+`pnpm build` is the canonical type signal — there is no separate `tsc` step. If `lint:license` flags a file you authored, run `./scripts/check-license-headers.sh --fix` to prepend the standard Parity Apache-2.0 header. Every tracked `.ts` / `.tsx` / `.rs` file must carry both the `SPDX-License-Identifier: Apache-2.0` line and the `Copyright (C) Parity Technologies (UK) Ltd.` line — a bare SPDX line alone is rejected, and the `License Headers` workflow fails closed on missing headers. The check script handles shebanged scripts (`#!/usr/bin/env node|bun`) by keeping the shebang on line 1 and placing the header below it.
+
 ## Non-obvious invariants
 
 These are things that aren't self-evident from reading the code and have bitten us before:

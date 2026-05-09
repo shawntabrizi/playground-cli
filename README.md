@@ -192,6 +192,27 @@ pnpm format        # fix
 pnpm format:check  # check only
 ```
 
+### License Headers
+
+Every tracked `.ts` / `.tsx` / `.rs` file must carry the Parity-style Apache-2.0 SPDX header. CI's `License Headers` workflow runs `scripts/check-license-headers.sh` on every PR.
+
+```bash
+pnpm lint:license                       # check
+./scripts/check-license-headers.sh --fix  # prepend the header to any missing files
+```
+
+### Verification before committing
+
+Run all of these locally before opening a PR (and before declaring work complete from an AI agent session):
+
+```bash
+pnpm format:check
+pnpm lint:license
+pnpm test
+```
+
+The first two are also enforced in CI; running them locally catches the failure before the PR turns red. `pnpm build` is the canonical type signal — there is no separate `tsc` step.
+
 ## Dependency Notes
 
 - `@parity/product-sdk-*` packages use caret ranges (`^0.x.y`) so upstream patch and minor releases auto-resolve on a fresh `pnpm install`. With pre-1.0 versions, `^` only widens patches within the current 0.x line — a 0.x → 0.(x+1) bump still requires an intentional `package.json` change. CI's `Format` job runs a grep guard that fails the build on any direct `@polkadot-apps/*` import in `src/`, `e2e/`, `scripts/`, or `tools/`.

@@ -15,7 +15,20 @@ Read `CLAUDE.md` alongside this file when you need the full rationale for repo-s
 - Type check: `npx tsc --noEmit`
 - Format: `pnpm format`
 - Check formatting: `pnpm format:check`
+- Check license headers: `pnpm lint:license`
 - Install local binary: `pnpm cli:install`
+
+## Verification before committing
+
+Run all of these before claiming work is done, opening a PR, or merging. The first two are enforced by CI; the third catches regressions a typecheck would not.
+
+```bash
+pnpm format:check
+pnpm lint:license
+pnpm test
+```
+
+`pnpm build` is the canonical type signal (no separate `tsc` step). If `lint:license` fails on a file you wrote, run `./scripts/check-license-headers.sh --fix` to prepend the header — every tracked `.ts` / `.tsx` / `.rs` file must carry the full Parity-style Apache-2.0 block (SPDX line + Parity copyright line both required).
 
 ## Repository Conventions
 
