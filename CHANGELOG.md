@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.20.3
+
+### Patch Changes
+
+- 6bf3e42: install.sh now runs `dot init --yes` (non-interactive dep setup) instead of blocking on the mobile QR scan. A follow-up hint tells users to run `dot init` for the full login flow.
+
 ## 0.20.2
 
 ### Patch Changes
