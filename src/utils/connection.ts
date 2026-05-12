@@ -20,15 +20,15 @@ import {
     type TypedApi,
 } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
-import { bulletin } from "@parity/product-sdk-descriptors/bulletin";
-import { individuality } from "@parity/product-sdk-descriptors/individuality";
+import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
+import { paseo_individuality } from "@parity/product-sdk-descriptors/paseo-individuality";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { getChainConfig } from "../config.js";
 
 type PaseoChains = {
     assetHub: typeof paseo_asset_hub;
-    bulletin: typeof bulletin;
-    individuality: typeof individuality;
+    bulletin: typeof paseo_bulletin;
+    individuality: typeof paseo_individuality;
 };
 
 export type PaseoClient = {
@@ -63,8 +63,8 @@ async function connectPaseo(): Promise<PaseoClient> {
     let destroyed = false;
     return {
         assetHub: typedApi(raw.assetHub, paseo_asset_hub),
-        bulletin: typedApi(raw.bulletin, bulletin),
-        individuality: typedApi(raw.individuality, individuality),
+        bulletin: typedApi(raw.bulletin, paseo_bulletin),
+        individuality: typedApi(raw.individuality, paseo_individuality),
         raw,
         destroy() {
             if (destroyed) return;

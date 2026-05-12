@@ -35,7 +35,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
-import { bulletin } from "@parity/product-sdk-descriptors/bulletin";
+import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
 import { calculateCid } from "@parity/product-sdk-bulletin";
 import { createDevSigner, submitAndWatch, withRetry } from "@parity/product-sdk-tx";
 import { getRegistryContract } from "../registry.js";
@@ -228,7 +228,7 @@ export async function publishToPlayground(
                 }),
             );
             try {
-                const bulletinApi = bulletinClient.getTypedApi(bulletin);
+                const bulletinApi = bulletinClient.getTypedApi(paseo_bulletin);
                 const cid = (await calculateCid(metadataBytes)).toString();
                 const signer = createDevSigner("Alice");
                 await withRetry(() =>
