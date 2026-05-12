@@ -81,9 +81,6 @@ export function getChainConfig(env: Env = DEFAULT_ENV): ChainConfig {
     return cfg;
 }
 
-/** Fixed CDM meta-registry contract on Asset Hub. Source: @dotdm/utils REGISTRY_ADDRESS. */
-export const CDM_REGISTRY_ADDRESS = "0xae344f7f0f91d3a2176032af2990abcc7606c7d4";
-
 /** Identifier the terminal adapter reports during SSO. Kept stable so mobile pairings persist across releases. */
 export const DAPP_ID = "dot-cli";
 

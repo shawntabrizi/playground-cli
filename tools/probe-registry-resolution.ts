@@ -101,7 +101,10 @@ async function main(): Promise<number> {
 
     const client = await getConnection();
     try {
-        const liveMap = await resolveLiveContractAddresses(client.raw.assetHub);
+        const liveMap = await resolveLiveContractAddresses(
+            cdmJson as unknown as CdmJson,
+            client.raw.assetHub,
+        );
         const live = liveMap[PLAYGROUND_REGISTRY_CONTRACT] ?? null;
         console.log(`  meta→live  ${live ?? "<none>"}`);
         console.log();

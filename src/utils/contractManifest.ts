@@ -18,8 +18,8 @@ import {
     type AbiEntry,
     type CdmJson,
 } from "@parity/product-sdk-contracts";
+import { REGISTRY_ADDRESS } from "@dotdm/contracts";
 import type { HexString, PolkadotClient } from "polkadot-api";
-import { CDM_REGISTRY_ADDRESS } from "../config.js";
 
 export const PLAYGROUND_REGISTRY_CONTRACT = "@w3s/playground-registry";
 
@@ -47,6 +47,7 @@ const CDM_REGISTRY_ABI: AbiEntry[] = [
 ];
 
 type OptionAddress = { isSome: boolean; value: HexString };
+type CdmJsonTargetWithRegistry = CdmJson["targets"][string] & { registry?: string };
 
 const REVIVE_TRACE_CALL_COMPAT_ERROR =
     "Incompatible runtime entry RuntimeCall(ReviveApi_trace_call)";
@@ -103,6 +104,14 @@ function defaultTargetHash(manifest: CdmJson): string {
     return targetHash;
 }
 
+function defaultTarget(manifest: CdmJson): CdmJsonTargetWithRegistry {
+    return manifest.targets[defaultTargetHash(manifest)] as CdmJsonTargetWithRegistry;
+}
+
+function registryAddressForManifest(manifest: CdmJson): HexString {
+    return (defaultTarget(manifest).registry ?? REGISTRY_ADDRESS) as HexString;
+}
+
 function patchContractAddresses(
     manifest: CdmJson,
     liveAddresses: Record<string, HexString>,
@@ -133,13 +142,14 @@ export interface LiveContractLookupOptions {
 }
 
 export async function resolveLiveContractAddresses(
+    manifest: CdmJson,
     assetHub: PolkadotClient,
     libraries: readonly string[] = LIVE_CONTRACTS,
     options: LiveContractLookupOptions = {},
 ): Promise<Record<string, HexString>> {
     const registry = await createContractFromClient(
         assetHub,
-        CDM_REGISTRY_ADDRESS,
+        registryAddressForManifest(manifest),
         CDM_REGISTRY_ABI,
         { defaultOrigin: options.defaultOrigin },
     );
@@ -167,7 +177,12 @@ export async function withLiveContractAddresses(
     libraries: readonly string[] = LIVE_CONTRACTS,
     options: LiveContractLookupOptions = {},
 ): Promise<CdmJson> {
-    const liveAddresses = await resolveLiveContractAddresses(assetHub, libraries, options);
+    const liveAddresses = await resolveLiveContractAddresses(
+        manifest,
+        assetHub,
+        libraries,
+        options,
+    );
     return patchContractAddresses(manifest, liveAddresses);
 }
 
@@ -177,7 +192,12 @@ export async function withRequiredLiveContractAddresses(
     libraries: readonly string[] = LIVE_CONTRACTS,
     options: LiveContractLookupOptions = {},
 ): Promise<CdmJson> {
-    const liveAddresses = await resolveLiveContractAddresses(assetHub, libraries, options);
+    const liveAddresses = await resolveLiveContractAddresses(
+        manifest,
+        assetHub,
+        libraries,
+        options,
+    );
     const missing = libraries.filter((library) => !liveAddresses[library]);
     if (missing.length > 0) {
         throw new Error(`CDM meta-registry did not return live address for ${missing.join(", ")}`);
