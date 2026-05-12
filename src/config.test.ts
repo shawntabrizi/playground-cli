@@ -22,18 +22,20 @@ import { defaultCdmTarget } from "./utils/cdmTarget.js";
 const cdmTarget = defaultCdmTarget(cdmJson as unknown as CdmJson);
 
 describe("getChainConfig", () => {
-    it("selects preview-net as the active testnet profile", () => {
-        expect(ACTIVE_TESTNET_NETWORK).toBe("preview-net");
-        expect(getNetworkLabel()).toBe("preview-net");
+    it("selects paseo as the active testnet profile", () => {
+        expect(ACTIVE_TESTNET_NETWORK).toBe("paseo");
+        expect(getNetworkLabel()).toBe("paseo");
     });
 
     it("uses the installed CDM target for Asset Hub", () => {
         expect(getChainConfig().assetHubRpc).toBe(cdmTarget["asset-hub"]);
     });
 
-    it("uses preview-net chain endpoints for non-CDM services", () => {
-        expect(getChainConfig().bulletinRpc).toBe("wss://previewnet.substrate.dev/bulletin");
-        expect(getChainConfig().peopleEndpoints).toEqual(["wss://previewnet.substrate.dev/people"]);
+    it("uses Paseo Next v2 chain endpoints for non-CDM services", () => {
+        expect(getChainConfig().bulletinRpc).toBe("wss://paseo-bulletin-next-rpc.polkadot.io");
+        expect(getChainConfig().peopleEndpoints).toEqual([
+            "wss://paseo-people-next-system-rpc.polkadot.io",
+        ]);
     });
 
     it("uses the installed CDM target for the Bulletin gateway", () => {

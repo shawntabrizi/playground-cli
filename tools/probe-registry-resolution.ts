@@ -42,6 +42,7 @@ import {
     resolveLiveContractAddresses,
     withoutReviveTraceNoise,
 } from "../src/utils/contractManifest.js";
+import { TESTNET_CHAIN_DESCRIPTORS } from "../src/utils/chainDescriptors.js";
 import { getNetworkLabel } from "../src/config.js";
 import cdmJson from "../cdm.json";
 
@@ -77,10 +78,15 @@ async function queryDomain(
     const manifest = withAddressOverride(cdmJson as unknown as CdmJson, address);
     const aliceSigner = createDevSigner("Alice");
     const aliceAddress = ss58Encode(getDevPublicKey("Alice"));
-    const manager = await ContractManager.fromClient(manifest, rawClient, {
-        defaultSigner: aliceSigner,
-        defaultOrigin: aliceAddress,
-    });
+    const manager = await ContractManager.fromClient(
+        manifest,
+        rawClient,
+        TESTNET_CHAIN_DESCRIPTORS.assetHub,
+        {
+            defaultSigner: aliceSigner,
+            defaultOrigin: aliceAddress,
+        },
+    );
     const registry = manager.getContract(PLAYGROUND_REGISTRY_CONTRACT);
     const res = await withoutReviveTraceNoise(() => registry.getMetadataUri.query(domain));
     const tuple = res.value as { isSome?: boolean; value?: string } | undefined;

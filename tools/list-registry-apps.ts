@@ -35,6 +35,7 @@ import {
     withRequiredLiveContractAddresses,
     withoutReviveTraceNoise,
 } from "../src/utils/contractManifest.js";
+import { TESTNET_CHAIN_DESCRIPTORS } from "../src/utils/chainDescriptors.js";
 import cdmJson from "../cdm.json";
 
 interface AppMetadata {
@@ -72,10 +73,15 @@ async function main(): Promise<number> {
         );
         const aliceSigner = createDevSigner("Alice");
         const aliceAddress = ss58Encode(getDevPublicKey("Alice"));
-        const manager = await ContractManager.fromClient(manifest, client.raw.assetHub, {
-            defaultSigner: aliceSigner,
-            defaultOrigin: aliceAddress,
-        });
+        const manager = await ContractManager.fromClient(
+            manifest,
+            client.raw.assetHub,
+            TESTNET_CHAIN_DESCRIPTORS.assetHub,
+            {
+                defaultSigner: aliceSigner,
+                defaultOrigin: aliceAddress,
+            },
+        );
         const registry = manager.getContract(PLAYGROUND_REGISTRY_CONTRACT);
 
         const res = await withoutReviveTraceNoise(() => registry.getApps.query(0, 100));

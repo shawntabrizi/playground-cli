@@ -31,7 +31,7 @@ export type Env = "testnet" | "mainnet";
 export type TestnetNetwork = "preview-net" | "paseo";
 
 export const DEFAULT_ENV: Env = "testnet";
-export const ACTIVE_TESTNET_NETWORK = "preview-net" satisfies TestnetNetwork;
+export const ACTIVE_TESTNET_NETWORK = "paseo" satisfies TestnetNetwork;
 
 const CDM_TARGET = defaultCdmTarget(cdmJson as unknown as CdmJson);
 
@@ -72,21 +72,21 @@ export interface ChainConfig {
 const TESTNET_NETWORKS: Record<TestnetNetwork, ChainConfig> = {
     "preview-net": {
         networkLabel: "preview-net",
-        assetHubRpc: requiredCdmEndpoint("asset-hub"),
+        assetHubRpc: "wss://previewnet.substrate.dev/asset-hub",
         bulletinRpc: "wss://previewnet.substrate.dev/bulletin",
         bulletinRpcFallbacks: [],
         peopleEndpoints: ["wss://previewnet.substrate.dev/people"],
-        bulletinGateway: ensureTrailingSlash(requiredCdmEndpoint("bulletin")),
+        bulletinGateway: "https://previewnet.substrate.dev/ipfs/",
         appViewerOrigin: "https://dot.li",
         faucetUrl: "https://faucet.polkadot.io/?network=pah",
     },
     paseo: {
         networkLabel: "paseo",
-        assetHubRpc: "wss://asset-hub-paseo-rpc.n.dwellir.com",
-        bulletinRpc: "wss://paseo-bulletin-rpc.polkadot.io",
+        assetHubRpc: requiredCdmEndpoint("asset-hub"),
+        bulletinRpc: "wss://paseo-bulletin-next-rpc.polkadot.io",
         bulletinRpcFallbacks: [],
-        peopleEndpoints: ["wss://paseo-people-next-rpc.polkadot.io"],
-        bulletinGateway: "https://paseo-ipfs.polkadot.io/ipfs/",
+        peopleEndpoints: ["wss://paseo-people-next-system-rpc.polkadot.io"],
+        bulletinGateway: ensureTrailingSlash(requiredCdmEndpoint("bulletin")),
         appViewerOrigin: "https://dot.li",
         faucetUrl: "https://faucet.polkadot.io/?network=pah",
     },

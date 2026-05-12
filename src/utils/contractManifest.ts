@@ -18,11 +18,12 @@ import {
     type AbiEntry,
     type CdmJson,
 } from "@parity/product-sdk-contracts";
-import { REGISTRY_ADDRESS } from "@dotdm/contracts";
+import { resolveTargetRegistryAddress } from "@dotdm/contracts";
 import { ss58Encode } from "@parity/product-sdk-address";
 import { getDevPublicKey } from "@parity/product-sdk-tx";
 import type { HexString, PolkadotClient } from "polkadot-api";
 import { defaultCdmTarget, defaultCdmTargetHash } from "./cdmTarget.js";
+import { TESTNET_CHAIN_DESCRIPTORS } from "./chainDescriptors.js";
 
 export const PLAYGROUND_REGISTRY_CONTRACT = "@w3s/playground-registry";
 
@@ -103,7 +104,7 @@ export function suppressReviveTraceNoise<T extends object>(contract: T): T {
 }
 
 function registryAddressForManifest(manifest: CdmJson): HexString {
-    return (defaultCdmTarget(manifest).registry ?? REGISTRY_ADDRESS) as HexString;
+    return resolveTargetRegistryAddress(defaultCdmTarget(manifest)) as HexString;
 }
 
 function patchContractAddresses(
@@ -142,6 +143,7 @@ export async function resolveLiveContractAddresses(
 ): Promise<Record<string, HexString>> {
     const registry = await createContractFromClient(
         assetHub,
+        TESTNET_CHAIN_DESCRIPTORS.assetHub,
         registryAddressForManifest(manifest),
         CDM_REGISTRY_ABI,
         { defaultOrigin: options.defaultOrigin ?? READ_ONLY_QUERY_ORIGIN },

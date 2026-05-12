@@ -26,6 +26,7 @@ import {
     suppressReviveTraceNoise,
     withRequiredLiveContractAddresses,
 } from "./contractManifest.js";
+import { TESTNET_CHAIN_DESCRIPTORS } from "./chainDescriptors.js";
 
 import cdmJson from "../../cdm.json";
 
@@ -58,10 +59,15 @@ export async function getReadOnlyRegistryContract(
     rawClient: Parameters<typeof ContractManager.fromClient>[1],
 ) {
     const manifest = await livePlaygroundRegistryManifest(rawClient);
-    const manager = await ContractManager.fromClient(manifest, rawClient, {
-        defaultSigner: createDevSigner("Alice"),
-        defaultOrigin: READ_ONLY_QUERY_ORIGIN,
-    });
+    const manager = await ContractManager.fromClient(
+        manifest,
+        rawClient,
+        TESTNET_CHAIN_DESCRIPTORS.assetHub,
+        {
+            defaultSigner: createDevSigner("Alice"),
+            defaultOrigin: READ_ONLY_QUERY_ORIGIN,
+        },
+    );
     return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));
 }
 
@@ -73,9 +79,14 @@ export async function getRegistryContract(
     signer: ResolvedSigner,
 ) {
     const manifest = await livePlaygroundRegistryManifest(rawClient);
-    const manager = await ContractManager.fromClient(manifest, rawClient, {
-        defaultSigner: signer.signer,
-        defaultOrigin: signer.address,
-    });
+    const manager = await ContractManager.fromClient(
+        manifest,
+        rawClient,
+        TESTNET_CHAIN_DESCRIPTORS.assetHub,
+        {
+            defaultSigner: signer.signer,
+            defaultOrigin: signer.address,
+        },
+    );
     return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));
 }

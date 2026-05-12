@@ -47,6 +47,10 @@ vi.mock("./contractManifest.js", () => ({
         withRequiredLiveContractAddressesMock(...args),
 }));
 
+vi.mock("./chainDescriptors.js", () => ({
+    TESTNET_CHAIN_DESCRIPTORS: { assetHub: "asset-descriptor" },
+}));
+
 import { getReadOnlyRegistryContract, getRegistryContract } from "./registry.js";
 
 const fakeSigner: ResolvedSigner = {
@@ -79,10 +83,15 @@ describe("getRegistryContract", () => {
             rawClient,
             ["@w3s/playground-registry"],
         ]);
-        expect(fromClientMock).toHaveBeenCalledWith(patchedManifest, rawClient, {
-            defaultSigner: fakeSigner.signer,
-            defaultOrigin: fakeSigner.address,
-        });
+        expect(fromClientMock).toHaveBeenCalledWith(
+            patchedManifest,
+            rawClient,
+            "asset-descriptor",
+            {
+                defaultSigner: fakeSigner.signer,
+                defaultOrigin: fakeSigner.address,
+            },
+        );
         expect(getContractMock).toHaveBeenCalledWith("@w3s/playground-registry");
     });
 
@@ -99,10 +108,15 @@ describe("getRegistryContract", () => {
             rawClient,
             ["@w3s/playground-registry"],
         ]);
-        expect(fromClientMock).toHaveBeenCalledWith(patchedManifest, rawClient, {
-            defaultSigner: "alice-signer",
-            defaultOrigin: "5ReadOnly",
-        });
+        expect(fromClientMock).toHaveBeenCalledWith(
+            patchedManifest,
+            rawClient,
+            "asset-descriptor",
+            {
+                defaultSigner: "alice-signer",
+                defaultOrigin: "5ReadOnly",
+            },
+        );
     });
 
     it("throws a clear error when live lookup fails", async () => {

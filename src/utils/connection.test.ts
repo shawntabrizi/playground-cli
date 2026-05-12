@@ -91,9 +91,9 @@ describe("getConnection", () => {
             ...cfg.bulletinRpcFallbacks,
         ]);
         expect(mockGetWsProvider.mock.calls[2][0]).toEqual(cfg.peopleEndpoints);
-        expect(mockGetTypedApi.mock.calls[0][0]).toEqual({ genesis: "0xpreview-asset" });
-        expect(mockGetTypedApi.mock.calls[1][0]).toEqual({ genesis: "0xpreview-bulletin" });
-        expect(mockGetTypedApi.mock.calls[2][0]).toEqual({ genesis: "0xpreview-people" });
+        expect(mockGetTypedApi.mock.calls[0][0]).toEqual({ genesis: "0xasset" });
+        expect(mockGetTypedApi.mock.calls[1][0]).toEqual({ genesis: "0xbulletin" });
+        expect(mockGetTypedApi.mock.calls[2][0]).toEqual({ genesis: "0xpeople" });
     });
 
     it("returns the same client on subsequent calls (singleton)", async () => {

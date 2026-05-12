@@ -25,6 +25,10 @@ vi.mock("@parity/product-sdk-contracts", () => ({
     createContractFromClient: (...args: unknown[]) => createContractFromClientMock(...args),
 }));
 
+vi.mock("./chainDescriptors.js", () => ({
+    TESTNET_CHAIN_DESCRIPTORS: { assetHub: "asset-descriptor" },
+}));
+
 import {
     PLAYGROUND_REGISTRY_CONTRACT,
     resolveLiveContractAddresses,
@@ -92,6 +96,7 @@ describe("resolveLiveContractAddresses", () => {
         expect(addresses).toEqual({ [PLAYGROUND_REGISTRY_CONTRACT]: liveAddress });
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             assetHub,
+            "asset-descriptor",
             targetRegistryAddress,
             expect.arrayContaining([
                 expect.objectContaining({ name: "getAddress", type: "function" }),
@@ -111,6 +116,7 @@ describe("resolveLiveContractAddresses", () => {
 
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             expect.anything(),
+            "asset-descriptor",
             targetRegistryAddress,
             expect.any(Array),
             expect.objectContaining({ defaultOrigin: expect.any(String) }),
@@ -131,6 +137,7 @@ describe("resolveLiveContractAddresses", () => {
 
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             assetHub,
+            "asset-descriptor",
             targetRegistryAddress,
             expect.any(Array),
             expect.objectContaining({ defaultOrigin: origin }),
@@ -204,6 +211,7 @@ describe("withLiveContractAddresses", () => {
 
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             assetHub,
+            "asset-descriptor",
             targetRegistryAddress,
             expect.any(Array),
             expect.objectContaining({ defaultOrigin: origin }),
@@ -227,6 +235,7 @@ describe("withLiveContractAddresses", () => {
 
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             assetHub,
+            "asset-descriptor",
             targetRegistryAddress,
             expect.any(Array),
             expect.objectContaining({ defaultOrigin: origin }),
