@@ -22,7 +22,7 @@
 
 import { Enum } from "polkadot-api";
 import { submitAndWatch, createDevSigner } from "@parity/product-sdk-tx";
-import type { PaseoClient } from "../connection.js";
+import type { ChainClient } from "../connection.js";
 import { remainingAuthorizationExtent } from "./authorizationExtent.js";
 
 const AT_BEST = { at: "best" as const };
@@ -43,7 +43,7 @@ export interface AllowanceStatus {
 }
 
 export async function checkAllowance(
-    client: PaseoClient,
+    client: ChainClient,
     address: string,
 ): Promise<AllowanceStatus> {
     const raw = await client.bulletin.query.TransactionStorage.Authorizations.getValue(
@@ -63,7 +63,7 @@ export async function checkAllowance(
     };
 }
 
-export async function ensureAllowance(client: PaseoClient, address: string): Promise<void> {
+export async function ensureAllowance(client: ChainClient, address: string): Promise<void> {
     const status = await checkAllowance(client, address);
     if (status.authorized && status.remainingTxs >= LOW_TX_THRESHOLD) return;
 

@@ -16,7 +16,7 @@
 // limitations under the License.
 
 /**
- * CI probe for the dedicated funder's PAS balance on Paseo Asset Hub.
+ * CI probe for the dedicated funder's PAS balance on the configured Asset Hub.
  *
  * Exit codes:
  *   0  balance >= threshold

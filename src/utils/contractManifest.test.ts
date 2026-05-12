@@ -101,6 +101,22 @@ describe("resolveLiveContractAddresses", () => {
         expect(getAddressQueryMock).toHaveBeenCalledWith(PLAYGROUND_REGISTRY_CONTRACT);
     });
 
+    it("uses a stable read-only origin by default", async () => {
+        getAddressQueryMock.mockResolvedValue({
+            success: true,
+            value: { isSome: true, value: liveAddress },
+        });
+
+        await resolveLiveContractAddresses(manifest(), {} as any, [PLAYGROUND_REGISTRY_CONTRACT]);
+
+        expect(createContractFromClientMock).toHaveBeenCalledWith(
+            expect.anything(),
+            targetRegistryAddress,
+            expect.any(Array),
+            expect.objectContaining({ defaultOrigin: expect.any(String) }),
+        );
+    });
+
     it("forwards defaultOrigin to createContractFromClient when provided", async () => {
         getAddressQueryMock.mockResolvedValue({
             success: true,

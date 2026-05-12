@@ -119,7 +119,7 @@ function predictPostRegisterPopStatus(
         return max(currentStatus, explicitStatus);
     }
     if (requiredStatus === POP_STATUS_NO_STATUS && currentStatus === POP_STATUS_LITE && isTestnet) {
-        // Paseo auto-escape: Lite signer on a NoStatus label gets bumped to
+        // Testnet auto-escape: Lite signer on a NoStatus label gets bumped to
         // Full so `PopRules.priceWithCheck` accepts the signer. Mainnet path
         // never triggers this branch.
         return POP_STATUS_FULL;

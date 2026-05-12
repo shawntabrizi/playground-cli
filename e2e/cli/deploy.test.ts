@@ -17,7 +17,7 @@
  * E2E tests for `dot deploy`.
  *
  * These tests verify the deploy pipeline behavior. Tests that require
- * full network connectivity (Paseo testnet + IPFS) are marked accordingly.
+ * full network connectivity (configured testnet + IPFS) are marked accordingly.
  *
  * All headless deploys require: --signer, --domain, --buildDir, --playground
  * to trigger the non-interactive path (see isFullySpecified() in deploy/index.ts).
@@ -73,7 +73,7 @@ interface ContractDeployTestConfig {
 }
 
 function runContractDeployTest(cfg: ContractDeployTestConfig): void {
-	describe(`dot deploy — ${cfg.name} (requires Paseo + IPFS)`, () => {
+    describe(`dot deploy — ${cfg.name} (requires configured testnet + IPFS)`, () => {
 		test(`${cfg.name} deploy completes end-to-end`, { timeout: 450_000 }, async () => {
 			const result = await dot([
 				"deploy",
@@ -288,7 +288,7 @@ describe("dot deploy — preflight and validation", () => {
 	});
 });
 
-describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", () => {
+describe("dot deploy --playground — full pipeline (requires configured testnet + IPFS)", () => {
 	test("frontend-only deploy completes end-to-end", { timeout: 450_000 }, async () => {
 		const domain = E2E_DOMAINS.storage;
 		const result = await dot([
@@ -418,7 +418,7 @@ runContractDeployTest({ name: "hardhat", domain: E2E_DOMAINS.hardhat, fixture: h
 // (TokenA.sol + TokenB.sol deployed in a single --contracts run).
 runContractDeployTest({ name: "multi", domain: E2E_DOMAINS.multi, fixture: multiContract });
 
-// Rejection test — does NOT require Paseo or IPFS; exits before any chain mutation.
+// Rejection test — does NOT require the configured testnet or IPFS; exits before any chain mutation.
 describe("dot deploy — rejects --no-contract-build with no artefacts", () => {
 	test("foundry project with --no-contract-build but no out/ → clear error", { timeout: 120_000 }, async () => {
 		const constructorArgs = fixturePath("constructor-args");
@@ -443,7 +443,7 @@ describe("dot deploy — rejects --no-contract-build with no artefacts", () => {
 
 // CDM follows the same CI shape as foundry/hardhat: deploy pre-built artifacts
 // committed with the fixture, without requiring the Rust/PVM toolchain on CI.
-describe("dot deploy — cdm (requires Paseo + IPFS)", () => {
+describe("dot deploy — cdm (requires configured testnet + IPFS)", () => {
 	test("CDM deploy completes end-to-end", { timeout: 450_000 }, async () => {
 		const domain = E2E_DOMAINS.cdm;
 		const result = await dot([

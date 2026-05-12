@@ -42,6 +42,7 @@ import {
     resolveLiveContractAddresses,
     withoutReviveTraceNoise,
 } from "../src/utils/contractManifest.js";
+import { getNetworkLabel } from "../src/config.js";
 import cdmJson from "../cdm.json";
 
 const DEFAULT_DOMAIN = "rock-paper-scissors.dot";
@@ -95,7 +96,7 @@ async function main(): Promise<number> {
     const baked = bakedAddress(cdmJson as unknown as CdmJson);
 
     console.log(`probing ${PLAYGROUND_REGISTRY_CONTRACT}`);
-    console.log(`  network    paseo asset hub`);
+    console.log(`  network    ${getNetworkLabel()}`);
     console.log(`  domain     ${domain}`);
     console.log(`  cdm.json   ${baked}`);
 

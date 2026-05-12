@@ -130,18 +130,18 @@ describe("resolveSignerSetup — phone mode", () => {
     });
 });
 
-describe("resolveSignerSetup — contracts funding", () => {
-    it("phone mode + session userSigner + fundingNeeded → contracts-fund is FIRST", () => {
+describe("resolveSignerSetup — contracts signing", () => {
+    it("phone mode + session userSigner + contractsPhoneSigningNeeded → contracts approval is FIRST", () => {
         const user = fakeSigner("session");
         const result = resolveSignerSetup({
             mode: "phone",
             userSigner: user,
             publishToPlayground: true,
-            contractsFundingNeeded: true,
+            contractsPhoneSigningNeeded: true,
         });
         expect(result.approvals[0]).toEqual({
-            phase: "contracts-fund",
-            label: "Fund contract deploy session key",
+            phase: "contracts",
+            label: "Deploy contracts",
         });
         // Remaining entries stay in their DotNS → playground order.
         expect(result.approvals.slice(1)).toEqual([
@@ -152,50 +152,48 @@ describe("resolveSignerSetup — contracts funding", () => {
         ]);
     });
 
-    it("dev mode + session userSigner (dev-suri variant) + fundingNeeded → contracts-fund still added", () => {
-        // Dev mode with a session-sourced user signer is the --suri <phone-session>
-        // shape: the top-up still needs a tap.
+    it("dev mode + session userSigner + contractsPhoneSigningNeeded → contracts approval is still added", () => {
+        // Dev mode with a session-sourced user signer still signs contracts on
+        // the mobile-backed product account.
         const user = fakeSigner("session");
         const result = resolveSignerSetup({
             mode: "dev",
             userSigner: user,
             publishToPlayground: false,
-            contractsFundingNeeded: true,
+            contractsPhoneSigningNeeded: true,
         });
-        expect(result.approvals).toEqual([
-            { phase: "contracts-fund", label: "Fund contract deploy session key" },
-        ]);
+        expect(result.approvals).toEqual([{ phase: "contracts", label: "Deploy contracts" }]);
     });
 
-    it("dev-source userSigner + fundingNeeded → NO contracts-fund approval (local-key funding, no human)", () => {
+    it("dev-source userSigner + contractsPhoneSigningNeeded → NO contracts approval (local-key signing)", () => {
         const user = fakeSigner("dev");
         const result = resolveSignerSetup({
             mode: "dev",
             userSigner: user,
             publishToPlayground: false,
-            contractsFundingNeeded: true,
+            contractsPhoneSigningNeeded: true,
         });
         expect(result.approvals).toEqual([]);
     });
 
-    it("null userSigner + fundingNeeded → NO contracts-fund approval (pure-dev path)", () => {
+    it("null userSigner + contractsPhoneSigningNeeded → NO contracts approval (pure-dev path)", () => {
         const result = resolveSignerSetup({
             mode: "dev",
             userSigner: null,
             publishToPlayground: false,
-            contractsFundingNeeded: true,
+            contractsPhoneSigningNeeded: true,
         });
         expect(result.approvals).toEqual([]);
     });
 
-    it("contractsFundingNeeded=false never adds the contracts-fund approval", () => {
+    it("contractsPhoneSigningNeeded=false never adds the contracts approval", () => {
         const user = fakeSigner("session");
         const result = resolveSignerSetup({
             mode: "phone",
             userSigner: user,
             publishToPlayground: true,
-            contractsFundingNeeded: false,
+            contractsPhoneSigningNeeded: false,
         });
-        expect(result.approvals.some((a) => a.phase === "contracts-fund")).toBe(false);
+        expect(result.approvals.some((a) => a.phase === "contracts")).toBe(false);
     });
 });

@@ -24,7 +24,7 @@ export interface HeaderProps {
     cmd: string;
     /** Second bread-crumb piece: "polkadot playground" or the domain being deployed. */
     subtitle?: string;
-    /** Short network label — "paseo" on testnet. */
+    /** Short network label, e.g. "preview-net". */
     network?: string;
     /** Right-aligned metadata; most commonly the CLI version. */
     right?: string;

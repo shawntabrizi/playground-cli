@@ -37,6 +37,7 @@ import {
     persistSessionAccount,
     SESSION_FUND_AMOUNT,
     SESSION_MIN_BALANCE,
+    type SessionKeyInfo,
 } from "./session-account.js";
 import { resolveSignerSetup, type SignerMode, type DeployApproval } from "./signerMode.js";
 import {
@@ -114,8 +115,8 @@ export interface RunDeployOptions {
      * (3 DotNS taps) if absent and auto-corrects at runtime.
      */
     plan?: DeployPlan;
-    /** Whether the contracts phase needs a phone tap to top up its session key. */
-    contractsFundingNeeded?: boolean;
+    /** Whether the contracts phase signs with the mobile-backed product account. */
+    contractsPhoneSigningNeeded?: boolean;
 }
 
 export interface DeployOutcome {
@@ -145,7 +146,7 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
         userSigner: options.userSigner,
         publishToPlayground: options.publishToPlayground,
         plan: options.plan,
-        contractsFundingNeeded: options.contractsFundingNeeded,
+        contractsPhoneSigningNeeded: options.contractsPhoneSigningNeeded,
     });
 
     options.onEvent({ kind: "plan", approvals: setup.approvals });
@@ -246,8 +247,8 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
 // ── Contracts orchestration ──────────────────────────────────────────────────
 
 /**
- * Compile + deploy contracts using the on-disk session key. Fires
- * `phase-skipped` when disabled or no contract project is detected.
+ * Compile + deploy contracts. User signers deploy from the playground product
+ * account; pure dev mode falls back to the on-disk session key.
  */
 async function maybeRunContracts(
     options: RunDeployOptions,
@@ -280,23 +281,13 @@ async function maybeRunContracts(
         { "cli.deploy.contracts_type": contractsType },
         options.onEvent,
         async () => {
-            const { info: session, created } = await getOrCreateSessionAccount();
             const client = await getConnection();
-
-            await ensureSessionFunded({
+            const deployment = await resolveContractsDeploymentSigner({
                 client,
-                sessionAddress: session.account.ss58Address,
                 userSigner: options.userSigner,
                 counter,
                 onEvent: options.onEvent,
             });
-            if (created) {
-                await submitAndWatch(
-                    client.assetHub.tx.Revive.map_account(),
-                    session.account.signer,
-                );
-                await persistSessionAccount(session);
-            }
 
             const result = await runContractsPhase({
                 projectDir: options.projectDir,
@@ -306,8 +297,8 @@ async function maybeRunContracts(
                 // ChainClient — cast keeps the extra `individuality` field out
                 // of the SDK-surface type without affecting runtime behaviour.
                 client: client as unknown as Parameters<typeof runContractsPhase>[0]["client"],
-                signer: session.account.signer,
-                origin: session.account.ss58Address,
+                signer: deployment.signer,
+                origin: deployment.origin,
                 onEvent: (event) => options.onEvent({ kind: "contracts-event", event }),
             });
 
@@ -316,68 +307,73 @@ async function maybeRunContracts(
     );
 }
 
-/** Top up the contracts session key if it's below `SESSION_MIN_BALANCE`. */
-async function ensureSessionFunded(opts: {
+interface ContractsDeploymentSigner {
+    signer: PolkadotSigner;
+    origin: string;
+}
+
+async function resolveContractsDeploymentSigner(opts: {
     client: Awaited<ReturnType<typeof getConnection>>;
-    sessionAddress: string;
     userSigner: ResolvedSigner | null;
     counter: SigningCounter;
+    onEvent: RunDeployOptions["onEvent"];
+}): Promise<ContractsDeploymentSigner> {
+    if (opts.userSigner) {
+        const signer =
+            opts.userSigner.source === "session"
+                ? wrapSignerWithEvents(opts.userSigner.signer, {
+                      label: "Deploy contracts",
+                      counter: opts.counter,
+                      onEvent: (event) => opts.onEvent({ kind: "signing", event }),
+                  })
+                : opts.userSigner.signer;
+        return { signer, origin: opts.userSigner.address };
+    }
+
+    const { info: session, created } = await getOrCreateSessionAccount();
+    await ensureSessionFunded({
+        client: opts.client,
+        session,
+        onEvent: opts.onEvent,
+    });
+    if (created) {
+        await submitAndWatch(opts.client.assetHub.tx.Revive.map_account(), session.account.signer);
+        await persistSessionAccount(session);
+    }
+    return { signer: session.account.signer, origin: session.account.ss58Address };
+}
+
+/** Top up the pure-dev contracts session key if it's below `SESSION_MIN_BALANCE`. */
+async function ensureSessionFunded(opts: {
+    client: Awaited<ReturnType<typeof getConnection>>;
+    session: SessionKeyInfo;
     onEvent: RunDeployOptions["onEvent"];
 }): Promise<void> {
     const emitInfo = (message: string) =>
         opts.onEvent({ kind: "contracts-event", event: { kind: "info", message } });
 
-    const balance = await checkBalance(opts.client, opts.sessionAddress, SESSION_MIN_BALANCE);
+    const sessionAddress = opts.session.account.ss58Address;
+    const balance = await checkBalance(opts.client, sessionAddress, SESSION_MIN_BALANCE);
     if (balance.sufficient) {
-        emitInfo(`session key funded (${opts.sessionAddress})`);
+        emitInfo(`session key funded (${sessionAddress})`);
         return;
     }
 
-    emitInfo(`funding session key ${opts.sessionAddress}…`);
+    emitInfo(`funding session key ${sessionAddress}…`);
 
-    // Three-way branch based on who's funding the session key top-up:
-    //
-    //   source === "session"  Phone signer: user pays on-device. Wrap with
-    //                         lifecycle events so the TUI can number the tap
-    //                         and show "📱 Approve on your phone".
-    //
-    //   source === "dev"      Dev-with-SURI: a local keypair (--suri //Alice
-    //                         or a BIP-39 mnemonic) pretending to be the user.
-    //                         Signs immediately in-process — no human in the
-    //                         loop — so wrapping with phone-tap events would
-    //                         be misleading. Sign directly.
-    //
-    //   null                  Pure dev mode (no --suri, no session): pick the
-    //                         first funder in the chain that has enough PAS.
-    //                         If every dev funder is drained, tell the user to
-    //                         switch to a mobile signer rather than silently
-    //                         falling back to anything that might race the drainer.
-    let funder: PolkadotSigner;
-    if (opts.userSigner?.source === "session") {
-        funder = wrapSignerWithEvents(opts.userSigner.signer, {
-            label: "Fund contract deploy session key",
-            counter: opts.counter,
-            onEvent: (event) => opts.onEvent({ kind: "signing", event }),
-        });
-    } else if (opts.userSigner) {
-        // Dev-with-SURI: sign directly, no lifecycle events.
-        funder = opts.userSigner.signer;
-    } else {
-        const picked = await pickFunder(opts.client, SESSION_FUND_AMOUNT + FUNDER_FEE_BUFFER);
-        if (!picked) {
-            throw new Error(
-                `Dev account balance low. Please deploy with mobile signer. To top up funds in your mobile signer, go to the faucet at: ${FAUCET_URL}`,
-            );
-        }
-        funder = picked.signer;
+    const picked = await pickFunder(opts.client, SESSION_FUND_AMOUNT + FUNDER_FEE_BUFFER);
+    if (!picked) {
+        throw new Error(
+            `Dev account balance low. Please deploy with mobile signer. To top up funds in your mobile signer, go to the faucet at: ${FAUCET_URL}`,
+        );
     }
 
     await submitAndWatch(
         opts.client.assetHub.tx.Balances.transfer_keep_alive({
-            dest: Enum("Id", opts.sessionAddress),
+            dest: Enum("Id", sessionAddress),
             value: SESSION_FUND_AMOUNT,
         }),
-        funder,
+        picked.signer,
     );
 
     emitInfo("session key funded");

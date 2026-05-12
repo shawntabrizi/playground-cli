@@ -23,15 +23,15 @@
 import { createInkSdk } from "@polkadot-api/sdk-ink";
 import { ensureAccountMapped } from "@parity/product-sdk-tx";
 import type { PolkadotSigner } from "polkadot-api";
-import type { PaseoClient } from "../connection.js";
+import type { ChainClient } from "../connection.js";
 
-export async function checkMapping(client: PaseoClient, address: string): Promise<boolean> {
+export async function checkMapping(client: ChainClient, address: string): Promise<boolean> {
     const inkSdk = createInkSdk(client.raw.assetHub, { atBest: true });
     return inkSdk.addressIsMapped(address);
 }
 
 export async function ensureMapped(
-    client: PaseoClient,
+    client: ChainClient,
     address: string,
     signer: PolkadotSigner,
 ): Promise<void> {

@@ -13,24 +13,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import type { CdmJson } from "@parity/product-sdk-contracts";
+import cdmJson from "../cdm.json";
+import { defaultCdmTarget } from "./utils/cdmTarget.js";
+
 /**
  * Single source of truth for environment-dependent values: RPC endpoints,
  * contract addresses, dapp identifiers, and feature defaults.
  *
- * When mainnet launches we will add a second profile here and thread an
- * `env` value through the commands. Until then only `testnet` is supported
- * and every consumer should import from this module rather than inlining
- * URLs or addresses elsewhere.
+ * `ACTIVE_TESTNET_NETWORK` is the single testnet switch. Endpoints, UI labels,
+ * descriptor selection, and CDM-derived values should flow from this module
+ * instead of being inlined elsewhere. When mainnet launches we will add a
+ * second profile here and thread an `env` value through the commands.
  */
 
 export type Env = "testnet" | "mainnet";
+export type TestnetNetwork = "preview-net" | "paseo";
 
 export const DEFAULT_ENV: Env = "testnet";
+export const ACTIVE_TESTNET_NETWORK = "preview-net" satisfies TestnetNetwork;
+
+const CDM_TARGET = defaultCdmTarget(cdmJson as unknown as CdmJson);
+
+function requiredCdmEndpoint(name: "asset-hub" | "bulletin"): string {
+    const value = CDM_TARGET[name];
+    if (!value) throw new Error(`cdm.json target is missing ${name} endpoint`);
+    return value;
+}
+
+function ensureTrailingSlash(value: string): string {
+    return value.endsWith("/") ? value : `${value}/`;
+}
 
 export interface ChainConfig {
-    /** WebSocket endpoint for Paseo Asset Hub (Revive contracts live here). */
+    /** Human-readable network label for headers and diagnostics. */
+    networkLabel: TestnetNetwork;
+    /** WebSocket endpoint for the CDM target Asset Hub (Revive contracts live here). */
     assetHubRpc: string;
-    /** WebSocket endpoint for Paseo Bulletin (immutable IPFS storage). */
+    /** WebSocket endpoint for Bulletin (immutable IPFS storage). */
     bulletinRpc: string;
     /**
      * Ordered fallback endpoints for Bulletin, used where the caller builds its
@@ -45,15 +65,31 @@ export interface ChainConfig {
     bulletinGateway: string;
     /** Viewer URL shown to users after a successful deploy. */
     appViewerOrigin: string;
+    /** Faucet URL shown when testnet funding helpers cannot top up an account. */
+    faucetUrl: string;
 }
 
-const TESTNET: ChainConfig = {
-    assetHubRpc: "wss://asset-hub-paseo-rpc.n.dwellir.com",
-    bulletinRpc: "wss://paseo-bulletin-rpc.polkadot.io",
-    bulletinRpcFallbacks: [],
-    peopleEndpoints: ["wss://paseo-people-next-rpc.polkadot.io"],
-    bulletinGateway: "https://paseo-ipfs.polkadot.io/ipfs/",
-    appViewerOrigin: "https://dot.li",
+const TESTNET_NETWORKS: Record<TestnetNetwork, ChainConfig> = {
+    "preview-net": {
+        networkLabel: "preview-net",
+        assetHubRpc: requiredCdmEndpoint("asset-hub"),
+        bulletinRpc: "wss://previewnet.substrate.dev/bulletin",
+        bulletinRpcFallbacks: [],
+        peopleEndpoints: ["wss://previewnet.substrate.dev/people"],
+        bulletinGateway: ensureTrailingSlash(requiredCdmEndpoint("bulletin")),
+        appViewerOrigin: "https://dot.li",
+        faucetUrl: "https://faucet.polkadot.io/?network=pah",
+    },
+    paseo: {
+        networkLabel: "paseo",
+        assetHubRpc: "wss://asset-hub-paseo-rpc.n.dwellir.com",
+        bulletinRpc: "wss://paseo-bulletin-rpc.polkadot.io",
+        bulletinRpcFallbacks: [],
+        peopleEndpoints: ["wss://paseo-people-next-rpc.polkadot.io"],
+        bulletinGateway: "https://paseo-ipfs.polkadot.io/ipfs/",
+        appViewerOrigin: "https://dot.li",
+        faucetUrl: "https://faucet.polkadot.io/?network=pah",
+    },
 };
 
 export function getChainConfig(env: Env = DEFAULT_ENV): ChainConfig {
@@ -62,7 +98,7 @@ export function getChainConfig(env: Env = DEFAULT_ENV): ChainConfig {
             "`--env mainnet` is not yet supported. Use `--env testnet` (default) while mainnet launch is pending.",
         );
     }
-    const cfg = TESTNET;
+    const cfg = TESTNET_NETWORKS[ACTIVE_TESTNET_NETWORK];
     // CHAOS-test hook: when DOT_BULLETIN_RPC is set, use it as the primary
     // Bulletin endpoint and retain the built-in URL as a fallback so failover
     // works. bulletin-deploy's deploy() already applies this pattern internally
@@ -79,6 +115,10 @@ export function getChainConfig(env: Env = DEFAULT_ENV): ChainConfig {
         };
     }
     return cfg;
+}
+
+export function getNetworkLabel(env: Env = DEFAULT_ENV): string {
+    return getChainConfig(env).networkLabel;
 }
 
 /** Identifier the terminal adapter reports during SSO. Kept stable so mobile pairings persist across releases. */

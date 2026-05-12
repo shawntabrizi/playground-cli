@@ -61,7 +61,7 @@ const { AllFundersExhaustedError } = await import("./errors.js");
 const USER_ADDRESS = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 
 /**
- * Build a fake `PaseoClient`-ish object whose `System.Account.getValue` mock
+ * Build a fake `ChainClient`-ish object whose `System.Account.getValue` mock
  * looks up the queried address in `balances` (defaulting to 0 for unknown
  * addresses). Returns the transfer factory mock so callers can assert the
  * arguments handed to `transfer_keep_alive`.

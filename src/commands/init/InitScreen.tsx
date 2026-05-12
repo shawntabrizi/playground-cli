@@ -22,6 +22,7 @@ import { AccountSetup } from "./AccountSetup.js";
 import { computeAllDone } from "./completion.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 import type { LoginHandle } from "../../utils/auth.js";
+import { getNetworkLabel } from "../../config.js";
 
 export function InitScreen({
     login,
@@ -70,7 +71,7 @@ export function InitScreen({
             <Header
                 cmd="dot init"
                 subtitle="polkadot playground"
-                network="paseo"
+                network={getNetworkLabel()}
                 right={VERSION_LABEL}
             />
 

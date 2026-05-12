@@ -18,30 +18,25 @@
  */
 
 import { ContractManager, type CdmJson } from "@parity/product-sdk-contracts";
+import { createDevSigner } from "@parity/product-sdk-tx";
 import type { ResolvedSigner } from "./signer.js";
 import {
     PLAYGROUND_REGISTRY_CONTRACT,
+    READ_ONLY_QUERY_ORIGIN,
     suppressReviveTraceNoise,
     withRequiredLiveContractAddresses,
 } from "./contractManifest.js";
 
 import cdmJson from "../../cdm.json";
 
-/**
- * Get a typed handle to the playground registry contract.
- */
-export async function getRegistryContract(
+async function livePlaygroundRegistryManifest(
     rawClient: Parameters<typeof ContractManager.fromClient>[1],
-    signer: ResolvedSigner,
-) {
+): Promise<CdmJson> {
     let manifest: CdmJson;
     try {
-        manifest = await withRequiredLiveContractAddresses(
-            cdmJson,
-            rawClient,
-            [PLAYGROUND_REGISTRY_CONTRACT],
-            { defaultOrigin: signer.address },
-        );
+        manifest = await withRequiredLiveContractAddresses(cdmJson, rawClient, [
+            PLAYGROUND_REGISTRY_CONTRACT,
+        ]);
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(
@@ -49,7 +44,35 @@ export async function getRegistryContract(
             { cause: err instanceof Error ? err : undefined },
         );
     }
+    return manifest;
+}
 
+/**
+ * Get a typed handle for read-only Playground registry calls.
+ *
+ * Registry browsing and metadata lookup do not need, and should not depend on,
+ * the user's product account. Use a stable read-only origin so `dot mod` works
+ * before the product account has Asset Hub funding/mapping.
+ */
+export async function getReadOnlyRegistryContract(
+    rawClient: Parameters<typeof ContractManager.fromClient>[1],
+) {
+    const manifest = await livePlaygroundRegistryManifest(rawClient);
+    const manager = await ContractManager.fromClient(manifest, rawClient, {
+        defaultSigner: createDevSigner("Alice"),
+        defaultOrigin: READ_ONLY_QUERY_ORIGIN,
+    });
+    return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));
+}
+
+/**
+ * Get a typed handle for signed Playground registry calls.
+ */
+export async function getRegistryContract(
+    rawClient: Parameters<typeof ContractManager.fromClient>[1],
+    signer: ResolvedSigner,
+) {
+    const manifest = await livePlaygroundRegistryManifest(rawClient);
     const manager = await ContractManager.fromClient(manifest, rawClient, {
         defaultSigner: signer.signer,
         defaultOrigin: signer.address,

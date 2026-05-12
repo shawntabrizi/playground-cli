@@ -22,7 +22,6 @@ import { errorMessage, withSpan } from "../../telemetry.js";
 import { resolveSigner, SignerNotAvailableError, type ResolvedSigner } from "../../utils/signer.js";
 import { getConnection, destroyConnection } from "../../utils/connection.js";
 import { checkMapping } from "../../utils/account/mapping.js";
-import { checkAllowance, LOW_TX_THRESHOLD } from "../../utils/account/allowance.js";
 import { onProcessShutdown } from "../../utils/process-guard.js";
 import { runCliCommand } from "../../cli-runtime.js";
 import {
@@ -39,8 +38,6 @@ import type { DeployOutcome, DeployEvent } from "../../utils/deploy/run.js";
 import { buildSummaryView } from "./summary.js";
 import { detectContractsType, type ContractsType } from "../../utils/build/detect.js";
 import { loadDetectInput } from "../../utils/build/runner.js";
-import { readSessionAccount, SESSION_MIN_BALANCE } from "../../utils/deploy/session-account.js";
-import { checkBalance } from "../../utils/account/funding.js";
 import { DEFAULT_BUILD_DIR, type Env } from "../../config.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
 
@@ -155,14 +152,11 @@ export const deployCommand = new Command("deploy")
                 throw err;
             }
 
-            // Release the Asset Hub client we opened for preflight mapping +
-            // allowance checks. Nothing else in the deploy path (build, chunk
-            // upload, bulletin-deploy's own DotNS preflight + registration)
-            // touches `getConnection()` — and holding an idle polkadot-api client
-            // with a live best-block subscription for the entire deploy window
-            // was a measurable contributor to background memory pressure. The
-            // playground publish step calls `getConnection()` which auto-creates
-            // a fresh client at that point.
+            // Release the Asset Hub client we opened for preflight mapping.
+            // Holding an idle polkadot-api client with a live best-block
+            // subscription for the entire deploy window was a measurable
+            // contributor to background memory pressure. Later phases call
+            // `getConnection()` and auto-create a fresh client when needed.
             destroyConnection();
 
             try {
@@ -194,8 +188,7 @@ export const deployCommand = new Command("deploy")
 /**
  * Make sure we can actually deploy before spending the user's time on prompts:
  *   - user has a signer (either --suri dev or a QR session),
- *   - their account is mapped in Revive (needed for any EVM call),
- *   - their Bulletin storage allowance isn't about to be exhausted.
+ *   - their account is mapped in Revive (needed for any EVM call).
  *
  * Dev mode without --playground doesn't need a signer at all — we skip the
  * check in that case so a brand-new user can do `dot deploy --signer dev` out
@@ -225,37 +218,21 @@ async function preflight(opts: {
         throw err;
     }
 
-    // Dev accounts don't need a mapping/allowance check — Alice & friends are
+    // Dev accounts don't need a mapping check — Alice & friends are
     // already set up on the test chains. Only gate on real session accounts.
     if (signer.source !== "session") return signer;
 
     const client = await getConnection();
 
-    // Mapping is always required — the playground registry publish + any
-    // DotNS signing go through EVM contract calls, which need the user's
-    // SS58 to be mapped to an H160 via `Revive::map_account`. So we always
-    // check mapping, in both dev and phone modes.
+    // Mapping is always required for Asset Hub EVM contract calls. Fees are
+    // handled by the mobile signer through implicit PGAS claim; the CLI no
+    // longer pre-funds the account with PAS.
     const mapped = await checkMapping(client, signer.address);
     if (!mapped) {
         signer.destroy();
         throw new Error(
             'Account is not mapped in Revive. Run "dot init" first to finish account setup.',
         );
-    }
-
-    // Bulletin storage allowance is ONLY consumed when the user's signer is
-    // used to submit `TransactionStorage.store` — that is, in phone mode.
-    // In dev mode, bulletin-deploy uploads chunks via its own pool mnemonic
-    // and the user's allowance isn't touched. Gating dev-mode deploys on
-    // the user's allowance is a false block.
-    if (opts.mode !== "dev") {
-        const allowance = await checkAllowance(client, signer.address);
-        if (!allowance.authorized || allowance.remainingTxs < LOW_TX_THRESHOLD) {
-            signer.destroy();
-            throw new Error(
-                'Bulletin storage allowance is exhausted. Run "dot init" to refresh it.',
-            );
-        }
     }
 
     return signer;
@@ -349,15 +326,11 @@ async function runHeadless(ctx: {
         );
     }
 
-    const contractsFundingNeeded = await withSpan(
-        "cli.deploy.contracts-funding-check",
-        "check contracts session funding",
+    const contractsPhoneSigningNeeded = await withSpan(
+        "cli.deploy.contracts-signing-check",
+        "check contracts signing path",
         { "cli.deploy.contracts": deployContracts ? "true" : "false" },
-        () =>
-            computeContractsFundingNeeded({
-                deployContracts,
-                userSigner: ctx.userSigner,
-            }),
+        () => computeContractsPhoneSigningNeeded({ deployContracts, userSigner: ctx.userSigner }),
     );
 
     const setup = resolveSignerSetup({
@@ -365,7 +338,7 @@ async function runHeadless(ctx: {
         userSigner: ctx.userSigner,
         publishToPlayground,
         plan: availability.plan,
-        contractsFundingNeeded,
+        contractsPhoneSigningNeeded,
     });
     const view = buildSummaryView({
         mode,
@@ -402,7 +375,7 @@ async function runHeadless(ctx: {
                 repositoryUrl,
                 deployContracts,
                 skipContractBuild,
-                contractsFundingNeeded,
+                contractsPhoneSigningNeeded,
                 userSigner: ctx.userSigner,
                 plan: availability.plan,
                 env: ctx.env,
@@ -423,26 +396,13 @@ export function safeDetectContractsType(projectDir: string): ContractsType | nul
     }
 }
 
-/** Whether the contracts phase will need a phone tap to top up the session key. */
-export async function computeContractsFundingNeeded(args: {
+/** Whether the contracts phase will sign with the mobile-backed product account. */
+export function computeContractsPhoneSigningNeeded(args: {
     deployContracts: boolean;
     userSigner: ResolvedSigner | null;
-}): Promise<boolean> {
+}): boolean {
     if (!args.deployContracts) return false;
-    if (args.userSigner?.source !== "session") return false;
-    try {
-        const session = await readSessionAccount();
-        if (session === null) return true;
-        const client = await getConnection();
-        const { sufficient } = await checkBalance(
-            client,
-            session.account.ss58Address,
-            SESSION_MIN_BALANCE,
-        );
-        return !sufficient;
-    } catch {
-        return true;
-    }
+    return args.userSigner?.source === "session";
 }
 
 function runInteractive(ctx: {

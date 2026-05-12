@@ -54,7 +54,7 @@ export {
     type DeployPlan,
 } from "./availability.js";
 
-// Re-exported so SDK consumers (RevX) can tear down the shared Paseo client
+// Re-exported so SDK consumers (RevX) can tear down the shared chain client
 // that `publishToPlayground` and `runDeploy` use internally. The CLI calls
 // this itself from `deploy/index.ts` cleanupOnce; non-CLI consumers must
 // call it once they're done with a run or the WebSocket keeps their event

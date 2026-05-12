@@ -16,7 +16,7 @@
 // limitations under the License.
 
 /**
- * Enumerate apps on the live playground-registry contract on Paseo Asset Hub,
+ * Enumerate apps on the live playground-registry contract on the configured Asset Hub,
  * and check whether each one's `metadata.repository` is reachable as a public
  * GitHub repo. Useful for picking a stable e2e test target for `dot mod`.
  *

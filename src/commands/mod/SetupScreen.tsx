@@ -24,6 +24,7 @@ import { createOptionalGitBaseline } from "../../utils/mod/git-baseline.js";
 import { downloadGitHubTarball, parseGitHubRepoUrl } from "../../utils/mod/source.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 import { fetchBulletinJson, getBulletinGateway } from "../../utils/bulletinGateway.js";
+import { getNetworkLabel } from "../../config.js";
 
 interface AppMetadata {
     name?: string;
@@ -127,7 +128,12 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
 
     return (
         <Box flexDirection="column">
-            <Header cmd="dot mod" subtitle={domain} network="paseo" right={VERSION_LABEL} />
+            <Header
+                cmd="dot mod"
+                subtitle={domain}
+                network={getNetworkLabel()}
+                right={VERSION_LABEL}
+            />
 
             <StepRunner
                 title={`modding ${domain}`}

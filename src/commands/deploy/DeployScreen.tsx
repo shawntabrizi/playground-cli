@@ -51,12 +51,9 @@ import {
     type FrontendSectionState,
     type StepStatus,
 } from "./runningState.js";
-import { readSessionAccount, SESSION_MIN_BALANCE } from "../../utils/deploy/session-account.js";
-import { checkBalance } from "../../utils/account/funding.js";
-import { getConnection } from "../../utils/connection.js";
 import type { ResolvedSigner } from "../../utils/signer.js";
 import type { ContractsType } from "../../utils/build/detect.js";
-import { DEFAULT_BUILD_DIR } from "../../config.js";
+import { DEFAULT_BUILD_DIR, getNetworkLabel } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
 
@@ -217,7 +214,7 @@ export function DeployScreen({
             <Header
                 cmd="dot deploy"
                 subtitle={headerSubtitle}
-                network="paseo"
+                network={getNetworkLabel()}
                 right={VERSION_LABEL}
             />
 
@@ -663,33 +660,7 @@ function ConfirmStage({
     onProceed: () => void;
     onCancel: () => void;
 }) {
-    // Start pessimistic so the approvals list populates immediately; a
-    // balance query refines it. Over-estimating one tap is better than
-    // under-counting.
-    const needsSessionFunding = inputs.deployContracts && userSigner?.source === "session";
-    const [contractsFundingNeeded, setContractsFundingNeeded] =
-        useState<boolean>(needsSessionFunding);
-
-    useEffect(() => {
-        if (!needsSessionFunding) return;
-        let cancelled = false;
-        (async () => {
-            try {
-                const session = await readSessionAccount();
-                if (session === null) return;
-                const client = await getConnection();
-                const { sufficient } = await checkBalance(
-                    client,
-                    session.account.ss58Address,
-                    SESSION_MIN_BALANCE,
-                );
-                if (!cancelled) setContractsFundingNeeded(!sufficient);
-            } catch {}
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [needsSessionFunding]);
+    const contractsPhoneSigningNeeded = inputs.deployContracts && userSigner?.source === "session";
 
     const setup = useMemo(() => {
         try {
@@ -698,7 +669,7 @@ function ConfirmStage({
                 userSigner,
                 publishToPlayground: inputs.publishToPlayground,
                 plan: plan ?? undefined,
-                contractsFundingNeeded,
+                contractsPhoneSigningNeeded,
             });
         } catch (err) {
             return {
@@ -706,7 +677,7 @@ function ConfirmStage({
                 error: err instanceof Error ? err.message : String(err),
             };
         }
-    }, [inputs, userSigner, plan, contractsFundingNeeded]);
+    }, [inputs, userSigner, plan, contractsPhoneSigningNeeded]);
 
     // Only warn on the oversized branch — silent when README is absent or
     // within the cap, per the product decision to inline tacitly and speak
@@ -837,6 +808,7 @@ function RunningStage({
     // re-renders on every chunk tick.
     const chunkTimingsRef = useRef<number[]>([]);
     const lastChunkAtRef = useRef<number | null>(null);
+    const contractsPhoneSigningNeeded = inputs.deployContracts && userSigner?.source === "session";
 
     // Flush each section's latest-line row at ≤10 Hz — see CLAUDE.md
     // "Throttle TUI info updates" for the incident that made this mandatory.
@@ -901,8 +873,7 @@ function RunningStage({
                     moddable: inputs.moddable,
                     repositoryUrl: inputs.repositoryUrl,
                     deployContracts: inputs.deployContracts,
-                    contractsFundingNeeded:
-                        inputs.deployContracts && userSigner?.source === "session",
+                    contractsPhoneSigningNeeded,
                     userSigner,
                     plan: plan ?? undefined,
                     onEvent: (event) => handleEvent(event),

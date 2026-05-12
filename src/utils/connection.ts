@@ -20,29 +20,21 @@ import {
     type TypedApi,
 } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
-import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
-import { paseo_individuality } from "@parity/product-sdk-descriptors/paseo-individuality";
-import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { getChainConfig } from "../config.js";
+import { TESTNET_CHAIN_DESCRIPTORS, type TestnetChainDescriptors } from "./chainDescriptors.js";
 
-type PaseoChains = {
-    assetHub: typeof paseo_asset_hub;
-    bulletin: typeof paseo_bulletin;
-    individuality: typeof paseo_individuality;
-};
-
-export type PaseoClient = {
-    [K in keyof PaseoChains]: TypedApi<PaseoChains[K]>;
+export type ChainClient = {
+    [K in keyof TestnetChainDescriptors]: TypedApi<TestnetChainDescriptors[K]>;
 } & {
-    raw: { [K in keyof PaseoChains]: PolkadotClient };
+    raw: { [K in keyof TestnetChainDescriptors]: PolkadotClient };
     destroy(): void;
 };
 
 /** If the direct PAPI clients don't resolve in this window we treat the attempt as dead. */
 const CONNECT_TIMEOUT_MS = 30_000;
 
-let connectionPromise: Promise<PaseoClient> | null = null;
-let client: PaseoClient | null = null;
+let connectionPromise: Promise<ChainClient> | null = null;
+let client: ChainClient | null = null;
 
 function createRawClient(endpoints: readonly string[]): PolkadotClient {
     return createClient(getWsProvider([...endpoints]));
@@ -52,7 +44,7 @@ function typedApi<T extends ChainDefinition>(raw: PolkadotClient, descriptor: T)
     return raw.getTypedApi(descriptor);
 }
 
-async function connectPaseo(): Promise<PaseoClient> {
+async function connectTestnet(): Promise<ChainClient> {
     const cfg = getChainConfig();
     const raw = {
         assetHub: createRawClient([cfg.assetHubRpc]),
@@ -62,9 +54,9 @@ async function connectPaseo(): Promise<PaseoClient> {
 
     let destroyed = false;
     return {
-        assetHub: typedApi(raw.assetHub, paseo_asset_hub),
-        bulletin: typedApi(raw.bulletin, paseo_bulletin),
-        individuality: typedApi(raw.individuality, paseo_individuality),
+        assetHub: typedApi(raw.assetHub, TESTNET_CHAIN_DESCRIPTORS.assetHub),
+        bulletin: typedApi(raw.bulletin, TESTNET_CHAIN_DESCRIPTORS.bulletin),
+        individuality: typedApi(raw.individuality, TESTNET_CHAIN_DESCRIPTORS.individuality),
         raw,
         destroy() {
             if (destroyed) return;
@@ -80,16 +72,22 @@ function timeoutAfter(ms: number): Promise<never> {
     return new Promise((_, reject) =>
         setTimeout(
             () =>
-                reject(new Error(`Timed out connecting to Paseo after ${Math.round(ms / 1000)}s`)),
+                reject(
+                    new Error(
+                        `Timed out connecting to configured testnet chains after ${Math.round(
+                            ms / 1000,
+                        )}s`,
+                    ),
+                ),
             ms,
         ),
     );
 }
 
-export function getConnection(): Promise<PaseoClient> {
+export function getConnection(): Promise<ChainClient> {
     if (!connectionPromise) {
         connectionPromise = Promise.race([
-            connectPaseo().then((c) => {
+            connectTestnet().then((c) => {
                 client = c;
                 return c;
             }),
@@ -99,7 +97,7 @@ export function getConnection(): Promise<PaseoClient> {
             connectionPromise = null;
             const detail = err instanceof Error ? err.message : String(err);
             throw new Error(
-                `Could not connect to Paseo network — check your internet connection (${detail})`,
+                `Could not connect to configured testnet network — check your internet connection (${detail})`,
                 { cause: err instanceof Error ? err : undefined },
             );
         });

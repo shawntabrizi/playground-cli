@@ -27,7 +27,7 @@
  */
 
 import { Enum } from "polkadot-api";
-import type { PaseoClient } from "../connection.js";
+import type { ChainClient } from "../connection.js";
 import { remainingAuthorizationExtent } from "./authorizationExtent.js";
 
 const AT_BEST = { at: "best" as const };
@@ -44,7 +44,7 @@ export interface AttestationStatus {
 }
 
 export async function checkAttestation(
-    client: PaseoClient,
+    client: ChainClient,
     address: string,
 ): Promise<AttestationStatus> {
     const [raw, currentBlock] = await Promise.all([
@@ -84,7 +84,7 @@ export async function checkAttestation(
  * a runtime upgrade.
  */
 let cachedBlockTimeMs: number | null = null;
-export async function getBulletinBlockTimeMs(client: PaseoClient): Promise<number> {
+export async function getBulletinBlockTimeMs(client: ChainClient): Promise<number> {
     if (cachedBlockTimeMs !== null) return cachedBlockTimeMs;
     const ms = await client.bulletin.constants.Aura.SlotDuration();
     cachedBlockTimeMs = Number(ms);

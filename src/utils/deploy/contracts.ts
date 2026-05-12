@@ -29,7 +29,7 @@
  * to `ContractDeployer.deployBatch` for weight-aware batching via
  * `Utility.batch_all`. The bytes can be PVM or EVM — `Revive.instantiate_with_code`
  * polymorphically accepts both when the chain has `AllowEVMBytecode = true`
- * (Asset Hub paseo + hub do). No registry registration, no metadata publish
+ * (configured Asset Hub + hub do). No registry registration, no metadata publish
  * in v1 — that's opt-in future work.
  *
  * Kept free of React / Ink imports so RevX can consume this from a

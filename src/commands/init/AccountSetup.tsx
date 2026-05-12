@@ -17,21 +17,7 @@ import { useState, useEffect } from "react";
 import { Row, Section, type MarkKind } from "../../utils/ui/theme/index.js";
 import { getConnection } from "../../utils/connection.js";
 import { getSessionSigner, type SessionHandle } from "../../utils/auth.js";
-import { checkBalance, ensureFunded, FUND_AMOUNT } from "../../utils/account/funding.js";
-import { AllFundersExhaustedError } from "../../utils/account/errors.js";
-import { faucetUrlFor } from "../../utils/account/funder.js";
 import { checkMapping, ensureMapped } from "../../utils/account/mapping.js";
-import {
-    checkAllowance,
-    ensureAllowance,
-    LOW_TX_THRESHOLD,
-} from "../../utils/account/allowance.js";
-import {
-    checkAttestation,
-    getBulletinBlockTimeMs,
-    formatAttestation,
-    type FormattedAttestation,
-} from "../../utils/account/attestation.js";
 
 type Status = "pending" | "active" | "ok" | "failed" | "skipped";
 
@@ -85,9 +71,7 @@ export function AccountSetup({
     onDone: (success: boolean) => void;
 }) {
     const [steps, setSteps] = useState<StepState[]>([
-        { label: "funding", status: "pending" },
-        { label: "mapping", status: "pending" },
-        { label: "bulletin", status: "pending" },
+        { label: "asset hub mapping", status: "pending" },
     ]);
 
     useEffect(() => {
@@ -119,112 +103,39 @@ export function AccountSetup({
             }
             if (cancelled) return;
 
-            // Step 0: Fund from Alice
-            let funded = false;
+            let mappedOk = false;
             update(0, { status: "active" });
             try {
-                const before = await checkBalance(client, address);
+                const mapped = await checkMapping(client, address);
                 if (cancelled) return;
-                if (before.sufficient) {
-                    update(0, { status: "ok", value: formatPas(before.free) });
-                    funded = true;
+                if (mapped) {
+                    update(0, { status: "ok", value: "mapped", valueTone: "muted" });
+                    mappedOk = true;
                 } else {
-                    update(0, {
-                        status: "active",
-                        value: formatPas(before.free),
-                        hint: "funding…",
-                    });
-                    await ensureFunded(client, address);
+                    session = await getSessionSigner();
                     if (cancelled) return;
-                    // Optimistic post-balance: avoids a second RPC call that
-                    // could read a stale best-block and display the old value.
-                    const expected = before.free + FUND_AMOUNT;
-                    update(0, { status: "ok", value: formatPas(expected), hint: undefined });
-                    funded = true;
-                }
-            } catch (err) {
-                const error =
-                    err instanceof AllFundersExhaustedError
-                        ? `Unable to auto fund your account, please use the faucet at: ${faucetUrlFor(address)}`
-                        : describe(err);
-                update(0, { status: "failed", error, valueTone: "danger" });
-            }
-
-            // Step 1: Revive mapping (requires funds, user signs via mobile wallet)
-            if (funded) {
-                update(1, { status: "active" });
-                try {
-                    const mapped = await checkMapping(client, address);
-                    if (cancelled) return;
-                    if (mapped) {
-                        update(1, { status: "ok", value: "mapped", valueTone: "muted" });
+                    if (!session) {
+                        update(0, {
+                            status: "failed",
+                            error: "no session — run dot init to log in",
+                        });
                     } else {
-                        session = await getSessionSigner();
+                        update(0, {
+                            status: "active",
+                            value: "approve on your Polkadot mobile app…",
+                            valueTone: "muted",
+                        });
+                        await ensureMapped(client, address, session.signer);
                         if (cancelled) return;
-                        if (!session) {
-                            update(1, {
-                                status: "failed",
-                                error: "no session — run dot init to log in",
-                            });
-                        } else {
-                            update(1, {
-                                status: "active",
-                                value: "approve on your Polkadot mobile app…",
-                                valueTone: "muted",
-                            });
-                            await ensureMapped(client, address, session.signer);
-                            if (cancelled) return;
-                            update(1, { status: "ok", value: "mapped", valueTone: "muted" });
-                        }
+                        update(0, { status: "ok", value: "mapped", valueTone: "muted" });
+                        mappedOk = true;
                     }
-                } catch (err) {
-                    update(1, { status: "failed", error: describe(err) });
-                }
-            } else {
-                update(1, {
-                    status: "skipped",
-                    value: "skipped — account not funded",
-                    valueTone: "muted",
-                });
-            }
-
-            // Step 2: Bulletin attestation (Alice signs, independent of mapping).
-            // Always surfaces the formatted attestation validity — users see
-            // this even on re-runs where nothing needs refreshing.
-            update(2, { status: "active" });
-            try {
-                const blockTimeMs = await getBulletinBlockTimeMs(client);
-                const before = await checkAllowance(client, address);
-                if (cancelled) return;
-                if (before.authorized && before.remainingTxs >= LOW_TX_THRESHOLD) {
-                    const attestation = await checkAttestation(client, address);
-                    if (cancelled) return;
-                    applyAttestation(update, 2, "ok", formatAttestation(attestation, blockTimeMs), {
-                        txs: before.remainingTxs,
-                        bytes: before.remainingBytes,
-                    });
-                } else {
-                    update(2, {
-                        status: "active",
-                        value: before.authorized
-                            ? `low quota (${before.remainingTxs} txs) — refreshing…`
-                            : "not authorized — attesting…",
-                        valueTone: "muted",
-                    });
-                    await ensureAllowance(client, address);
-                    if (cancelled) return;
-                    const attestation = await checkAttestation(client, address);
-                    if (cancelled) return;
-                    applyAttestation(update, 2, "ok", formatAttestation(attestation, blockTimeMs), {
-                        txs: attestation.remainingTxs,
-                        bytes: attestation.remainingBytes,
-                    });
                 }
             } catch (err) {
-                update(2, { status: "failed", error: describe(err) });
+                update(0, { status: "failed", error: describe(err) });
             }
 
-            finish(funded);
+            finish(mappedOk);
         })().finally(() => {
             // Always release the session adapter once setup has finished (or bailed).
             session?.destroy();
@@ -253,19 +164,4 @@ export function AccountSetup({
             ))}
         </Section>
     );
-}
-
-/** Write a formatted attestation into a step's value, with its quota as the hint. */
-function applyAttestation(
-    update: (idx: number, patch: Partial<StepState>) => void,
-    idx: number,
-    status: Status,
-    formatted: FormattedAttestation,
-    quota: { txs: number | undefined; bytes: bigint | undefined },
-): void {
-    const hint =
-        quota.txs !== undefined && quota.bytes !== undefined
-            ? `${quota.txs} txs  ·  ${formatMb(quota.bytes)} remaining`
-            : undefined;
-    update(idx, { status, value: formatted.text, valueTone: formatted.tone, hint });
 }

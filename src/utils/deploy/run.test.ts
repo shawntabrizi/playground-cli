@@ -176,7 +176,7 @@ function collectEvents(): { events: DeployEvent[]; push: (e: DeployEvent) => voi
 }
 
 /**
- * Build a fake `PaseoClient`-ish object that exposes the exact tx factories
+ * Build a fake `ChainClient`-ish object that exposes the exact tx factories
  * `maybeRunContracts` / `ensureSessionFunded` call (`Balances.transfer_keep_alive`,
  * `Revive.map_account`). Returns `transferFactory` and `mapAccountFactory` so
  * callers can assert what `submitAndWatch` was handed.
@@ -619,7 +619,7 @@ describe("runDeploy — contracts phase", () => {
         expect(runContractsPhaseMock).toHaveBeenCalledTimes(1);
     });
 
-    it("ensureSessionFunded: underfunded + phone signer → wraps user signer, transfers SESSION_FUND_AMOUNT", async () => {
+    it("contracts with phone signer deploy from the wrapped product signer without session-key funding", async () => {
         detectContractsTypeMock.mockReturnValue("foundry");
         const { client, transferFactory } = makeFakeClient();
         getConnectionMock.mockResolvedValue(client);
@@ -638,21 +638,20 @@ describe("runDeploy — contracts phase", () => {
             onEvent: push,
         });
 
-        // Transfer was submitted with `value = SESSION_FUND_AMOUNT` (50 PAS).
-        const transferArg = transferFactory.mock.calls[0][0] as { value: bigint };
-        expect(transferArg.value).toBe(50_000_000_000n);
-
-        // The first `submitAndWatch` call is the transfer. Its signer is the
-        // `wrapSignerWithEvents` proxy, which exposes `signTx`/`signBytes`
-        // (so we check identity-by-shape rather than drilling into internals).
-        const [, firstSigner] = submitAndWatchMock.mock.calls[0];
-        expect(firstSigner).toHaveProperty("signTx");
-        expect(firstSigner).toHaveProperty("signBytes");
-        // Dev-mode funder-chain lookup must NOT have fired.
+        expect(getOrCreateSessionAccountMock).not.toHaveBeenCalled();
+        expect(checkBalanceMock).not.toHaveBeenCalled();
+        expect(transferFactory).not.toHaveBeenCalled();
+        expect(submitAndWatchMock).not.toHaveBeenCalled();
         expect(pickFunderMock).not.toHaveBeenCalled();
+
+        const contractsArg = runContractsPhaseMock.mock.calls[0][0];
+        expect(contractsArg.origin).toBe("5Fake");
+        expect(contractsArg.signer).toHaveProperty("publicKey", fakeUserSigner.signer.publicKey);
+        expect(contractsArg.signer).toHaveProperty("signTx");
+        expect(contractsArg.signer).toHaveProperty("signBytes");
     });
 
-    it("ensureSessionFunded: underfunded + dev signer (source='dev') → uses signer directly, no phone events", async () => {
+    it("contracts with dev signer use that signer directly without session-key funding", async () => {
         detectContractsTypeMock.mockReturnValue("foundry");
         const { client, transferFactory } = makeFakeClient();
         getConnectionMock.mockResolvedValue(client);
@@ -671,14 +670,14 @@ describe("runDeploy — contracts phase", () => {
             onEvent: push,
         });
 
-        // Transfer was submitted — the dev signer funded the session key.
-        const transferArg = transferFactory.mock.calls[0][0] as { value: bigint };
-        expect(transferArg.value).toBe(50_000_000_000n);
+        expect(getOrCreateSessionAccountMock).not.toHaveBeenCalled();
+        expect(checkBalanceMock).not.toHaveBeenCalled();
+        expect(transferFactory).not.toHaveBeenCalled();
+        expect(submitAndWatchMock).not.toHaveBeenCalled();
 
-        // The signer passed to submitAndWatch must be the raw dev signer — NOT
-        // a wrapSignerWithEvents proxy. Assert exact object identity.
-        const [, usedFunder] = submitAndWatchMock.mock.calls[0];
-        expect(usedFunder).toBe(fakeDevSigner.signer);
+        const contractsArg = runContractsPhaseMock.mock.calls[0][0];
+        expect(contractsArg.origin).toBe("5Dev");
+        expect(contractsArg.signer).toBe(fakeDevSigner.signer);
 
         // No phone-tap lifecycle events should have been emitted.
         const signingEvents = events.filter((e) => e.kind === "signing");

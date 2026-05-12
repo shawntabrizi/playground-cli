@@ -18,8 +18,8 @@
  *
  * `dot mod <domain>` is fully non-interactive when a domain is supplied:
  * the AppBrowser picker is skipped, and SetupScreen runs StepRunner with
- * no `useInput`. So passing `--suri //Alice` is enough — there's no
- * `--yes` to skip a prompt because there's no prompt left.
+ * no `useInput`. Registry reads are unsigned, so no signer or session is
+ * required.
  *
  * Requires chain connectivity (registry) and GitHub access (codeload
  * tarball download) for the happy path.
@@ -127,19 +127,15 @@ describe("dot mod — clone", () => {
 		},
 	);
 
-	test("exits non-zero with signer suggestion when no signer available", async () => {
-		const tempHome = makeTempDir("dot-e2e-mod-home-");
-		const cwd = makeTempDir("dot-e2e-mod-cwd-");
-		const result = await dot(["mod", "some-app.dot"], { home: tempHome, cwd });
-		expect(result.exitCode).not.toBe(0);
-		const output = result.stdout + result.stderr;
-		// Exact wording from src/utils/signer.ts SignerNotAvailableError:
-		//   `No signer available. Run "dot init" to log in, or pass --suri //Alice for dev.`
-		// The previous regex /signer|init|log.?in/i matched any of those words
-		// anywhere — including help text — so it passed even on early crashes
-		// that never reached the signer-resolution path.
-		expect(output).toContain("No signer available");
-		expect(output).toContain("dot init");
+    test("does not require a signer for direct registry reads", async () => {
+        const tempHome = makeTempDir("dot-e2e-mod-home-");
+        const cwd = makeTempDir("dot-e2e-mod-cwd-");
+        const result = await dot(["mod", "some-app.dot"], { home: tempHome, cwd });
+        expect(result.exitCode).not.toBe(0);
+        const output = result.stdout + result.stderr;
+        expect(output).not.toContain("No signer available");
+        expect(output).toContain("some-app.dot");
+        expect(output).toContain("not found in registry");
 	});
 });
 
@@ -147,10 +143,7 @@ describe("dot mod — registry miss", () => {
 	test("reports a registry-miss for an unknown domain", { timeout: 120_000 }, async () => {
 		const cwd = makeTempDir("dot-e2e-mod-unknown-");
 		const domain = "nonexistent-domain-xyz-12345.dot";
-		const result = await dot(
-			["mod", domain, "--suri", ALICE.suri],
-			{ cwd, timeout: 120_000 },
-		);
+        const result = await dot(["mod", domain], { cwd, timeout: 120_000 });
 		const output = result.stdout + result.stderr;
 		expect(
 			result.exitCode,

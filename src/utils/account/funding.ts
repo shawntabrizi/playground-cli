@@ -14,8 +14,7 @@
 // limitations under the License.
 
 /**
- * Account funding — check balance and fund the user from a testnet funder
- * chain on Paseo Asset Hub.
+ * Account funding — check balance and fund the user from a testnet funder chain.
  *
  * The funder chain is walked in order: Alice first (public dev account — free
  * while she lasts), then a dedicated obscure seed. If every funder is below
@@ -27,7 +26,7 @@
 
 import { Enum } from "polkadot-api";
 import { submitAndWatch } from "@parity/product-sdk-tx";
-import type { PaseoClient } from "../connection.js";
+import type { ChainClient } from "../connection.js";
 import { FUNDER_CHAIN, type Funder } from "./funder.js";
 import { AllFundersExhaustedError } from "./errors.js";
 
@@ -52,7 +51,7 @@ export interface BalanceStatus {
 }
 
 export async function checkBalance(
-    client: PaseoClient,
+    client: ChainClient,
     address: string,
     minBalance: bigint = MIN_BALANCE,
 ): Promise<BalanceStatus> {
@@ -69,7 +68,7 @@ export async function checkBalance(
  * is not a balance problem and deserves to surface unchanged).
  */
 export async function pickFunder(
-    client: PaseoClient,
+    client: ChainClient,
     requiredBalance: bigint,
 ): Promise<Funder | null> {
     for (const funder of FUNDER_CHAIN) {
@@ -80,7 +79,7 @@ export async function pickFunder(
 }
 
 export async function ensureFunded(
-    client: PaseoClient,
+    client: ChainClient,
     address: string,
     minBalance: bigint = MIN_BALANCE,
     fundAmount: bigint = FUND_AMOUNT,

@@ -14,8 +14,8 @@
 // limitations under the License.
 
 /**
- * Testnet funder accounts used to top up users and session keys on Paseo
- * Asset Hub. We try Alice first (public dev account — free tokens while she
+ * Testnet funder accounts used to top up users and session keys. We try Alice
+ * first (public dev account — free tokens while she
  * lasts) and fall back to a dedicated account whose seed is embedded here
  * (obscure, not one of the well-known dev dropdowns in polkadot.js Apps, so
  * random drainers don't target it the way they target Alice).
@@ -27,6 +27,7 @@ import type { PolkadotSigner } from "polkadot-api";
 import { createDevSigner, getDevPublicKey } from "@parity/product-sdk-tx";
 import { seedToAccount } from "@parity/product-sdk-keys";
 import { ss58Encode } from "@parity/product-sdk-address";
+import { getChainConfig } from "../../config.js";
 
 /**
  * Dedicated testnet funder mnemonic. Obscure-by-convention (not in any
@@ -68,8 +69,8 @@ export const FUNDER_CHAIN: readonly Funder[] = [
 /** Convenience: public address of the dedicated funder. Used by the balance-check CI job. */
 export const DEDICATED_FUNDER_ADDRESS = FUNDER_CHAIN[1].address;
 
-/** Base Paseo Asset Hub faucet URL — shown when every funder is drained. */
-export const FAUCET_URL = "https://faucet.polkadot.io/?network=pah";
+/** Base Asset Hub faucet URL — shown when every funder is drained. */
+export const FAUCET_URL = getChainConfig().faucetUrl;
 
 /** Faucet URL pre-filled with the user's address — one click to self-fund. */
 export function faucetUrlFor(address: string): string {

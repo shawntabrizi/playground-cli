@@ -18,26 +18,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const mockReadSessionAccount = vi.fn();
-const mockCheckBalance = vi.fn();
-const mockGetConnection = vi.fn();
-
-vi.mock("../../utils/deploy/session-account.js", () => ({
-    readSessionAccount: (...args: unknown[]) => mockReadSessionAccount(...args),
-    SESSION_MIN_BALANCE: 5_000_000_000n,
-    getOrCreateSessionAccount: vi.fn(),
-}));
-
-vi.mock("../../utils/account/funding.js", () => ({
-    checkBalance: (...args: unknown[]) => mockCheckBalance(...args),
-}));
-
 vi.mock("../../utils/connection.js", () => ({
-    getConnection: (...args: unknown[]) => mockGetConnection(...args),
+    getConnection: vi.fn(),
     destroyConnection: vi.fn(),
 }));
 
-const { safeDetectContractsType, computeContractsFundingNeeded, shouldResolveUserSigner } =
+const { safeDetectContractsType, computeContractsPhoneSigningNeeded, shouldResolveUserSigner } =
     await import("./index.js");
 
 describe("shouldResolveUserSigner", () => {
@@ -107,7 +93,7 @@ describe("safeDetectContractsType", () => {
     });
 });
 
-// Minimal shapes — we only exercise the branches that `computeContractsFundingNeeded`
+// Minimal shapes — we only exercise the branches that `computeContractsPhoneSigningNeeded`
 // inspects (`source`). Everything else is load-bearing only inside the real deploy.
 const devSigner: any = { source: "dev", address: "5Dev", signer: {}, destroy: () => {} };
 const sessionSigner: any = {
@@ -117,94 +103,33 @@ const sessionSigner: any = {
     destroy: () => {},
 };
 
-describe("computeContractsFundingNeeded", () => {
-    beforeEach(() => {
-        mockReadSessionAccount.mockReset();
-        mockCheckBalance.mockReset();
-        mockGetConnection.mockReset();
-        // Default: any code path that reaches the chain gets a dummy client.
-        mockGetConnection.mockResolvedValue({ __dummy: true });
-    });
-
-    it("returns false when deployContracts is false without touching chain or disk", async () => {
-        const result = await computeContractsFundingNeeded({
+describe("computeContractsPhoneSigningNeeded", () => {
+    it("returns false when deployContracts is false", () => {
+        const result = computeContractsPhoneSigningNeeded({
             deployContracts: false,
             userSigner: sessionSigner,
         });
         expect(result).toBe(false);
-        expect(mockReadSessionAccount).not.toHaveBeenCalled();
-        expect(mockCheckBalance).not.toHaveBeenCalled();
-        expect(mockGetConnection).not.toHaveBeenCalled();
     });
 
-    it("returns false when userSigner is null without touching chain or disk", async () => {
-        const result = await computeContractsFundingNeeded({
+    it("returns false when userSigner is null", () => {
+        const result = computeContractsPhoneSigningNeeded({
             deployContracts: true,
             userSigner: null,
         });
         expect(result).toBe(false);
-        expect(mockReadSessionAccount).not.toHaveBeenCalled();
-        expect(mockCheckBalance).not.toHaveBeenCalled();
-        expect(mockGetConnection).not.toHaveBeenCalled();
     });
 
-    it("returns false for a dev signer without touching chain or disk", async () => {
-        const result = await computeContractsFundingNeeded({
+    it("returns false for a dev signer", () => {
+        const result = computeContractsPhoneSigningNeeded({
             deployContracts: true,
             userSigner: devSigner,
         });
         expect(result).toBe(false);
-        expect(mockReadSessionAccount).not.toHaveBeenCalled();
-        expect(mockCheckBalance).not.toHaveBeenCalled();
-        expect(mockGetConnection).not.toHaveBeenCalled();
     });
 
-    it("returns true for a session signer when no key is persisted yet", async () => {
-        mockReadSessionAccount.mockResolvedValue(null);
-        const result = await computeContractsFundingNeeded({
-            deployContracts: true,
-            userSigner: sessionSigner,
-        });
-        expect(result).toBe(true);
-        expect(mockReadSessionAccount).toHaveBeenCalledTimes(1);
-        expect(mockCheckBalance).not.toHaveBeenCalled();
-        expect(mockGetConnection).not.toHaveBeenCalled();
-    });
-
-    it("returns false when the session key has sufficient balance", async () => {
-        mockReadSessionAccount.mockResolvedValue({
-            account: { ss58Address: "5Ses" },
-        });
-        mockCheckBalance.mockResolvedValue({ sufficient: true });
-
-        const result = await computeContractsFundingNeeded({
-            deployContracts: true,
-            userSigner: sessionSigner,
-        });
-        expect(result).toBe(false);
-        expect(mockCheckBalance).toHaveBeenCalledWith({ __dummy: true }, "5Ses", 5_000_000_000n);
-    });
-
-    it("returns true when the session key balance is insufficient", async () => {
-        mockReadSessionAccount.mockResolvedValue({
-            account: { ss58Address: "5Ses" },
-        });
-        mockCheckBalance.mockResolvedValue({ sufficient: false });
-
-        const result = await computeContractsFundingNeeded({
-            deployContracts: true,
-            userSigner: sessionSigner,
-        });
-        expect(result).toBe(true);
-    });
-
-    it("returns true (pessimistic fallback) when the balance query throws", async () => {
-        mockReadSessionAccount.mockResolvedValue({
-            account: { ss58Address: "5Ses" },
-        });
-        mockCheckBalance.mockRejectedValue(new Error("RPC went away"));
-
-        const result = await computeContractsFundingNeeded({
+    it("returns true for a session signer", () => {
+        const result = computeContractsPhoneSigningNeeded({
             deployContracts: true,
             userSigner: sessionSigner,
         });

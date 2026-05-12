@@ -14,12 +14,22 @@
 // limitations under the License.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
+import type { CdmJson } from "@parity/product-sdk-contracts";
+import cdmJson from "../../cdm.json";
 import {
     bulletinGatewayUrl,
     fetchBulletinBytes,
     fetchBulletinJson,
     getBulletinGateway,
 } from "./bulletinGateway.js";
+import { defaultCdmTarget } from "./cdmTarget.js";
+
+const cdmTarget = defaultCdmTarget(cdmJson as unknown as CdmJson);
+
+function expectedGateway(): string {
+    const gateway = cdmTarget.bulletin!;
+    return gateway.endsWith("/") ? gateway : `${gateway}/`;
+}
 
 afterEach(() => {
     vi.unstubAllGlobals();
@@ -40,11 +50,11 @@ describe("bulletinGatewayUrl", () => {
 describe("getBulletinGateway", () => {
     it("returns the testnet gateway by default", () => {
         // Defaults to DEFAULT_ENV (testnet); no env arg required.
-        expect(getBulletinGateway()).toBe("https://paseo-ipfs.polkadot.io/ipfs/");
+        expect(getBulletinGateway()).toBe(expectedGateway());
     });
 
     it("returns the same URL when explicitly asked for testnet", () => {
-        expect(getBulletinGateway("testnet")).toBe("https://paseo-ipfs.polkadot.io/ipfs/");
+        expect(getBulletinGateway("testnet")).toBe(expectedGateway());
     });
 });
 

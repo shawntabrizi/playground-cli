@@ -16,22 +16,22 @@
 /**
  * Chain query helpers for E2E tests.
  *
- * Connects to Paseo Asset Hub to verify on-chain state
+ * Connects to the configured Asset Hub to verify on-chain state
  * (balances, registry entries) after CLI operations.
  */
 
-import { destroyConnection, getConnection, type PaseoClient } from "../../../src/utils/connection.js";
+import { destroyConnection, getConnection, type ChainClient } from "../../../src/utils/connection.js";
 
 const CONNECT_TIMEOUT_MS = 30_000;
 
-let clientPromise: Promise<PaseoClient> | null = null;
-let client: PaseoClient | null = null;
+let clientPromise: Promise<ChainClient> | null = null;
+let client: ChainClient | null = null;
 
 /**
- * Get a cached Paseo client. Creates one on first call.
+ * Get a cached chain client. Creates one on first call.
  * Reuses the same connection for all subsequent calls.
  */
-export async function getTestClient(): Promise<PaseoClient> {
+export async function getTestClient(): Promise<ChainClient> {
 	if (!clientPromise) {
 		clientPromise = Promise.race([
 			getConnection().then((c) => {
@@ -40,7 +40,12 @@ export async function getTestClient(): Promise<PaseoClient> {
 			}),
 			new Promise<never>((_, reject) =>
 				setTimeout(
-					() => reject(new Error(`Timed out connecting to Paseo after ${CONNECT_TIMEOUT_MS / 1000}s`)),
+					() =>
+						reject(
+							new Error(
+								`Timed out connecting to configured testnet after ${CONNECT_TIMEOUT_MS / 1000}s`,
+							),
+						),
 					CONNECT_TIMEOUT_MS,
 				),
 			),

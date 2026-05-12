@@ -18,9 +18,8 @@ import { render } from "ink";
 import { Command } from "commander";
 import { existsSync } from "node:fs";
 import { withSpan } from "../../telemetry.js";
-import { resolveSigner } from "../../utils/signer.js";
 import { getConnection, destroyConnection } from "../../utils/connection.js";
-import { getRegistryContract } from "../../utils/registry.js";
+import { getReadOnlyRegistryContract } from "../../utils/registry.js";
 import { AppBrowser, type AppEntry } from "./AppBrowser.js";
 import { SetupScreen } from "./SetupScreen.js";
 import { defaultRepoName } from "../../utils/git/repoName.js";
@@ -30,7 +29,7 @@ import { assertPublicGitHubRepo, ModdablePreflightError } from "../../utils/depl
 export const modCommand = new Command("mod")
     .description("Mod a playground app — clone the source as a fresh project to customise")
     .argument("[domain]", "App domain (interactive picker if omitted)")
-    .option("--suri <suri>", "Signer secret URI (e.g. //Alice for dev)")
+    .option("--suri <suri>", "Accepted for compatibility; dot mod reads without signing")
     .action(async (rawDomain: string | undefined, opts: { suri?: string }) =>
         runCliCommand("mod", { watchdog: true, hardExit: true }, () =>
             runModCommand(rawDomain, opts),
@@ -39,20 +38,14 @@ export const modCommand = new Command("mod")
 
 async function runModCommand(
     rawDomain: string | undefined,
-    opts: { suri?: string },
+    _opts: { suri?: string },
 ): Promise<void> {
-    let resolved: Awaited<ReturnType<typeof resolveSigner>> | null = null;
-
     try {
-        const signer = await withSpan("cli.mod.resolve-signer", "resolve signer", () =>
-            resolveSigner({ suri: opts.suri }),
-        );
-        resolved = signer;
         const client = await withSpan("cli.mod.connection", "connect to registry chain", () =>
             getConnection(),
         );
         const registry = await withSpan("cli.mod.registry", "load registry contract", () =>
-            getRegistryContract(client.raw.assetHub, signer),
+            getReadOnlyRegistryContract(client.raw.assetHub),
         );
 
         let domain: string;
@@ -144,7 +137,6 @@ async function runModCommand(
         }
         if (!ok) process.exitCode = 1;
     } finally {
-        resolved?.destroy();
         destroyConnection();
     }
 }

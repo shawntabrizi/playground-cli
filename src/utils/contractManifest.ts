@@ -19,7 +19,10 @@ import {
     type CdmJson,
 } from "@parity/product-sdk-contracts";
 import { REGISTRY_ADDRESS } from "@dotdm/contracts";
+import { ss58Encode } from "@parity/product-sdk-address";
+import { getDevPublicKey } from "@parity/product-sdk-tx";
 import type { HexString, PolkadotClient } from "polkadot-api";
+import { defaultCdmTarget, defaultCdmTargetHash } from "./cdmTarget.js";
 
 export const PLAYGROUND_REGISTRY_CONTRACT = "@w3s/playground-registry";
 
@@ -47,14 +50,15 @@ const CDM_REGISTRY_ABI: AbiEntry[] = [
 ];
 
 type OptionAddress = { isSome: boolean; value: HexString };
-type CdmJsonTargetWithRegistry = CdmJson["targets"][string] & { registry?: string };
 
 const REVIVE_TRACE_CALL_COMPAT_ERROR =
     "Incompatible runtime entry RuntimeCall(ReviveApi_trace_call)";
 
+export const READ_ONLY_QUERY_ORIGIN = ss58Encode(getDevPublicKey("Alice"));
+
 /**
  * sdk-ink dry-runs Revive contract calls with `ReviveApi.call`, then also tries
- * `ReviveApi.trace_call` to recover emitted events. Paseo Asset Hub currently
+ * `ReviveApi.trace_call` to recover emitted events. The current Asset Hub runtime
  * rejects that trace runtime entry, but the actual dry-run result still works,
  * so sdk-ink catches the trace failure and continues after printing the stack.
  * Registry calls do not need trace-derived events, so hide this known noise.
@@ -98,18 +102,8 @@ export function suppressReviveTraceNoise<T extends object>(contract: T): T {
     });
 }
 
-function defaultTargetHash(manifest: CdmJson): string {
-    const [targetHash] = Object.keys(manifest.targets);
-    if (!targetHash) throw new Error("No targets found in cdm.json");
-    return targetHash;
-}
-
-function defaultTarget(manifest: CdmJson): CdmJsonTargetWithRegistry {
-    return manifest.targets[defaultTargetHash(manifest)] as CdmJsonTargetWithRegistry;
-}
-
 function registryAddressForManifest(manifest: CdmJson): HexString {
-    return (defaultTarget(manifest).registry ?? REGISTRY_ADDRESS) as HexString;
+    return (defaultCdmTarget(manifest).registry ?? REGISTRY_ADDRESS) as HexString;
 }
 
 function patchContractAddresses(
@@ -119,7 +113,7 @@ function patchContractAddresses(
     if (Object.keys(liveAddresses).length === 0) return manifest;
 
     const patched = structuredClone(manifest);
-    const contracts = patched.contracts?.[defaultTargetHash(patched)];
+    const contracts = patched.contracts?.[defaultCdmTargetHash(patched)];
     if (!contracts) return manifest;
 
     for (const [library, address] of Object.entries(liveAddresses)) {
@@ -131,11 +125,10 @@ function patchContractAddresses(
 }
 
 /**
- * Options for the meta-registry lookup. `defaultOrigin` is forwarded to the
- * underlying contract handle so the read-only `getAddress` dry-run uses the
- * caller's logged-in account instead of the dev fallback (Alice). Without it,
- * `@parity/product-sdk-contracts` emits a misleading `[contracts] No origin
- * configured` warning even when the user has signed in via `dot init`.
+ * Options for the meta-registry lookup. This is an infrastructure read, not a
+ * user-scoped contract call, so callers should normally leave `defaultOrigin`
+ * unset. We default to Alice to keep the dry-run independent from the user's
+ * product account mapping/funding state while avoiding SDK fallback warnings.
  */
 export interface LiveContractLookupOptions {
     defaultOrigin?: string;
@@ -151,7 +144,7 @@ export async function resolveLiveContractAddresses(
         assetHub,
         registryAddressForManifest(manifest),
         CDM_REGISTRY_ABI,
-        { defaultOrigin: options.defaultOrigin },
+        { defaultOrigin: options.defaultOrigin ?? READ_ONLY_QUERY_ORIGIN },
     );
     const entries = await withoutReviveTraceNoise(() =>
         Promise.all(

@@ -48,7 +48,7 @@ function makeClient() {
     return {
         raw: { assetHub: { __raw: true } },
         assetHub: { __typed: true },
-    } as any; // PaseoClient shape, but we only need .raw.assetHub + .assetHub
+    } as any; // ChainClient shape, but we only need .raw.assetHub + .assetHub
 }
 
 function makeSigner() {

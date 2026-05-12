@@ -40,6 +40,18 @@ vi.mock("@parity/product-sdk-descriptors/paseo-individuality", () => ({
     paseo_individuality: { genesis: "0xpeople" },
 }));
 
+vi.mock("@parity/product-sdk-descriptors/previewnet-asset-hub", () => ({
+    previewnet_asset_hub: { genesis: "0xpreview-asset" },
+}));
+
+vi.mock("@parity/product-sdk-descriptors/previewnet-bulletin", () => ({
+    previewnet_bulletin: { genesis: "0xpreview-bulletin" },
+}));
+
+vi.mock("@parity/product-sdk-descriptors/previewnet-individuality", () => ({
+    previewnet_individuality: { genesis: "0xpreview-people" },
+}));
+
 // Re-import after each test to reset the singleton
 let getConnection: typeof import("./connection.js").getConnection;
 let destroyConnection: typeof import("./connection.js").destroyConnection;
@@ -61,10 +73,27 @@ beforeEach(async () => {
 });
 
 describe("getConnection", () => {
-    it("creates direct clients for the three Paseo chains", async () => {
+    it("creates direct clients for the configured testnet chains", async () => {
         await getConnection();
         expect(mockCreateClient).toHaveBeenCalledTimes(3);
         expect(mockGetTypedApi).toHaveBeenCalledTimes(3);
+    });
+
+    it("uses the active testnet endpoints and descriptors", async () => {
+        const { getChainConfig } = await import("../config.js");
+        const cfg = getChainConfig();
+
+        await getConnection();
+
+        expect(mockGetWsProvider.mock.calls[0][0]).toEqual([cfg.assetHubRpc]);
+        expect(mockGetWsProvider.mock.calls[1][0]).toEqual([
+            cfg.bulletinRpc,
+            ...cfg.bulletinRpcFallbacks,
+        ]);
+        expect(mockGetWsProvider.mock.calls[2][0]).toEqual(cfg.peopleEndpoints);
+        expect(mockGetTypedApi.mock.calls[0][0]).toEqual({ genesis: "0xpreview-asset" });
+        expect(mockGetTypedApi.mock.calls[1][0]).toEqual({ genesis: "0xpreview-bulletin" });
+        expect(mockGetTypedApi.mock.calls[2][0]).toEqual({ genesis: "0xpreview-people" });
     });
 
     it("returns the same client on subsequent calls (singleton)", async () => {
@@ -87,7 +116,9 @@ describe("getConnection", () => {
             throw new Error("WebSocket failed");
         });
 
-        await expect(getConnection()).rejects.toThrow("Could not connect to Paseo network");
+        await expect(getConnection()).rejects.toThrow(
+            "Could not connect to configured testnet network",
+        );
     });
 
     it("preserves the underlying error detail in the message", async () => {

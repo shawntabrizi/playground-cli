@@ -17,7 +17,7 @@
  * Defense-in-depth against runaway memory / zombie processes.
  *
  * The deploy pipeline opens several long-lived WebSockets (session adapter,
- * Paseo client, bulletin-deploy's own clients, our dedicated metadata client)
+ * chain client, bulletin-deploy's own clients, our dedicated metadata client)
  * plus child processes for the build step. If any of these survive beyond the
  * deploy's normal exit — because a subscription wasn't unref'd, a retry loop
  * got stuck, or the user force-quit their terminal mid-deploy — the process
