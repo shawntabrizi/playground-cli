@@ -30,13 +30,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { ss58Encode } from "@parity/product-sdk-address";
 import {
-    createSessionSignerForAccount,
     createTerminalAdapter,
     waitForSessions,
     renderQrCode,
     type TerminalAdapter,
     type PairingStatus,
-    type AttestationStatus,
     type UserSession,
 } from "@parity/product-sdk-terminal";
 import type { PolkadotSigner } from "polkadot-api";
@@ -46,6 +44,7 @@ import {
     TERMINAL_METADATA_URL,
     getChainConfig,
 } from "../config.js";
+import { createPlaygroundSessionSigner } from "./sessionSigner.js";
 
 /** How long we wait for the statement store to publish the pairing QR. */
 const QR_TIMEOUT_MS = 60_000;
@@ -59,7 +58,7 @@ function createAdapter(): TerminalAdapter {
 }
 
 function createPlaygroundSigner(session: UserSession): PolkadotSigner {
-    return createSessionSignerForAccount(session, {
+    return createPlaygroundSessionSigner(session, {
         productId: PLAYGROUND_PRODUCT_ID,
         derivationIndex: 0,
     });
@@ -76,7 +75,12 @@ export type ConnectResult =
 export type LoginStatus =
     | { step: "waiting" }
     | { step: "paired" }
-    | { step: "attesting"; username: string }
+    /**
+     * Intermediate step the host walks through after pairing — e.g. attestation,
+     * session derivation. `stage` is a free-form label from the SDK that we
+     * surface to the user verbatim.
+     */
+    | { step: "pending"; stage: string }
     | { step: "success"; address: string }
     | { step: "error"; message: string };
 
@@ -134,15 +138,14 @@ export async function connect(): Promise<ConnectResult> {
 
         return { kind: "qr", qrCode, login: { adapter, authPromise } };
     } catch (err) {
-        // Release the WebSocket so we don't leak on the error path.
-        // SDK's destroy() is now async (Promise<void>) — fire-and-forget here is
-        // fine because the SDK awaits its own pending unsubscribes internally
-        // before tearing down the lazy client.
-        try {
-            void adapter.destroy();
-        } catch {
-            // best-effort cleanup; ignore
-        }
+        // Release the WebSocket so we don't leak on the error path. SDK's
+        // destroy() returns Promise<void>; `.catch()` swallows the
+        // `DestroyedError: Client destroyed` rejection that polkadot-api's
+        // raw-client surfaces when a pending chainHead unsubscribe races the
+        // WS close. Bun's compiled binaries print unhandled rejections
+        // regardless of `process.on('unhandledRejection')`, so we silence at
+        // the source.
+        adapter.destroy().catch(() => {});
         throw err;
     }
 }
@@ -158,23 +161,20 @@ export async function waitForLogin(
 ): Promise<string | null> {
     onStatus({ step: "waiting" });
 
+    // host-papp 0.7.9 collapsed the separate `pairingStatus` + `attestationStatus`
+    // streams into a single `pairingStatus` with a `pending` step that carries a
+    // free-form `stage` string for whatever the host is doing next (attestation,
+    // derivation, etc.). We forward `pending` to the UI as `LoginStatus.pending`
+    // so the spinner can swap from "scan QR" to a stage-specific message.
     const unsubPairing = adapter.sso.pairingStatus.subscribe((status: PairingStatus) => {
         if (status.step === "finished") {
             onStatus({ step: "paired" });
+        } else if (status.step === "pending") {
+            onStatus({ step: "pending", stage: status.stage });
         } else if (status.step === "pairingError") {
             onStatus({ step: "error", message: status.message });
         }
     });
-
-    const unsubAttestation = adapter.sso.attestationStatus.subscribe(
-        (status: AttestationStatus) => {
-            if (status.step === "attestation") {
-                onStatus({ step: "attesting", username: status.username });
-            } else if (status.step === "attestationError") {
-                onStatus({ step: "error", message: status.message });
-            }
-        },
-    );
 
     let authenticated = false;
     let address: string | null = null;
@@ -203,9 +203,8 @@ export async function waitForLogin(
             }
         }
     } finally {
-        // Always clear subscriptions, even if authPromise rejects.
+        // Always clear subscription, even if authPromise rejects.
         unsubPairing();
-        unsubAttestation();
     }
 
     return address;
@@ -216,10 +215,18 @@ export async function waitForLogin(
  * tears down the long-lived adapter the signer depends on. Callers MUST
  * invoke `destroy()` once they're done (typically inside a `useEffect`
  * cleanup or `try/finally`) — the WebSocket keeps the event loop alive.
+ *
+ * `userSession` is the raw `UserSession` from product-sdk-terminal. We retain
+ * it so callers that need the host-channel API (e.g. RFC-0010 resource
+ * allocation via `session.requestResourceAllocation(...)`) can use it without
+ * re-running `waitForSessions`. Don't call `userSession.dispose()` directly —
+ * always go through the handle's `destroy()` so the adapter teardown happens
+ * in the right order.
  */
 export interface SessionHandle {
     address: string;
     signer: PolkadotSigner;
+    userSession: UserSession;
     destroy(): void;
 }
 
@@ -238,10 +245,18 @@ export async function getSessionSigner(): Promise<SessionHandle | null> {
 
     const sessions = await waitForSessions(adapter, 3000);
     if (sessions.length === 0) {
-        // SDK destroy() is async; fire-and-forget here is OK because we have
-        // nothing else to await — pending statement-subscription unsubscribes
-        // are drained inside the SDK before the lazy client tears down.
-        void adapter.destroy();
+        // SDK destroy() is async and fire-and-forget is fine here because we
+        // have nothing else to await — pending statement-subscription
+        // unsubscribes are drained inside the SDK before the lazy client tears
+        // down. We attach `.catch()` to swallow post-destroy
+        // `DestroyedError: Client destroyed` rejections from polkadot-api's
+        // raw-client (the chainHead unfollow racing the WS close); Bun's
+        // runtime prints unhandled rejections REGARDLESS of
+        // `process.on('unhandledRejection')` handlers in compiled SEA
+        // binaries, so the `isBenignUnsubscriptionError` filter in
+        // `process-guard.ts` doesn't help — the only way to silence them is
+        // to handle the rejection at the source.
+        adapter.destroy().catch(() => {});
         return null;
     }
 
@@ -253,17 +268,17 @@ export async function getSessionSigner(): Promise<SessionHandle | null> {
     const destroy = () => {
         if (destroyed) return;
         destroyed = true;
-        try {
-            // Fire-and-forget. SDK destroy() is async but the SessionHandle
-            // contract returns void; the pending-unsubscribe drain happens
-            // inside the SDK regardless of whether we await.
-            void adapter.destroy();
-        } catch {
-            // best-effort; adapter.destroy() is idempotent in practice
-        }
+        // Fire-and-forget. SDK destroy() is async but the SessionHandle
+        // contract returns void; the pending-unsubscribe drain happens inside
+        // the SDK regardless of whether we await. The `.catch()` swallows
+        // post-destroy `DestroyedError: Client destroyed` artifacts from
+        // polkadot-api's raw-client — Bun's compiled binaries print
+        // unhandled rejections regardless of `process.on('unhandledRejection')`
+        // handlers, so the only effective silence is at the rejection source.
+        adapter.destroy().catch(() => {});
     };
 
-    return { address, signer, destroy };
+    return { address, signer, userSession: session, destroy };
 }
 
 // ── Sign-out flow ─────────────────────────────────────────────────────────────

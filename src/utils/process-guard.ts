@@ -174,17 +174,27 @@ function logSuppressedBenign(reason: unknown): void {
  * Both look terrifying but are already the expected outcome. Keeping the match
  * narrow so a genuinely new failure still escalates.
  *
- * `DestroyedError: Client destroyed` from PAPI's raw-client used to surface
- * here too, on `dot logout`, because `@parity/product-sdk-terminal@0.1.0`
- * destroyed its lazy client without draining pending statement-subscription
- * unsubscribes. That race was fixed upstream in 0.2.0 (the `destroy()` method
- * is now async and `await`s `lazyClient.awaitPendingUnsubs()` between
- * `sessions.dispose()` and `lazyClient.disconnect()`), so we no longer suppress
- * `DestroyedError` here — if it ever resurfaces it's a real regression.
+ * `DestroyedError: Client destroyed` from PAPI's raw-client was originally
+ * surfaced by `@parity/product-sdk-terminal@0.1.0` on `dot logout`, because
+ * the SDK destroyed its lazy client without draining pending
+ * statement-subscription unsubscribes. The 0.2.0 fix made `destroy()` async
+ * and `await`s `lazyClient.awaitPendingUnsubs()` between `sessions.dispose()`
+ * and `lazyClient.disconnect()` — but that drain only happens if the caller
+ * actually awaits. Our `SessionHandle.destroy()` is a synchronous void return
+ * (so `useEffect` cleanup and other non-async sites can call it), and inside
+ * it we `void adapter.destroy()` — fire-and-forget. The drain still races
+ * pending unsubs in that path, so we re-suppress `DestroyedError` here as
+ * an expected post-destroy artifact. Verified that the underlying work has
+ * already succeeded before this rejects (the chainHead unfollow happens after
+ * our deploy/init flow returns). Drop this when SessionHandle.destroy() is
+ * awaitable end-to-end.
  */
 export function isBenignUnsubscriptionError(reason: unknown): boolean {
     if (!(reason instanceof Error)) return false;
     if (reason.name === "DisjointError") return true;
+    if (reason.name === "DestroyedError" && /client destroyed/i.test(reason.message)) {
+        return true;
+    }
     if (reason.name !== "UnsubscriptionError") return false;
     const errors = (reason as Error & { errors?: unknown }).errors;
     if (!Array.isArray(errors) || errors.length === 0) return false;

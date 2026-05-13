@@ -36,6 +36,14 @@ import {
 const snapshotAddress = "0x1111111111111111111111111111111111111111";
 const liveAddress = "0x2222222222222222222222222222222222222222";
 
+/**
+ * Mock `Weight` for `QueryResult.gasRequired` — required (non-optional) on
+ * the success branch since product-sdk-contracts@0.5.0's discriminated-union
+ * shape. We don't assert on the value; it just needs to be present and shaped
+ * correctly so the type narrows.
+ */
+const OK_WEIGHT = { ref_time: 0n, proof_size: 0n };
+
 function manifest(): CdmJson {
     return {
         targets: {
@@ -81,6 +89,7 @@ describe("resolveLiveContractAddresses", () => {
         getAddressQueryMock.mockResolvedValue({
             success: true,
             value: { isSome: true, value: liveAddress },
+            gasRequired: OK_WEIGHT,
         });
 
         const assetHub = {} as any;
@@ -104,6 +113,7 @@ describe("resolveLiveContractAddresses", () => {
         getAddressQueryMock.mockResolvedValue({
             success: true,
             value: { isSome: true, value: liveAddress },
+            gasRequired: OK_WEIGHT,
         });
 
         const assetHub = {} as any;
@@ -124,6 +134,7 @@ describe("resolveLiveContractAddresses", () => {
         getAddressQueryMock.mockResolvedValue({
             success: true,
             value: { isSome: false, value: snapshotAddress },
+            gasRequired: OK_WEIGHT,
         });
 
         await expect(
@@ -137,6 +148,7 @@ describe("withLiveContractAddresses", () => {
         getAddressQueryMock.mockResolvedValue({
             success: true,
             value: { isSome: true, value: liveAddress },
+            gasRequired: OK_WEIGHT,
         });
         const original = manifest();
 
@@ -177,6 +189,7 @@ describe("withLiveContractAddresses", () => {
         getAddressQueryMock.mockResolvedValue({
             success: true,
             value: { isSome: true, value: liveAddress },
+            gasRequired: OK_WEIGHT,
         });
 
         const assetHub = {} as any;
@@ -197,6 +210,7 @@ describe("withLiveContractAddresses", () => {
         getAddressQueryMock.mockResolvedValue({
             success: true,
             value: { isSome: true, value: liveAddress },
+            gasRequired: OK_WEIGHT,
         });
 
         const assetHub = {} as any;

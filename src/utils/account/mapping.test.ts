@@ -16,19 +16,17 @@
 /**
  * Tests for the Revive-mapping wrapper.
  *
- * `mapping.ts` itself is thin (delegates to `createInkSdk` + `ensureAccountMapped`
- * from `@parity/product-sdk-tx`, both already tested upstream). The thing that
- * matters for us is the wrapper's branching and argument plumbing:
+ * `checkMapping` mirrors bulletin-deploy's canonical pattern: derive the H160
+ * via `ReviveApi.address`, then query `Revive.OriginalAccount[H160]` —
+ * non-null iff the binding exists.
  *
- *   - `checkMapping` reflects `addressIsMapped`
- *   - `ensureMapped` always calls `ensureAccountMapped` (the upstream helper
- *     is itself documented idempotent, so we don't short-circuit here)
- *   - errors from either path propagate unchanged so the UI can surface them
+ * RPC failures resolve to `false` (treated as "not mapped" so the caller can
+ * fall back to `ensureMapped` rather than surfacing an opaque error to the
+ * user during init).
  */
 
 import { describe, it, expect, vi } from "vitest";
 
-const mockAddressIsMapped = vi.fn<() => Promise<boolean>>();
 const mockEnsureAccountMapped =
     vi.fn<(address: string, signer: unknown, sdk: unknown, client: unknown) => Promise<unknown>>();
 const mockCreateInkSdk = vi.fn();
@@ -44,11 +42,32 @@ vi.mock("@parity/product-sdk-tx", () => ({
 
 const { checkMapping, ensureMapped } = await import("./mapping.js");
 
-function makeClient() {
+const FAKE_H160 = new Uint8Array(20);
+
+function makeClient(opts: {
+    address: Uint8Array | (() => Promise<Uint8Array>) | (() => Promise<never>);
+    original: string | null | (() => Promise<string | null>) | (() => Promise<never>);
+}) {
+    const addressApi = typeof opts.address === "function" ? opts.address : async () => opts.address;
+    const originalApi =
+        typeof opts.original === "function" ? opts.original : async () => opts.original;
     return {
         raw: { assetHub: { __raw: true } },
-        assetHub: { __typed: true },
-    } as any; // PaseoClient shape, but we only need .raw.assetHub + .assetHub
+        assetHub: {
+            apis: {
+                ReviveApi: {
+                    address: vi.fn(addressApi),
+                },
+            },
+            query: {
+                Revive: {
+                    OriginalAccount: {
+                        getValue: vi.fn(originalApi),
+                    },
+                },
+            },
+        },
+    } as any;
 }
 
 function makeSigner() {
@@ -56,31 +75,41 @@ function makeSigner() {
 }
 
 describe("checkMapping", () => {
-    it("returns true when the address is already mapped", async () => {
-        mockCreateInkSdk.mockReturnValue({ addressIsMapped: mockAddressIsMapped });
-        mockAddressIsMapped.mockResolvedValue(true);
-
-        const client = makeClient();
+    it("returns true when Revive.OriginalAccount has a binding for the derived H160", async () => {
+        const client = makeClient({ address: FAKE_H160, original: "5Galice…" });
         const result = await checkMapping(client, "5GrwvaEF...");
 
         expect(result).toBe(true);
-        expect(mockCreateInkSdk).toHaveBeenCalledWith(client.raw.assetHub, { atBest: true });
-        expect(mockAddressIsMapped).toHaveBeenCalledWith("5GrwvaEF...");
+        expect(client.assetHub.apis.ReviveApi.address).toHaveBeenCalledWith("5GrwvaEF...");
+        expect(client.assetHub.query.Revive.OriginalAccount.getValue).toHaveBeenCalledWith(
+            FAKE_H160,
+        );
     });
 
-    it("returns false when not mapped", async () => {
-        mockCreateInkSdk.mockReturnValue({ addressIsMapped: mockAddressIsMapped });
-        mockAddressIsMapped.mockResolvedValue(false);
-
-        const result = await checkMapping(makeClient(), "5Fxxx...");
+    it("returns false when Revive.OriginalAccount returns null", async () => {
+        const client = makeClient({ address: FAKE_H160, original: null });
+        const result = await checkMapping(client, "5Fxxx...");
         expect(result).toBe(false);
     });
 
-    it("propagates RPC errors so the UI can show them", async () => {
-        mockCreateInkSdk.mockReturnValue({ addressIsMapped: mockAddressIsMapped });
-        mockAddressIsMapped.mockRejectedValue(new Error("connection reset"));
+    it("treats OriginalAccount RPC errors as 'not mapped' so init can fall through to map_account", async () => {
+        const client = makeClient({
+            address: FAKE_H160,
+            original: async () => {
+                throw new Error("connection reset");
+            },
+        });
+        await expect(checkMapping(client, "5F...")).resolves.toBe(false);
+    });
 
-        await expect(checkMapping(makeClient(), "5F...")).rejects.toThrow("connection reset");
+    it("returns false if ReviveApi.address itself fails", async () => {
+        const client = makeClient({
+            address: async () => {
+                throw new Error("runtime api unavailable");
+            },
+            original: null,
+        });
+        await expect(checkMapping(client, "5F...")).resolves.toBe(false);
     });
 });
 
@@ -93,7 +122,7 @@ describe("ensureMapped", () => {
         mockCreateInkSdk.mockReturnValue(fakeSdk);
         mockEnsureAccountMapped.mockResolvedValue(undefined);
 
-        const client = makeClient();
+        const client = makeClient({ address: FAKE_H160, original: null });
         const signer = makeSigner();
         await ensureMapped(client, "5FAlice...", signer);
 
@@ -111,8 +140,8 @@ describe("ensureMapped", () => {
             new Error("Mobile signing rejected: user rejected"),
         );
 
-        await expect(ensureMapped(makeClient(), "5F...", makeSigner())).rejects.toThrow(
-            /Mobile signing rejected/,
-        );
+        await expect(
+            ensureMapped(makeClient({ address: FAKE_H160, original: null }), "5F...", makeSigner()),
+        ).rejects.toThrow(/Mobile signing rejected/);
     });
 });

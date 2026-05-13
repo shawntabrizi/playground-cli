@@ -13,30 +13,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { Box, Text } from "ink";
 import { useState, useEffect } from "react";
-import { Row, Section, type MarkKind } from "../../utils/ui/theme/index.js";
+import { Row, Section, Callout, type MarkKind } from "../../utils/ui/theme/index.js";
 import { getConnection } from "../../utils/connection.js";
 import { getSessionSigner, type SessionHandle } from "../../utils/auth.js";
-import { checkBalance, ensureFunded, FUND_AMOUNT } from "../../utils/account/funding.js";
-import { AllFundersExhaustedError } from "../../utils/account/errors.js";
-import { faucetUrlFor } from "../../utils/account/funder.js";
 import { checkMapping, ensureMapped } from "../../utils/account/mapping.js";
+import { DEFAULT_ENV, PLAYGROUND_PRODUCT_ID } from "../../config.js";
 import {
-    checkAllowance,
-    ensureAllowance,
-    LOW_TX_THRESHOLD,
-} from "../../utils/account/allowance.js";
-import {
-    checkAttestation,
-    getBulletinBlockTimeMs,
-    formatAttestation,
-    type FormattedAttestation,
-} from "../../utils/account/attestation.js";
+    PLAYGROUND_RESOURCES,
+    requestResourceAllocation,
+    summarizeOutcomes,
+    type AllocatableResource,
+} from "../../utils/allowances/host.js";
+import { hasAllowance, markAllowance } from "../../utils/allowances/marker.js";
 
 type Status = "pending" | "active" | "ok" | "failed" | "skipped";
-
-/** Planck per PAS (10 decimals). */
-const PLANCK_PER_PAS = 10_000_000_000n;
 
 interface StepState {
     label: string;
@@ -62,19 +54,24 @@ function toMark(status: Status): MarkKind | undefined {
     }
 }
 
-/** Format planck as "X.YZ PAS" without going through lossy `Number(bigint)`. */
-export function formatPas(planck: bigint): string {
-    const whole = planck / PLANCK_PER_PAS;
-    // Two decimal places: compute planck fraction of PAS in hundredths.
-    const hundredths = (planck % PLANCK_PER_PAS) / (PLANCK_PER_PAS / 100n);
-    const frac = hundredths.toString().padStart(2, "0");
-    return `${whole.toString()}.${frac} PAS`;
+interface PhonePrompt {
+    step: number;
+    total: number;
+    label: string;
 }
 
-/** Format a raw byte count as "N MB" using integer math (no precision loss). */
-export function formatMb(bytes: bigint): string {
-    const mb = bytes / 1_000_000n;
-    return `${mb.toString()} MB`;
+/** Human-readable name for a resource tag, used in failure messages. */
+function describeResource(r: AllocatableResource): string {
+    switch (r.tag) {
+        case "BulletInAllowance":
+            return "Bulletin storage";
+        case "StatementStoreAllowance":
+            return "Statement Store";
+        case "SmartContractAllowance":
+            return `smart-contract gas (idx ${r.value})`;
+        case "AutoSigning":
+            return "auto-signing";
+    }
 }
 
 export function AccountSetup({
@@ -85,10 +82,10 @@ export function AccountSetup({
     onDone: (success: boolean) => void;
 }) {
     const [steps, setSteps] = useState<StepState[]>([
-        { label: "funding", status: "pending" },
+        { label: "allowances", status: "pending" },
         { label: "mapping", status: "pending" },
-        { label: "bulletin", status: "pending" },
     ]);
+    const [phonePrompt, setPhonePrompt] = useState<PhonePrompt | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -101,6 +98,7 @@ export function AccountSetup({
 
         const finish = (success: boolean) => {
             if (cancelled) return;
+            setPhonePrompt(null);
             onDone(success);
         };
 
@@ -119,153 +117,179 @@ export function AccountSetup({
             }
             if (cancelled) return;
 
-            // Step 0: Fund from Alice
-            let funded = false;
-            update(0, { status: "active" });
+            session = await getSessionSigner();
+            if (cancelled) return;
+            if (!session) {
+                setSteps((prev) =>
+                    prev.map((s) => ({
+                        ...s,
+                        status: "failed",
+                        error: "no session — run dot init to log in",
+                    })),
+                );
+                finish(false);
+                return;
+            }
+
+            const env = DEFAULT_ENV;
+
+            // ── Step 0: Resource allowances ─────────────────────────────────
+            // Order matters: allowances must come before mapping because the
+            // `Revive.map_account` transaction is paid in PGAS on paseo-next-v2,
+            // and the user only has PGAS sponsoring after SmartContractAllowance
+            // is granted.
+            update(0, { status: "active", value: "checking…", valueTone: "muted" });
+            let allowancesOk = false;
             try {
-                const before = await checkBalance(client, address);
+                const tags = PLAYGROUND_RESOURCES.map((r) => r.tag);
+                const marked = await Promise.all(tags.map((t) => hasAllowance(env, address, t)));
                 if (cancelled) return;
-                if (before.sufficient) {
-                    update(0, { status: "ok", value: formatPas(before.free) });
-                    funded = true;
+                const allMarked = marked.every(Boolean);
+                if (allMarked) {
+                    update(0, {
+                        status: "ok",
+                        value: "already granted",
+                        valueTone: "muted",
+                    });
+                    allowancesOk = true;
                 } else {
                     update(0, {
                         status: "active",
-                        value: formatPas(before.free),
-                        hint: "funding…",
-                    });
-                    await ensureFunded(client, address);
-                    if (cancelled) return;
-                    // Optimistic post-balance: avoids a second RPC call that
-                    // could read a stale best-block and display the old value.
-                    const expected = before.free + FUND_AMOUNT;
-                    update(0, { status: "ok", value: formatPas(expected), hint: undefined });
-                    funded = true;
-                }
-            } catch (err) {
-                const error =
-                    err instanceof AllFundersExhaustedError
-                        ? `Unable to auto fund your account, please use the faucet at: ${faucetUrlFor(address)}`
-                        : describe(err);
-                update(0, { status: "failed", error, valueTone: "danger" });
-            }
-
-            // Step 1: Revive mapping (requires funds, user signs via mobile wallet)
-            if (funded) {
-                update(1, { status: "active" });
-                try {
-                    const mapped = await checkMapping(client, address);
-                    if (cancelled) return;
-                    if (mapped) {
-                        update(1, { status: "ok", value: "mapped", valueTone: "muted" });
-                    } else {
-                        session = await getSessionSigner();
-                        if (cancelled) return;
-                        if (!session) {
-                            update(1, {
-                                status: "failed",
-                                error: "no session — run dot init to log in",
-                            });
-                        } else {
-                            update(1, {
-                                status: "active",
-                                value: "approve on your Polkadot mobile app…",
-                                valueTone: "muted",
-                            });
-                            await ensureMapped(client, address, session.signer);
-                            if (cancelled) return;
-                            update(1, { status: "ok", value: "mapped", valueTone: "muted" });
-                        }
-                    }
-                } catch (err) {
-                    update(1, { status: "failed", error: describe(err) });
-                }
-            } else {
-                update(1, {
-                    status: "skipped",
-                    value: "skipped — account not funded",
-                    valueTone: "muted",
-                });
-            }
-
-            // Step 2: Bulletin attestation (Alice signs, independent of mapping).
-            // Always surfaces the formatted attestation validity — users see
-            // this even on re-runs where nothing needs refreshing.
-            update(2, { status: "active" });
-            try {
-                const blockTimeMs = await getBulletinBlockTimeMs(client);
-                const before = await checkAllowance(client, address);
-                if (cancelled) return;
-                if (before.authorized && before.remainingTxs >= LOW_TX_THRESHOLD) {
-                    const attestation = await checkAttestation(client, address);
-                    if (cancelled) return;
-                    applyAttestation(update, 2, "ok", formatAttestation(attestation, blockTimeMs), {
-                        txs: before.remainingTxs,
-                        bytes: before.remainingBytes,
-                    });
-                } else {
-                    update(2, {
-                        status: "active",
-                        value: before.authorized
-                            ? `low quota (${before.remainingTxs} txs) — refreshing…`
-                            : "not authorized — attesting…",
+                        value: "approve on your Polkadot mobile app…",
                         valueTone: "muted",
                     });
-                    await ensureAllowance(client, address);
-                    if (cancelled) return;
-                    const attestation = await checkAttestation(client, address);
-                    if (cancelled) return;
-                    applyAttestation(update, 2, "ok", formatAttestation(attestation, blockTimeMs), {
-                        txs: attestation.remainingTxs,
-                        bytes: attestation.remainingBytes,
+                    setPhonePrompt({
+                        step: 1,
+                        total: 2,
+                        label: "grant resource allowances",
                     });
+                    const outcomes = await requestResourceAllocation(
+                        session.userSession,
+                        PLAYGROUND_PRODUCT_ID,
+                    );
+                    if (cancelled) return;
+                    setPhonePrompt(null);
+                    const summary = summarizeOutcomes(outcomes, PLAYGROUND_RESOURCES);
+                    if (summary.rejected.length > 0 || summary.unavailable.length > 0) {
+                        const denied = [...summary.rejected, ...summary.unavailable]
+                            .map(describeResource)
+                            .join(", ");
+                        update(0, {
+                            status: "failed",
+                            error: `denied: ${denied}. Re-run \`dot init\` and approve on your phone.`,
+                            valueTone: "danger",
+                        });
+                        finish(false);
+                        return;
+                    }
+                    // Persist a marker per granted resource so subsequent runs
+                    // skip the host round-trip entirely.
+                    await Promise.all(
+                        summary.granted.map((r) => markAllowance(env, address, r.tag, "host")),
+                    );
+                    if (cancelled) return;
+                    update(0, {
+                        status: "ok",
+                        value: `granted (${summary.granted.length})`,
+                        valueTone: "muted",
+                    });
+                    allowancesOk = true;
                 }
             } catch (err) {
-                update(2, { status: "failed", error: describe(err) });
+                setPhonePrompt(null);
+                update(0, {
+                    status: "failed",
+                    error: describe(err),
+                    valueTone: "danger",
+                });
+                finish(false);
+                return;
             }
 
-            finish(funded);
-        })().finally(() => {
-            // Always release the session adapter once setup has finished (or bailed).
-            session?.destroy();
-        });
+            // ── Step 1: Revive account mapping ──────────────────────────────
+            if (!allowancesOk) {
+                update(1, {
+                    status: "skipped",
+                    value: "skipped — allowances missing",
+                    valueTone: "muted",
+                });
+                finish(false);
+                return;
+            }
+            update(1, { status: "active", value: "checking…", valueTone: "muted" });
+            try {
+                const mapped = await checkMapping(client, address);
+                if (cancelled) return;
+                if (mapped) {
+                    update(1, { status: "ok", value: "mapped", valueTone: "muted" });
+                } else {
+                    update(1, {
+                        status: "active",
+                        value: "approve on your Polkadot mobile app…",
+                        valueTone: "muted",
+                    });
+                    setPhonePrompt({
+                        step: 2,
+                        total: 2,
+                        label: "map account to H160",
+                    });
+                    await ensureMapped(client, address, session.signer);
+                    if (cancelled) return;
+                    setPhonePrompt(null);
+                    update(1, { status: "ok", value: "mapped", valueTone: "muted" });
+                }
+            } catch (err) {
+                setPhonePrompt(null);
+                update(1, {
+                    status: "failed",
+                    error: describe(err),
+                    valueTone: "danger",
+                });
+                finish(false);
+                return;
+            }
 
+            finish(true);
+        })();
+
+        // Cleanup is the SOLE owner of `session?.destroy()`. Calling destroy()
+        // from a `.finally()` AND here races them — both fire near-instantly on
+        // success/failure, and the second one trips a half-torn-down adapter
+        // into surfacing `DestroyedError: Client destroyed` from
+        // polkadot-api's raw-client. Even though the wrapped `destroy()` has an
+        // idempotency flag, the inner `adapter.destroy()` is fire-and-forget,
+        // so the second invocation sees `destroyed=true` while the first's
+        // async drain is still in flight, and rejections leak as
+        // unhandledRejection (the process-guard's stderr write then corrupts
+        // Ink's cursor anchor and the whole screen re-renders stacked).
         return () => {
             cancelled = true;
-            // If the component unmounts mid-flight the IIFE's finally will
-            // also fire and clean up, but do it eagerly here too so we don't
-            // hang on an in-flight mobile sign request.
             session?.destroy();
         };
     }, [address, onDone]);
 
     return (
-        <Section title="account">
-            {steps.map((step) => (
-                <Row
-                    key={step.label}
-                    mark={toMark(step.status)}
-                    label={step.label}
-                    value={step.value}
-                    tone={step.valueTone ?? "default"}
-                    hint={step.error ?? step.hint}
-                />
-            ))}
-        </Section>
+        <Box flexDirection="column">
+            <Section title="account">
+                {steps.map((step) => (
+                    <Row
+                        key={step.label}
+                        mark={toMark(step.status)}
+                        label={step.label}
+                        value={step.value}
+                        tone={step.valueTone ?? "default"}
+                        hint={step.error ?? step.hint}
+                    />
+                ))}
+            </Section>
+            {phonePrompt && (
+                <Callout tone="warning" title="check your phone">
+                    <Text>
+                        approve step {phonePrompt.step} of {phonePrompt.total}:{" "}
+                        <Text bold>{phonePrompt.label}</Text>
+                    </Text>
+                </Callout>
+            )}
+        </Box>
     );
-}
-
-/** Write a formatted attestation into a step's value, with its quota as the hint. */
-function applyAttestation(
-    update: (idx: number, patch: Partial<StepState>) => void,
-    idx: number,
-    status: Status,
-    formatted: FormattedAttestation,
-    quota: { txs: number | undefined; bytes: bigint | undefined },
-): void {
-    const hint =
-        quota.txs !== undefined && quota.bytes !== undefined
-            ? `${quota.txs} txs  ·  ${formatMb(quota.bytes)} remaining`
-            : undefined;
-    update(idx, { status, value: formatted.text, valueTone: formatted.tone, hint });
 }

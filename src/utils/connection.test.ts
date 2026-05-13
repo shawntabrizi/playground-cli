@@ -32,12 +32,12 @@ vi.mock("@parity/product-sdk-descriptors/paseo-asset-hub", () => ({
     paseo_asset_hub: { genesis: "0xasset" },
 }));
 
-vi.mock("@parity/product-sdk-descriptors/bulletin", () => ({
-    bulletin: { genesis: "0xbulletin" },
+vi.mock("@parity/product-sdk-descriptors/paseo-bulletin", () => ({
+    paseo_bulletin: { genesis: "0xbulletin" },
 }));
 
-vi.mock("@parity/product-sdk-descriptors/individuality", () => ({
-    individuality: { genesis: "0xpeople" },
+vi.mock("@parity/product-sdk-descriptors/paseo-individuality", () => ({
+    paseo_individuality: { genesis: "0xpeople" },
 }));
 
 // Re-import after each test to reset the singleton

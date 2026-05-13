@@ -35,9 +35,9 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
-import { bulletin } from "@parity/product-sdk-descriptors/bulletin";
+import { paseo_bulletin as bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
 import { calculateCid } from "@parity/product-sdk-bulletin";
-import { createDevSigner, submitAndWatch, withRetry } from "@parity/product-sdk-tx";
+import { submitAndWatch, withRetry } from "@parity/product-sdk-tx";
 import { getRegistryContract } from "../registry.js";
 import { getConnection } from "../connection.js";
 import { getChainConfig, type Env } from "../../config.js";
@@ -230,13 +230,19 @@ export async function publishToPlayground(
             try {
                 const bulletinApi = bulletinClient.getTypedApi(bulletin);
                 const cid = (await calculateCid(metadataBytes)).toString();
-                const signer = createDevSigner("Alice");
+                // Sign with the user's signer — paseo-next-v2's BulletinAuthorize v2
+                // model means the user's BulletInAllowance (granted via the host
+                // during `dot init`) covers their own `TransactionStorage.store`
+                // submissions. The legacy Alice-signed path worked on stable
+                // Paseo because Alice held a global authorization there; v2
+                // doesn't auto-authorize Alice, so submitting from her would
+                // fail with "Payment" on a non-bootstrapped Bulletin Next.
                 await withRetry(() =>
                     submitAndWatch(
                         bulletinApi.tx.TransactionStorage.store({
                             data: metadataBytes,
                         }),
-                        signer,
+                        options.publishSigner.signer,
                     ),
                 );
                 return cid;

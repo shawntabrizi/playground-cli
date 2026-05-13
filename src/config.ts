@@ -17,52 +17,119 @@
  * Single source of truth for environment-dependent values: RPC endpoints,
  * contract addresses, dapp identifiers, and feature defaults.
  *
- * When mainnet launches we will add a second profile here and thread an
- * `env` value through the commands. Until then only `testnet` is supported
- * and every consumer should import from this module rather than inlining
- * URLs or addresses elsewhere.
+ * Env IDs mirror bulletin-deploy's `assets/environments.json` (paseo-next,
+ * paseo-next-v2, paseo-review, preview, polkadot, kusama) so a single value
+ * threads through both layers. paseo-next-v2 is the only env fully wired
+ * today; others throw from `getChainConfig` until they're populated.
  */
 
-export type Env = "testnet" | "mainnet";
+import { REGISTRY_ADDRESS } from "@dotdm/contracts";
 
-export const DEFAULT_ENV: Env = "testnet";
+export type Env =
+    | "preview"
+    | "paseo-next"
+    | "paseo-review"
+    | "paseo-next-v2"
+    | "polkadot"
+    | "kusama";
+
+export const ACTIVE_TESTNET_ENV: Env = "paseo-next-v2";
+export const DEFAULT_ENV: Env = ACTIVE_TESTNET_ENV;
+
+/**
+ * DotNS contract addresses for an env. Resolved by bulletin-deploy when
+ * `skipDotnsCli: true`; included here so other callers (mod, registry
+ * lookups) can read the live set without re-parsing bulletin-deploy's bundled
+ * environments.json.
+ */
+export interface DotnsContracts {
+    REGISTRAR: string;
+    REGISTRAR_CONTROLLER: string;
+    REGISTRY: string;
+    RESOLVER: string;
+    CONTENT_RESOLVER: string;
+    REVERSE_RESOLVER: string;
+    POP_RULES: string;
+    STORE_FACTORY: string;
+}
 
 export interface ChainConfig {
-    /** WebSocket endpoint for Paseo Asset Hub (Revive contracts live here). */
+    /** Env identifier — passes straight through to bulletin-deploy's `deploy({ env })`. */
+    env: Env;
+    /** Underlying network (testnet/mainnet) for cosmetics + gates. */
+    network: "testnet" | "mainnet";
+    /** Relay chain RPC (mostly informational; product-sdk talks to system chains directly). */
+    relayRpc: string;
+    /** Asset Hub RPC — Revive contracts (registry, DotNS) live here. */
     assetHubRpc: string;
-    /** WebSocket endpoint for Paseo Bulletin (immutable IPFS storage). */
+    /** Primary Bulletin RPC for storage. */
     bulletinRpc: string;
     /**
-     * Ordered fallback endpoints for Bulletin, used where the caller builds its
-     * own WS provider (e.g. the dedicated metadata-upload client in
-     * `src/utils/deploy/playground.ts`). Always excludes `bulletinRpc` itself.
-     * Typically empty; populated when `DOT_BULLETIN_RPC` overrides the primary.
+     * Ordered fallback Bulletin endpoints. Always excludes `bulletinRpc`.
+     * Used by callers that build their own WS provider (e.g. the dedicated
+     * metadata-upload client in `src/utils/deploy/playground.ts`).
+     * Typically empty; populated when `DOT_BULLETIN_RPC` overrides primary.
      */
     bulletinRpcFallbacks: string[];
-    /** WebSocket endpoints for the People chain (SSO / session discovery). */
+    /** People chain endpoints (SSO / session discovery). */
     peopleEndpoints: string[];
     /** HTTP IPFS gateway for Bulletin content reads. */
     bulletinGateway: string;
+    /** Identity backend (inviter/attestation/proxy lookup, allowance metadata). */
+    identityBackendUrl: string;
     /** Viewer URL shown to users after a successful deploy. */
     appViewerOrigin: string;
+    /** True when Revive auto-maps SS58 → H160 on first tx (paseo-next-v2 onward). */
+    autoAccountMapping: boolean;
+    /** True when `authorize_account` takes the v2 `{who, transactions, bytes}` signature. */
+    bulletinAuthorizeV2: boolean;
+    /** DotNS contract addresses. null when bulletin-deploy/dotns-cli has hardcoded defaults. */
+    dotnsContracts: DotnsContracts | null;
+    /** Public faucet URL, or null when allowances replace the funder flow. */
+    faucetUrl: string | null;
 }
 
-const TESTNET: ChainConfig = {
-    assetHubRpc: "wss://asset-hub-paseo-rpc.n.dwellir.com",
-    bulletinRpc: "wss://paseo-bulletin-rpc.polkadot.io",
+// Paseo Next v2 — the active env. Source for endpoints + DotNS addresses:
+// bulletin-deploy/assets/environments.json (v2 entry).
+const PASEO_NEXT_V2: ChainConfig = {
+    env: "paseo-next-v2",
+    network: "testnet",
+    relayRpc: "wss://paseo-rpc.n.dwellir.com",
+    assetHubRpc: "wss://paseo-asset-hub-next-rpc.polkadot.io",
+    bulletinRpc: "wss://paseo-bulletin-next-rpc.polkadot.io",
     bulletinRpcFallbacks: [],
-    peopleEndpoints: ["wss://paseo-people-next-rpc.polkadot.io"],
-    bulletinGateway: "https://paseo-ipfs.polkadot.io/ipfs/",
+    peopleEndpoints: ["wss://paseo-people-next-system-rpc.polkadot.io"],
+    bulletinGateway: "https://paseo-bulletin-next-ipfs.polkadot.io/",
+    identityBackendUrl: "https://identity-backend-next.parity-testnet.parity.io",
     appViewerOrigin: "https://dot.li",
+    autoAccountMapping: true,
+    bulletinAuthorizeV2: true,
+    dotnsContracts: {
+        REGISTRAR: "0xE67B22B285912FFfaE23BdfAc8C80c779d99B3e0",
+        REGISTRAR_CONTROLLER: "0x8403e49Ec12F4EA5788f7bc0C0c2F649205774cC",
+        REGISTRY: "0xDeFE1AAE21eC2455bd04b213a51C16d4b426c7ef",
+        RESOLVER: "0xB436A271Beff1DBa6abDf2dbCc7E6d723d505EE6",
+        CONTENT_RESOLVER: "0xBcFa907Ff85dFc62a21b41d48F23D7A73aC42914",
+        REVERSE_RESOLVER: "0x4Ca32Dd0233D8c1B1709e20D9E4edBF2a77D21c3",
+        POP_RULES: "0xd3F059FA65dA566B294b5d755a06054d4bE7ce7C",
+        STORE_FACTORY: "0x4f1885fB6e0b154dCf9C2A8661e578B94aD50775",
+    },
+    faucetUrl: null,
+};
+
+const CONFIGS: Partial<Record<Env, ChainConfig>> = {
+    "paseo-next-v2": PASEO_NEXT_V2,
+    // Other envs are not wired yet — getChainConfig() throws below.
 };
 
 export function getChainConfig(env: Env = DEFAULT_ENV): ChainConfig {
-    if (env === "mainnet") {
+    const cfg = CONFIGS[env];
+    if (!cfg) {
         throw new Error(
-            "`--env mainnet` is not yet supported. Use `--env testnet` (default) while mainnet launch is pending.",
+            `--env ${env} is not yet supported. Use --env paseo-next-v2 (default). ` +
+                `Supported envs in this build: ${Object.keys(CONFIGS).join(", ")}`,
         );
     }
-    const cfg = TESTNET;
     // CHAOS-test hook: when DOT_BULLETIN_RPC is set, use it as the primary
     // Bulletin endpoint and retain the built-in URL as a fallback so failover
     // works. bulletin-deploy's deploy() already applies this pattern internally
@@ -75,20 +142,51 @@ export function getChainConfig(env: Env = DEFAULT_ENV): ChainConfig {
         return {
             ...cfg,
             bulletinRpc: override,
-            bulletinRpcFallbacks: [cfg.bulletinRpc],
+            bulletinRpcFallbacks: [cfg.bulletinRpc, ...cfg.bulletinRpcFallbacks],
         };
     }
     return cfg;
 }
 
-/** Fixed CDM meta-registry contract on Asset Hub. Source: @dotdm/utils REGISTRY_ADDRESS. */
-export const CDM_REGISTRY_ADDRESS = "0xae344f7f0f91d3a2176032af2990abcc7606c7d4";
+/**
+ * Map legacy `--env testnet|mainnet` flag values onto the new env IDs.
+ * Keeps existing scripts/CI working while we transition.
+ */
+export function resolveLegacyEnv(input: string): Env {
+    if (input === "testnet") return ACTIVE_TESTNET_ENV;
+    if (input === "mainnet") return "polkadot";
+    return input as Env;
+}
+
+/**
+ * Human-readable network label for the Header bread-crumb. Lower-cased to
+ * match the existing visual style ("paseo", "polkadot").
+ */
+export function getNetworkLabel(env: Env = DEFAULT_ENV): string {
+    switch (env) {
+        case "paseo-next-v2":
+            return "paseo next v2";
+        case "paseo-next":
+            return "paseo next";
+        case "paseo-review":
+            return "paseo review";
+        case "preview":
+            return "preview";
+        case "polkadot":
+            return "polkadot";
+        case "kusama":
+            return "kusama";
+    }
+}
+
+/** CDM meta-registry contract address, sourced from `@dotdm/contracts`. */
+export const CDM_REGISTRY_ADDRESS = REGISTRY_ADDRESS;
 
 /** Identifier the terminal adapter reports during SSO. Kept stable so mobile pairings persist across releases. */
 export const DAPP_ID = "dot-cli";
 
-/** Product account identifier used for mobile signing. Matches playground.dot's host product id. */
-export const PLAYGROUND_PRODUCT_ID = "playground.dot";
+/** Product account identifier used for mobile signing. Matches playground42.dot's host product id. */
+export const PLAYGROUND_PRODUCT_ID = "playground42.dot";
 
 /**
  * Runtime metadata the terminal adapter fetches to render transactions on the

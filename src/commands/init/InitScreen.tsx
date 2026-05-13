@@ -21,6 +21,7 @@ import { QrLogin } from "./QrLogin.js";
 import { AccountSetup } from "./AccountSetup.js";
 import { computeAllDone } from "./completion.js";
 import { VERSION_LABEL } from "../../utils/version.js";
+import { getNetworkLabel } from "../../config.js";
 import type { LoginHandle } from "../../utils/auth.js";
 
 export function InitScreen({
@@ -70,7 +71,7 @@ export function InitScreen({
             <Header
                 cmd="dot init"
                 subtitle="polkadot playground"
-                network="paseo"
+                network={getNetworkLabel()}
                 right={VERSION_LABEL}
             />
 

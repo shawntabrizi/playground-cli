@@ -38,13 +38,15 @@ describe("bulletinGatewayUrl", () => {
 });
 
 describe("getBulletinGateway", () => {
-    it("returns the testnet gateway by default", () => {
-        // Defaults to DEFAULT_ENV (testnet); no env arg required.
-        expect(getBulletinGateway()).toBe("https://paseo-ipfs.polkadot.io/ipfs/");
+    it("returns the paseo-next-v2 gateway by default", () => {
+        // Defaults to DEFAULT_ENV (paseo-next-v2); no env arg required.
+        expect(getBulletinGateway()).toBe("https://paseo-bulletin-next-ipfs.polkadot.io/");
     });
 
-    it("returns the same URL when explicitly asked for testnet", () => {
-        expect(getBulletinGateway("testnet")).toBe("https://paseo-ipfs.polkadot.io/ipfs/");
+    it("returns the same URL when explicitly asked for paseo-next-v2", () => {
+        expect(getBulletinGateway("paseo-next-v2")).toBe(
+            "https://paseo-bulletin-next-ipfs.polkadot.io/",
+        );
     });
 });
 

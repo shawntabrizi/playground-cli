@@ -79,14 +79,24 @@ describe("isBenignUnsubscriptionError", () => {
         expect(isBenignUnsubscriptionError({ name: "UnsubscriptionError" })).toBe(false);
     });
 
-    it("does NOT suppress DestroyedError — the upstream 0.2.0 fix removed the race", () => {
-        // Pre-0.2.0 `@parity/product-sdk-terminal`'s `destroy()` could surface
-        // `DestroyedError: Client destroyed` from PAPI's raw-client `disconnect`
-        // when statement-subscription unsubscribes were still in flight. We
-        // briefly suppressed it. The 0.2.0 fix drains those unsubscribes
-        // before tearing down the lazy client, so the shape should never
-        // resurface — if it does, it's a real regression and must escalate.
+    it("suppresses DestroyedError('Client destroyed') — fire-and-forget destroy races pending unsubs", () => {
+        // The 0.2.0 product-sdk-terminal fix made adapter.destroy() awaitable
+        // and drains pending statement-subscription unsubscribes — but only
+        // when callers await. Our `SessionHandle.destroy()` returns void (so
+        // useEffect cleanup and other sync sites can call it), and we
+        // `void adapter.destroy()` inside — fire-and-forget. The drain
+        // therefore still races and surfaces this exact rejection shape on
+        // some `dot init` / `dot logout` paths. Underlying work has already
+        // succeeded; suppress.
         const err = new Error("Client destroyed");
+        err.name = "DestroyedError";
+        expect(isBenignUnsubscriptionError(err)).toBe(true);
+    });
+
+    it("does NOT suppress DestroyedError with an unrelated message", () => {
+        // Defensive: only the "Client destroyed" shape is benign. A future
+        // DestroyedError with a different message should still escalate.
+        const err = new Error("Something else");
         err.name = "DestroyedError";
         expect(isBenignUnsubscriptionError(err)).toBe(false);
     });

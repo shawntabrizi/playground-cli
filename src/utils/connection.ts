@@ -20,8 +20,8 @@ import {
     type TypedApi,
 } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
-import { bulletin } from "@parity/product-sdk-descriptors/bulletin";
-import { individuality } from "@parity/product-sdk-descriptors/individuality";
+import { paseo_bulletin as bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
+import { paseo_individuality as individuality } from "@parity/product-sdk-descriptors/paseo-individuality";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { getChainConfig } from "../config.js";
 

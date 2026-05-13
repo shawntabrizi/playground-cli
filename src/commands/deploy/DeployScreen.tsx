@@ -56,7 +56,7 @@ import { checkBalance } from "../../utils/account/funding.js";
 import { getConnection } from "../../utils/connection.js";
 import type { ResolvedSigner } from "../../utils/signer.js";
 import type { ContractsType } from "../../utils/build/detect.js";
-import { DEFAULT_BUILD_DIR } from "../../config.js";
+import { DEFAULT_BUILD_DIR, getNetworkLabel } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
 
@@ -217,7 +217,7 @@ export function DeployScreen({
             <Header
                 cmd="dot deploy"
                 subtitle={headerSubtitle}
-                network="paseo"
+                network={getNetworkLabel()}
                 right={VERSION_LABEL}
             />
 

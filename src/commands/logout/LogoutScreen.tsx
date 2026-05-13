@@ -18,6 +18,7 @@ import { Box } from "ink";
 import { Header, Section } from "../../utils/ui/theme/index.js";
 import { waitForLogout, type LogoutHandle, type LogoutStatus } from "../../utils/auth.js";
 import { VERSION_LABEL } from "../../utils/version.js";
+import { getNetworkLabel } from "../../config.js";
 import { LogoutStatus as LogoutStatusRow } from "./LogoutStatus.js";
 import { isTerminal } from "./status.js";
 
@@ -62,7 +63,7 @@ export function LogoutScreen({
             <Header
                 cmd="dot logout"
                 subtitle="polkadot playground"
-                network="paseo"
+                network={getNetworkLabel()}
                 right={VERSION_LABEL}
             />
             <Section gapBelow={false}>

@@ -61,6 +61,17 @@ export function AppBrowser({ registry, onSelect, onCancel, moddableOnly }: Props
             setFetching(true);
 
             const res = await registry.getApps.query(start, BATCH);
+            if (!res.success) {
+                // Treat a failed registry dry-run as "no apps to show" rather than
+                // letting the dispatch-error payload crash the renderer when we
+                // tried to dereference `.value.entries`. Surface the underlying
+                // shape in telemetry-visible state if useful later; for now keep
+                // the picker quiet and stop trying to paginate.
+                setTotal(0);
+                nextStart.current = null;
+                setFetching(false);
+                return;
+            }
             const rawEntries = res.value.entries as Array<{
                 index: number;
                 domain: string;

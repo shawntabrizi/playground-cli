@@ -18,6 +18,8 @@
  */
 
 import { ContractManager, type CdmJson } from "@parity/product-sdk-contracts";
+import { ss58Encode } from "@parity/product-sdk-address";
+import { getDevPublicKey } from "@parity/product-sdk-tx";
 import type { ResolvedSigner } from "./signer.js";
 import {
     PLAYGROUND_REGISTRY_CONTRACT,
@@ -28,19 +30,23 @@ import {
 import cdmJson from "../../cdm.json";
 
 /**
- * Get a typed handle to the playground registry contract.
+ * Stable origin used for read-only registry queries (`dot mod` and friends).
+ * Derived from Alice's dev pubkey so it stays consistent across runs without
+ * dragging the user's product account into the call. Revive query nodes
+ * accept any SS58 as origin for read-only dry-runs.
  */
-export async function getRegistryContract(
+const READ_ONLY_QUERY_ORIGIN = ss58Encode(getDevPublicKey("Alice"));
+
+async function loadManifest(
     rawClient: Parameters<typeof ContractManager.fromClient>[1],
-    signer: ResolvedSigner,
-) {
-    let manifest: CdmJson;
+    origin: string,
+): Promise<CdmJson> {
     try {
-        manifest = await withRequiredLiveContractAddresses(
+        return await withRequiredLiveContractAddresses(
             cdmJson,
             rawClient,
             [PLAYGROUND_REGISTRY_CONTRACT],
-            { defaultOrigin: signer.address },
+            { defaultOrigin: origin },
         );
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -49,10 +55,41 @@ export async function getRegistryContract(
             { cause: err instanceof Error ? err : undefined },
         );
     }
+}
 
+/**
+ * Get a typed handle to the playground registry contract for SIGNED writes
+ * (e.g. `registry.publish.tx(...)`). Caller is responsible for providing a
+ * funded + mapped user signer.
+ */
+export async function getRegistryContract(
+    rawClient: Parameters<typeof ContractManager.fromClient>[1],
+    signer: ResolvedSigner,
+) {
+    const manifest = await loadManifest(rawClient, signer.address);
     const manager = await ContractManager.fromClient(manifest, rawClient, {
         defaultSigner: signer.signer,
         defaultOrigin: signer.address,
+    });
+    return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));
+}
+
+/**
+ * Get a read-only handle to the registry contract. No signer required; reads
+ * use `READ_ONLY_QUERY_ORIGIN` as the dry-run origin. Use this from any path
+ * that only calls `.query()` methods (e.g. `dot mod` listing moddable apps),
+ * so the command doesn't need the user to be logged in / mapped first.
+ *
+ * Do NOT call `.tx()` on the returned contract — there is no signer wired in,
+ * and `defaultOrigin` is Alice, so any submission would either crash or be
+ * misattributed.
+ */
+export async function getReadOnlyRegistryContract(
+    rawClient: Parameters<typeof ContractManager.fromClient>[1],
+) {
+    const manifest = await loadManifest(rawClient, READ_ONLY_QUERY_ORIGIN);
+    const manager = await ContractManager.fromClient(manifest, rawClient, {
+        defaultOrigin: READ_ONLY_QUERY_ORIGIN,
     });
     return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));
 }

@@ -18,9 +18,8 @@ import { render } from "ink";
 import { Command } from "commander";
 import { existsSync } from "node:fs";
 import { withSpan } from "../../telemetry.js";
-import { resolveSigner } from "../../utils/signer.js";
 import { getConnection, destroyConnection } from "../../utils/connection.js";
-import { getRegistryContract } from "../../utils/registry.js";
+import { getReadOnlyRegistryContract } from "../../utils/registry.js";
 import { AppBrowser, type AppEntry } from "./AppBrowser.js";
 import { SetupScreen } from "./SetupScreen.js";
 import { defaultRepoName } from "../../utils/git/repoName.js";
@@ -30,29 +29,22 @@ import { assertPublicGitHubRepo, ModdablePreflightError } from "../../utils/depl
 export const modCommand = new Command("mod")
     .description("Mod a playground app — clone the source as a fresh project to customise")
     .argument("[domain]", "App domain (interactive picker if omitted)")
-    .option("--suri <suri>", "Signer secret URI (e.g. //Alice for dev)")
-    .action(async (rawDomain: string | undefined, opts: { suri?: string }) =>
-        runCliCommand("mod", { watchdog: true, hardExit: true }, () =>
-            runModCommand(rawDomain, opts),
-        ),
+    // --suri is retained as a no-op for backcompat. `dot mod` is fully read-only
+    // on the chain side now (browse + metadata lookups go through
+    // getReadOnlyRegistryContract with an Alice-derived dry-run origin), so
+    // there's no signer to feed.
+    .option("--suri <suri>", "(deprecated, no-op) Signer secret URI")
+    .action(async (rawDomain: string | undefined, _opts: { suri?: string }) =>
+        runCliCommand("mod", { watchdog: true, hardExit: true }, () => runModCommand(rawDomain)),
     );
 
-async function runModCommand(
-    rawDomain: string | undefined,
-    opts: { suri?: string },
-): Promise<void> {
-    let resolved: Awaited<ReturnType<typeof resolveSigner>> | null = null;
-
+async function runModCommand(rawDomain: string | undefined): Promise<void> {
     try {
-        const signer = await withSpan("cli.mod.resolve-signer", "resolve signer", () =>
-            resolveSigner({ suri: opts.suri }),
-        );
-        resolved = signer;
         const client = await withSpan("cli.mod.connection", "connect to registry chain", () =>
             getConnection(),
         );
         const registry = await withSpan("cli.mod.registry", "load registry contract", () =>
-            getRegistryContract(client.raw.assetHub, signer),
+            getReadOnlyRegistryContract(client.raw.assetHub),
         );
 
         let domain: string;
@@ -144,7 +136,6 @@ async function runModCommand(
         }
         if (!ok) process.exitCode = 1;
     } finally {
-        resolved?.destroy();
         destroyConnection();
     }
 }

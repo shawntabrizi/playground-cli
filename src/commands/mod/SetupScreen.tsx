@@ -23,6 +23,7 @@ import { runCommand } from "../../utils/git.js";
 import { createOptionalGitBaseline } from "../../utils/mod/git-baseline.js";
 import { downloadGitHubTarball, parseGitHubRepoUrl } from "../../utils/mod/source.js";
 import { VERSION_LABEL } from "../../utils/version.js";
+import { getNetworkLabel } from "../../config.js";
 import { fetchBulletinJson, getBulletinGateway } from "../../utils/bulletinGateway.js";
 
 interface AppMetadata {
@@ -66,6 +67,11 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                 }
                 log(`querying registry for ${domain}...`);
                 const metaRes = await registry.getMetadataUri.query(domain);
+                if (!metaRes.success) {
+                    throw new Error(
+                        `Registry lookup for "${domain}" failed at dry-run (chain rejected the call).`,
+                    );
+                }
                 const cid = metaRes.value.isSome ? metaRes.value.value : null;
                 if (!cid) throw new Error(`App "${domain}" not found in registry`);
 
@@ -127,7 +133,12 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
 
     return (
         <Box flexDirection="column">
-            <Header cmd="dot mod" subtitle={domain} network="paseo" right={VERSION_LABEL} />
+            <Header
+                cmd="dot mod"
+                subtitle={domain}
+                network={getNetworkLabel()}
+                right={VERSION_LABEL}
+            />
 
             <StepRunner
                 title={`modding ${domain}`}

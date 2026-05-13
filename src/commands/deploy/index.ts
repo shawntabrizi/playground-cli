@@ -22,7 +22,6 @@ import { errorMessage, withSpan } from "../../telemetry.js";
 import { resolveSigner, SignerNotAvailableError, type ResolvedSigner } from "../../utils/signer.js";
 import { getConnection, destroyConnection } from "../../utils/connection.js";
 import { checkMapping } from "../../utils/account/mapping.js";
-import { checkAllowance, LOW_TX_THRESHOLD } from "../../utils/account/allowance.js";
 import { onProcessShutdown } from "../../utils/process-guard.js";
 import { runCliCommand } from "../../cli-runtime.js";
 import {
@@ -41,7 +40,7 @@ import { detectContractsType, type ContractsType } from "../../utils/build/detec
 import { loadDetectInput } from "../../utils/build/runner.js";
 import { readSessionAccount, SESSION_MIN_BALANCE } from "../../utils/deploy/session-account.js";
 import { checkBalance } from "../../utils/account/funding.js";
-import { DEFAULT_BUILD_DIR, type Env } from "../../config.js";
+import { DEFAULT_BUILD_DIR, type Env, resolveLegacyEnv } from "../../config.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
 
 interface DeployOpts {
@@ -106,14 +105,25 @@ export const deployCommand = new Command("deploy")
     .option("--suri <suri>", "Secret URI for the user signer (e.g. //Alice for dev)")
     .addOption(
         new Option("--env <env>", "Target environment")
-            .choices(["testnet", "mainnet"])
-            .default("testnet"),
+            // Accept the new env IDs (mirroring bulletin-deploy) plus the legacy
+            // `testnet|mainnet` aliases so existing scripts keep working.
+            .choices([
+                "preview",
+                "paseo-next",
+                "paseo-review",
+                "paseo-next-v2",
+                "polkadot",
+                "kusama",
+                "testnet",
+                "mainnet",
+            ])
+            .default("paseo-next-v2"),
     )
     .option("--dir <path>", "Project directory", process.cwd())
     .action(async (opts: DeployOpts) =>
         runCliCommand("deploy", { watchdog: true, hardExit: true }, async () => {
             const projectDir = resolve(opts.dir ?? process.cwd());
-            const env: Env = (opts.env as Env) ?? "testnet";
+            const env: Env = resolveLegacyEnv(opts.env ?? "paseo-next-v2");
 
             let userSigner: ResolvedSigner | null = null;
 
@@ -243,20 +253,13 @@ async function preflight(opts: {
         );
     }
 
-    // Bulletin storage allowance is ONLY consumed when the user's signer is
-    // used to submit `TransactionStorage.store` — that is, in phone mode.
-    // In dev mode, bulletin-deploy uploads chunks via its own pool mnemonic
-    // and the user's allowance isn't touched. Gating dev-mode deploys on
-    // the user's allowance is a false block.
-    if (opts.mode !== "dev") {
-        const allowance = await checkAllowance(client, signer.address);
-        if (!allowance.authorized || allowance.remainingTxs < LOW_TX_THRESHOLD) {
-            signer.destroy();
-            throw new Error(
-                'Bulletin storage allowance is exhausted. Run "dot init" to refresh it.',
-            );
-        }
-    }
+    // Allowance preflight removed for paseo-next-v2: under the host-granted
+    // allowance model, Bulletin authorizations are held by the host's slot
+    // account keys (not the user's SS58 address), so a direct
+    // `TransactionStorage.Authorizations` query by `signer.address` would
+    // always return "not authorized" and produce a false block. bulletin-deploy
+    // 0.7.19 surfaces a clear "Payment" error if the host's allowance is
+    // missing — the user runs `dot init` to re-request.
 
     return signer;
 }

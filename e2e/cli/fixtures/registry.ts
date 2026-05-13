@@ -84,6 +84,7 @@ export async function getApp(domain: string): Promise<AppEntry | null> {
 	try {
 		const registry = await getRegistry();
 		const res = await registry.getMetadataUri.query(domain);
+		if (!res.success) return null;
 		const tuple = res.value as { isSome?: boolean; value?: string } | undefined;
 		if (!tuple?.isSome) return null;
 		return {
@@ -102,6 +103,9 @@ export async function getApp(domain: string): Promise<AppEntry | null> {
 export async function getAppCount(): Promise<number> {
 	const registry = await getRegistry();
 	const res = await registry.getApps.query(0, 1);
+	if (!res.success) {
+		throw new Error(`getApps query failed at dry-run: ${JSON.stringify(res.value)}`);
+	}
 	const value = res.value as Record<string, unknown> | undefined;
 	if (!value || typeof value.total !== "number") {
 		throw new Error(`Unexpected getApps response shape: ${JSON.stringify(res.value)}`);
