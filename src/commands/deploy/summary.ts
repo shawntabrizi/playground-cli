@@ -33,6 +33,16 @@ export interface SummaryInputs {
     approvals: DeployApproval[];
     /** Contract project kind + user's yes/no. Omit when no contracts were detected. */
     contracts?: { type: ContractsType; deploy: boolean };
+    /**
+     * SS58 of the account that will sign this deploy. Surfaced in the summary
+     * so the user can verify it matches what `dot init` set up (the product
+     * account derived from their mnemonic at `/product/{PLAYGROUND_PRODUCT_ID}/0`)
+     * before signing anything. `undefined` when no signer is resolved — e.g.
+     * pure dev mode without `--suri`, where bulletin-deploy uses its built-in
+     * `DEFAULT_MNEMONIC` and we can't show that without replicating its key
+     * derivation.
+     */
+    signerAddress?: string;
 }
 
 export interface SummaryView {
@@ -48,8 +58,11 @@ const MODE_LABEL: Record<SignerMode, string> = {
 };
 
 export function buildSummaryView(input: SummaryInputs): SummaryView {
+    const signerValue = input.signerAddress
+        ? `${MODE_LABEL[input.mode]} (${input.signerAddress})`
+        : MODE_LABEL[input.mode];
     const rows: SummaryView["rows"] = [
-        { label: "Signer", value: MODE_LABEL[input.mode] },
+        { label: "Signer", value: signerValue },
         { label: "Build", value: input.skipBuild ? "skip (use existing)" : "rebuild first" },
         { label: "Build dir", value: input.buildDir },
         {

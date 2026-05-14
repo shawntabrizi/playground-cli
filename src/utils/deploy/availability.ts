@@ -203,13 +203,33 @@ export async function checkDomainAvailability(
     // DotNS connect pings RPC + does an `ensureAccountMapped` tx if the dev
     // account isn't mapped yet. On testnet the default account is already
     // mapped, so this is effectively a pure read path — no phone prompts.
+    //
+    // We do not pass a signer here, so bulletin-deploy falls back to its
+    // `DEFAULT_MNEMONIC` to build a keyring just for the read-only RPC
+    // client. That fallback prints lines like
+    //   `   SS58 Address: 5DfhG…`
+    //   `   H160 Address: 0x…`
+    //   `   Account: mapped`
+    // to stdout, which look — confusingly — like the deploying account. They
+    // are not: nothing here signs anything. Silence them so the only address
+    // the user sees is the one bulletin-deploy logs from the *actual* deploy
+    // (which uses the user's signer and we don't suppress).
+    //
+    // Silence is narrowed to the `connect()` call ONLY — `checkOwnership`,
+    // `getUserPopStatus`, and `isTestnet` below run with normal console
+    // semantics so any unexpected log surfaces.
     const dotns = await createDotNS();
     try {
-        await withTimeout(
-            dotns.connect({ rpc: cfg.assetHubRpc }),
-            options.timeoutMs ?? 30_000,
-            "DotNS connect",
-        );
+        const restore = silenceConsole();
+        try {
+            await withTimeout(
+                dotns.connect({ rpc: cfg.assetHubRpc }),
+                options.timeoutMs ?? 30_000,
+                "DotNS connect",
+            );
+        } finally {
+            restore();
+        }
 
         // bulletin-deploy 0.7.6 removed `dotns.classifyName(label)` and moved
         // the logic into a top-level `classifyDotnsLabel`. The function is in
@@ -309,6 +329,39 @@ export async function checkDomainAvailability(
             // best-effort — disconnect is idempotent in practice
         }
     }
+}
+
+/**
+ * Replace `console.log` / `console.info` / `console.warn` with no-ops, returning
+ * a restore() that puts the originals back. Used only in narrow windows where a
+ * dependency prints state we don't want surfaced (bulletin-deploy's preflight
+ * fallback signer is the canonical example). Errors still go through —
+ * `console.error` is intentionally not silenced so genuine failures surface.
+ *
+ * Nested or duplicate `silenceConsole()` calls are a no-op past the first: if
+ * `console.log` already IS our no-op, we capture the no-op as "original" and
+ * `restore()` would replace the no-op with itself — leaving the outer caller's
+ * restore correctly pointing at the true original. Each restore is also
+ * idempotent: calling it twice doesn't re-silence.
+ */
+const NOOP = (): void => {};
+function silenceConsole(): () => void {
+    const originals = {
+        log: console.log,
+        info: console.info,
+        warn: console.warn,
+    };
+    console.log = NOOP;
+    console.info = NOOP;
+    console.warn = NOOP;
+    let restored = false;
+    return () => {
+        if (restored) return;
+        restored = true;
+        console.log = originals.log;
+        console.info = originals.info;
+        console.warn = originals.warn;
+    };
 }
 
 /** Human-readable single-line summary for the TUI / CLI. */

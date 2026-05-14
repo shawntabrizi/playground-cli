@@ -382,6 +382,13 @@ async function runHeadless(ctx: {
         moddable,
         repositoryUrl,
         approvals: setup.approvals,
+        // See the matching note in DeployScreen.tsx: phone mode and dev-with-SURI
+        // sign as the resolved user signer; pure dev mode (no --suri) falls back
+        // to bulletin-deploy's DEFAULT_MNEMONIC, which we don't surface here.
+        signerAddress:
+            mode === "phone" || ctx.userSigner?.source === "dev"
+                ? ctx.userSigner?.address
+                : undefined,
     });
     process.stdout.write("\n" + renderSummaryText(view) + "\n");
 

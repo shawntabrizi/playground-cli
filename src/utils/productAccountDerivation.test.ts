@@ -1,0 +1,161 @@
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+import { describe, expect, test } from "vitest";
+import { ss58Encode } from "@parity/product-sdk-address";
+import { seedToAccount } from "@parity/product-sdk-keys";
+import type { UserSession } from "@parity/product-sdk-terminal";
+import { PLAYGROUND_PRODUCT_ID } from "../config.js";
+import { deriveProductAccountPublicKey } from "./productAccountDerivation.js";
+import { createPlaygroundSessionSigner } from "./sessionSigner.js";
+
+const DEV_PHRASE = "bottom drive obey lake curtain smoke basket hold race lonely fit walk";
+
+function toHex(bytes: Uint8Array): string {
+    return (
+        "0x" +
+        Array.from(bytes)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("")
+    );
+}
+
+describe("deriveProductAccountPublicKey", () => {
+    // The mobile wallet derives the product account by applying derivation
+    // path "/product/{productId}/{derivationIndex}" to the user's mnemonic
+    // (substrate-sdk-android, EncryptionType.SR25519). For sr25519 soft
+    // derivation, applying that path to the mnemonic and applying it as
+    // public-soft to the bare mnemonic keypair's public key produce the
+    // same final public key. This test pins that property.
+    test("matches mnemonic+derivation-path keypair (single-junction productId)", () => {
+        // Empty path → bare master keypair from mnemonic. Same as Android's
+        // `deriveRootAccount()` / `derivationPath = null`. Public key here is
+        // what arrives in `session.rootAccountId` over SSO.
+        const root = seedToAccount(DEV_PHRASE, "");
+        const product = seedToAccount(DEV_PHRASE, "/product/playground.dot/0");
+
+        const local = deriveProductAccountPublicKey(root.publicKey, "playground.dot", 0);
+
+        expect(toHex(local)).toEqual(toHex(product.publicKey));
+    });
+
+    test("matches for a multi-segment productId and non-zero index", () => {
+        const root = seedToAccount(DEV_PHRASE, "");
+        const product = seedToAccount(DEV_PHRASE, "/product/some-app.dot/7");
+
+        const local = deriveProductAccountPublicKey(root.publicKey, "some-app.dot", 7);
+
+        expect(toHex(local)).toEqual(toHex(product.publicKey));
+    });
+
+    test("different productIds produce different accounts", () => {
+        const root = seedToAccount(DEV_PHRASE, "");
+
+        const a = deriveProductAccountPublicKey(root.publicKey, "playground.dot", 0);
+        const b = deriveProductAccountPublicKey(root.publicKey, "playground42.dot", 0);
+
+        expect(toHex(a)).not.toEqual(toHex(b));
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Init / deploy / playground-app equivalence
+//
+// Pins the invariant that every flow which references "the user's account"
+// resolves to the *same* SS58 — the product account derived at
+// `mnemonic + "/product/{PLAYGROUND_PRODUCT_ID}/0"`.
+//
+//   - `dot init`'s `getSessionSigner()` builds a signer via
+//     `createPlaygroundSessionSigner(session, { productId, derivationIndex })`
+//     and displays `ss58Encode(signer.publicKey)`.
+//   - `dot deploy --signer phone`'s `preflight()` → `resolveSigner()` →
+//     `getSessionSigner()` walks the same `createPlaygroundSessionSigner`
+//     path. `userSigner.address` (passed to bulletin-deploy as `signerAddress`)
+//     IS `ss58Encode(signer.publicKey)`.
+//   - The deployed playground-app's `HostProvider.getProductAccount(dotNsId)`
+//     asks the mobile host to compute `seedToAccount(mnemonic,
+//     "/product/{dotNsId}/0").publicKey` and SS58-encodes it.
+//
+// As long as all three pin to the same `(rootPubKey, productId, 0)` triple,
+// they yield byte-identical SS58 strings. This test is the regression guard.
+// ────────────────────────────────────────────────────────────────────────────
+describe("init / deploy / playground-app account equivalence", () => {
+    // Build a stand-in for the mobile's SSO handshake response. Mirrors what
+    // `host-papp`'s `createStoredUserSession` would produce: `rootAccountId`
+    // is `deriveRootAccount()` on the mobile = the bare-mnemonic keypair pubkey.
+    // The other fields aren't read by `createPlaygroundSessionSigner` in the
+    // path under test — we only need the types to line up.
+    function fakeSession(mnemonic: string): UserSession {
+        const root = seedToAccount(mnemonic, "");
+        const wallet = seedToAccount(mnemonic, "//SomeWallet"); // simulates the user picking a derived account on mobile
+        return {
+            id: "test",
+            localAccount: { accountId: new Uint8Array(32), pin: undefined },
+            // `walletAccount.defaultAccountId()` on Android — distinct from the
+            // bare-mnemonic keypair when the user has a derived wallet account.
+            remoteAccount: {
+                accountId: wallet.publicKey,
+                publicKey: wallet.publicKey,
+                pin: undefined,
+            },
+            rootAccountId: root.publicKey,
+            // Methods aren't exercised by signer-build — type-only.
+        } as unknown as UserSession;
+    }
+
+    test("init signer address === deploy signer address === playground-app address", () => {
+        const session = fakeSession(DEV_PHRASE);
+
+        // What `dot init`'s `sessionSigningAddress` and `dot deploy --signer phone`'s
+        // `userSigner.address` resolve to (both go through `createPlaygroundSessionSigner`).
+        const cliSigner = createPlaygroundSessionSigner(session, {
+            productId: PLAYGROUND_PRODUCT_ID,
+            derivationIndex: 0,
+        });
+        const cliAddress = ss58Encode(cliSigner.publicKey);
+
+        // What the deployed playground-app's `HostProvider.getProductAccount(dotNsId)`
+        // gets back from the mobile (mobile computes this exact derivation).
+        const mobileDerived = seedToAccount(DEV_PHRASE, `/product/${PLAYGROUND_PRODUCT_ID}/0`);
+        const playgroundAppAddress = ss58Encode(mobileDerived.publicKey);
+
+        expect(cliAddress).toEqual(playgroundAppAddress);
+    });
+
+    test("regression: signer does NOT use remoteAccount.accountId (= wallet account)", () => {
+        const session = fakeSession(DEV_PHRASE);
+        const cliSigner = createPlaygroundSessionSigner(session, {
+            productId: PLAYGROUND_PRODUCT_ID,
+            derivationIndex: 0,
+        });
+        const cliAddress = ss58Encode(cliSigner.publicKey);
+        const walletAddress = ss58Encode(new Uint8Array(session.remoteAccount.accountId));
+
+        // The pre-fix bug: signer.publicKey was set from session.remoteAccount.accountId
+        // (the user's wallet account), not the product-derived account. The wallet
+        // account is what the chain sees as From — different from the funded /
+        // allowance-granted product account. This regression guard ensures we never
+        // slip back into using remoteAccount.accountId as the signer's identity.
+        expect(cliAddress).not.toEqual(walletAddress);
+    });
+
+    test("PLAYGROUND_PRODUCT_ID matches the playground-app's default dotNsId", () => {
+        // The deployed playground-app defaults to PLAYGROUND_DOTNS_ID = "playground.dot"
+        // (see playground-app/src/config.ts::defaultDotNsId for the non-localhost path).
+        // The CLI must use the same productId so both derive the SAME account from
+        // a given user mnemonic.
+        expect(PLAYGROUND_PRODUCT_ID).toEqual("playground.dot");
+    });
+});

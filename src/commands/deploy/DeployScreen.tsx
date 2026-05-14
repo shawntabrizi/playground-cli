@@ -730,6 +730,15 @@ function ConfirmStage({
         contracts: contractsType
             ? { type: contractsType, deploy: inputs.deployContracts }
             : undefined,
+        // Phone mode always signs as the user's session account. Dev-with-SURI
+        // signs as the SURI-derived address. Pure dev mode falls back to
+        // bulletin-deploy's built-in DEFAULT_MNEMONIC, which we can't show
+        // without reaching into bulletin-deploy internals — leave `undefined`
+        // and the summary will just show "Dev signer" without an address.
+        signerAddress:
+            inputs.mode === "phone" || userSigner?.source === "dev"
+                ? userSigner?.address
+                : undefined,
     });
 
     useInput((_input, key) => {

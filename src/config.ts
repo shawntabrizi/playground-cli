@@ -151,8 +151,17 @@ export function getNetworkLabel(env: Env = DEFAULT_ENV): string {
 /** Identifier the terminal adapter reports during SSO. Kept stable so mobile pairings persist across releases. */
 export const DAPP_ID = "dot-cli";
 
-/** Product account identifier used for mobile signing. Matches playground42.dot's host product id. */
-export const PLAYGROUND_PRODUCT_ID = "playground42.dot";
+/**
+ * Product account identifier used for mobile signing. Must match the
+ * `dotNsIdentifier` the deployed playground-app passes to
+ * `HostProvider.getProductAccount(...)` (see
+ * `playground-app/src/config.ts::defaultDotNsId`) so that the CLI and the
+ * playground-app resolve to the EXACT SAME product-derived account on the
+ * user's wallet. The mobile derives the product keypair via
+ * `mnemonic + "/product/{PLAYGROUND_PRODUCT_ID}/0"`; changing this value
+ * changes the on-chain account.
+ */
+export const PLAYGROUND_PRODUCT_ID = "playground.dot";
 
 /**
  * Runtime metadata the terminal adapter fetches to render transactions on the

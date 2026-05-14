@@ -210,4 +210,33 @@ describe("renderSummaryText", () => {
         expect(text).toContain("1. Reserve domain");
         expect(text).toContain("3. Link content");
     });
+
+    it("appends signerAddress to the Signer row when provided", () => {
+        const view = buildSummaryView({
+            mode: "phone",
+            domain: "x.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: false,
+            approvals: [],
+            signerAddress: "5HRBs5m8KoWET9AAYp7CSkgKc61zHsUYGGcR1veEg8StJSYn",
+        });
+        const signerRow = view.rows.find((r) => r.label === "Signer");
+        expect(signerRow?.value).toContain("Your phone signer");
+        expect(signerRow?.value).toContain("5HRBs5m8KoWET9AAYp7CSkgKc61zHsUYGGcR1veEg8StJSYn");
+    });
+
+    it("omits address from the Signer row when signerAddress is undefined", () => {
+        const view = buildSummaryView({
+            mode: "dev",
+            domain: "x.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: false,
+            approvals: [],
+        });
+        const signerRow = view.rows.find((r) => r.label === "Signer");
+        expect(signerRow?.value).toBe("Dev signer (no phone taps for upload)");
+        expect(signerRow?.value).not.toMatch(/\(.+\)\s*\(/); // no trailing "(<addr>)"
+    });
 });

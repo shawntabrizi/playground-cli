@@ -39,6 +39,7 @@
         "@parity/product-sdk-tx": "^0.2.3",
         "@parity/product-sdk-utils": "^0.1.1",
         "@polkadot-api/sdk-ink": "^0.7.0",
+        "@scure/sr25519": "^2.2.0",
         "@sentry/node": "^9.47.1",
         "bulletin-deploy": "0.7.20",
         "commander": "^12.0.0",
@@ -46,6 +47,7 @@
         "polkadot-api": "^2.1.3",
         "react": "^18.3.1",
         "react-devtools-core": "file:stubs/react-devtools-core",
+        "scale-ts": "^1.6.1",
         "tar": "^7.5.13"
     },
     "devDependencies": {

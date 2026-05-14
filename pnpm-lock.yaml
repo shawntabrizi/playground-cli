@@ -63,6 +63,9 @@ importers:
       '@polkadot-api/sdk-ink':
         specifier: ^0.7.0
         version: 0.7.0(@polkadot-api/ink-contracts@0.6.2)(polkadot-api@2.1.3(esbuild@0.27.7)(rxjs@7.8.2))(rxjs@7.8.2)(typescript@5.9.3)
+      '@scure/sr25519':
+        specifier: ^2.2.0
+        version: 2.2.0
       '@sentry/node':
         specifier: ^9.47.1
         version: 9.47.1
@@ -84,6 +87,9 @@ importers:
       react-devtools-core:
         specifier: file:stubs/react-devtools-core
         version: file:stubs/react-devtools-core
+      scale-ts:
+        specifier: ^1.6.1
+        version: 1.6.1
       tar:
         specifier: ^7.5.13
         version: 7.5.13

@@ -57,6 +57,7 @@ import { fromHex, toHex } from "polkadot-api/utils";
 import { ss58Encode } from "@parity/product-sdk-address";
 import type { UserSession } from "@parity/product-sdk-terminal";
 import type { PolkadotSigner } from "polkadot-api";
+import { deriveProductAccountPublicKey } from "./productAccountDerivation.js";
 
 export interface ProductAccountRef {
     productId: string;
@@ -97,9 +98,31 @@ export function createPlaygroundSessionSigner(
     session: UserSession,
     ref: ProductAccountRef,
 ): PolkadotSigner {
-    const publicKey = new Uint8Array(session.remoteAccount.accountId);
-    const productAccountId: [string, number] = [ref.productId, ref.derivationIndex];
+    // `session.remoteAccount.accountId` is the wallet's currently-selected
+    // substrate account (`walletAccount.defaultAccountId()` on Android), NOT
+    // the product-derived account that actually signs on-chain. Using it as
+    // `signer.publicKey` would cause every funding / balance lookup / allowance
+    // marker / display address in this CLI to point at the wallet, while the
+    // mobile-constructed `signedTransaction` carries a different `From`
+    // (the product account derived at `/product/{productId}/{idx}`).
+    //
+    // `session.rootAccountId` is the handshake-time `rootUserAccountId` —
+    // the user's bare-mnemonic keypair public key (`deriveRootAccount()` =
+    // `derivationPath = null`). Sr25519 soft derivation is composable on
+    // public keys alone, so deriving from it locally produces the SAME public
+    // key the mobile derives privately via `mnemonic + "/product/...{idx}"`.
+    // See `productAccountDerivation.test.ts` for the proof-of-equivalence.
+    const publicKey = deriveProductAccountPublicKey(
+        new Uint8Array(session.rootAccountId),
+        ref.productId,
+        ref.derivationIndex,
+    );
     const address = ss58Encode(publicKey);
+
+    // Wire-shape identifier passed to host-papp's `signPayload` / `signRaw`.
+    // Has to be assembled here (not in derive) because the host-papp message
+    // codec wants the productId/derivationIndex as a separate tuple field.
+    const productAccountId: [string, number] = [ref.productId, ref.derivationIndex];
 
     const signPayload = async (pjs: SignerPayloadJSON) => {
         const result = await session.signPayload({
