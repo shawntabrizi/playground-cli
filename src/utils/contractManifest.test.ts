@@ -15,7 +15,7 @@
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { CdmJson } from "@parity/product-sdk-contracts";
-import { CDM_REGISTRY_ADDRESS } from "../config.js";
+import { REGISTRY_ADDRESS } from "@dotdm/contracts";
 
 const { createContractFromClientMock, getAddressQueryMock } = vi.hoisted(() => ({
     createContractFromClientMock: vi.fn(),
@@ -24,6 +24,10 @@ const { createContractFromClientMock, getAddressQueryMock } = vi.hoisted(() => (
 
 vi.mock("@parity/product-sdk-contracts", () => ({
     createContractFromClient: (...args: unknown[]) => createContractFromClientMock(...args),
+}));
+
+vi.mock("@parity/product-sdk-descriptors/paseo-asset-hub", () => ({
+    paseo_asset_hub: { genesis: "0xasset" },
 }));
 
 import {
@@ -35,6 +39,7 @@ import {
 
 const snapshotAddress = "0x1111111111111111111111111111111111111111";
 const liveAddress = "0x2222222222222222222222222222222222222222";
+const targetRegistryAddress = "0x5555555555555555555555555555555555555555";
 
 /**
  * Mock `Weight` for `QueryResult.gasRequired` — required (non-optional) on
@@ -50,6 +55,7 @@ function manifest(): CdmJson {
             target1: {
                 "asset-hub": "wss://asset-hub.example",
                 bulletin: "https://bulletin.example/ipfs",
+                registry: targetRegistryAddress,
             },
         },
         dependencies: {
@@ -73,7 +79,7 @@ function manifest(): CdmJson {
                 },
             },
         },
-    };
+    } as CdmJson;
 }
 
 beforeEach(() => {
@@ -85,7 +91,7 @@ beforeEach(() => {
 });
 
 describe("resolveLiveContractAddresses", () => {
-    it("queries the fixed CDM registry for requested libraries", async () => {
+    it("queries the configured CDM registry for requested libraries", async () => {
         getAddressQueryMock.mockResolvedValue({
             success: true,
             value: { isSome: true, value: liveAddress },
@@ -93,14 +99,17 @@ describe("resolveLiveContractAddresses", () => {
         });
 
         const assetHub = {} as any;
-        const addresses = await resolveLiveContractAddresses(assetHub, [
-            PLAYGROUND_REGISTRY_CONTRACT,
-        ]);
+        const addresses = await resolveLiveContractAddresses(
+            assetHub,
+            [PLAYGROUND_REGISTRY_CONTRACT],
+            { registryAddress: targetRegistryAddress },
+        );
 
         expect(addresses).toEqual({ [PLAYGROUND_REGISTRY_CONTRACT]: liveAddress });
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             assetHub,
-            CDM_REGISTRY_ADDRESS,
+            { genesis: "0xasset" },
+            targetRegistryAddress,
             expect.arrayContaining([
                 expect.objectContaining({ name: "getAddress", type: "function" }),
             ]),
@@ -120,11 +129,13 @@ describe("resolveLiveContractAddresses", () => {
         const origin = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
         await resolveLiveContractAddresses(assetHub, [PLAYGROUND_REGISTRY_CONTRACT], {
             defaultOrigin: origin,
+            registryAddress: targetRegistryAddress,
         });
 
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             assetHub,
-            CDM_REGISTRY_ADDRESS,
+            { genesis: "0xasset" },
+            targetRegistryAddress,
             expect.any(Array),
             expect.objectContaining({ defaultOrigin: origin }),
         );
@@ -138,8 +149,28 @@ describe("resolveLiveContractAddresses", () => {
         });
 
         await expect(
-            resolveLiveContractAddresses({} as any, [PLAYGROUND_REGISTRY_CONTRACT]),
+            resolveLiveContractAddresses({} as any, [PLAYGROUND_REGISTRY_CONTRACT], {
+                registryAddress: targetRegistryAddress,
+            }),
         ).resolves.toEqual({});
+    });
+
+    it("falls back to CDM's package registry address when no registry is supplied", async () => {
+        getAddressQueryMock.mockResolvedValue({
+            success: true,
+            value: { isSome: true, value: liveAddress },
+            gasRequired: OK_WEIGHT,
+        });
+
+        await resolveLiveContractAddresses({} as any, [PLAYGROUND_REGISTRY_CONTRACT]);
+
+        expect(createContractFromClientMock).toHaveBeenCalledWith(
+            {},
+            { genesis: "0xasset" },
+            REGISTRY_ADDRESS,
+            expect.any(Array),
+            expect.any(Object),
+        );
     });
 });
 
@@ -200,7 +231,8 @@ describe("withLiveContractAddresses", () => {
 
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             assetHub,
-            CDM_REGISTRY_ADDRESS,
+            { genesis: "0xasset" },
+            targetRegistryAddress,
             expect.any(Array),
             expect.objectContaining({ defaultOrigin: origin }),
         );
@@ -224,7 +256,8 @@ describe("withLiveContractAddresses", () => {
 
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             assetHub,
-            CDM_REGISTRY_ADDRESS,
+            { genesis: "0xasset" },
+            targetRegistryAddress,
             expect.any(Array),
             expect.objectContaining({ defaultOrigin: origin }),
         );

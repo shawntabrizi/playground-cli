@@ -40,12 +40,12 @@ describe("bulletinGatewayUrl", () => {
 describe("getBulletinGateway", () => {
     it("returns the paseo-next-v2 gateway by default", () => {
         // Defaults to DEFAULT_ENV (paseo-next-v2); no env arg required.
-        expect(getBulletinGateway()).toBe("https://paseo-bulletin-next-ipfs.polkadot.io/");
+        expect(getBulletinGateway()).toBe("https://paseo-bulletin-next-ipfs.polkadot.io/ipfs/");
     });
 
     it("returns the same URL when explicitly asked for paseo-next-v2", () => {
         expect(getBulletinGateway("paseo-next-v2")).toBe(
-            "https://paseo-bulletin-next-ipfs.polkadot.io/",
+            "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs/",
         );
     });
 });

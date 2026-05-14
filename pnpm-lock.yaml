@@ -67,8 +67,8 @@ importers:
         specifier: ^9.47.1
         version: 9.47.1
       bulletin-deploy:
-        specifier: 0.7.19
-        version: 0.7.19(@polkadot/util@14.0.3)(esbuild@0.27.7)(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.4)
+        specifier: 0.7.20-rc.4
+        version: 0.7.20-rc.4(@polkadot/util@14.0.3)(esbuild@0.27.7)(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.4)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -2394,8 +2394,8 @@ packages:
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
 
-  bulletin-deploy@0.7.19:
-    resolution: {integrity: sha512-E/92y6erCLx3jQPqADxFVbnXZWwTkU3moBe+P2Tw9cFjO7nn6StbY5afdwR6zCbtQwRb4GQROGRbFojL8392fw==}
+  bulletin-deploy@0.7.20-rc.4:
+    resolution: {integrity: sha512-YOSiNAMJvyYfWWvCal8uhsInExbSXztWTFlxmhOX/iMDS01DdLeQWf/kPdgRkQsV2Em8mI6UkzJM+mbP58BYdw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -8487,7 +8487,7 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bulletin-deploy@0.7.19(@polkadot/util@14.0.3)(esbuild@0.27.7)(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.4):
+  bulletin-deploy@0.7.20-rc.4(@polkadot/util@14.0.3)(esbuild@0.27.7)(postcss@8.5.10)(react-native@0.85.2(@babel/core@7.29.0)(@types/react@18.3.28)(react@18.3.1))(rxjs@7.8.2)(typescript@5.9.3)(yaml@2.8.4):
     dependencies:
       '@ipld/car': 5.4.3
       '@ipld/dag-pb': 4.1.5

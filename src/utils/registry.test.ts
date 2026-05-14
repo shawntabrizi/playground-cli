@@ -31,6 +31,10 @@ vi.mock("@parity/product-sdk-contracts", () => ({
     },
 }));
 
+vi.mock("@parity/product-sdk-descriptors/paseo-asset-hub", () => ({
+    paseo_asset_hub: { genesis: "0xasset" },
+}));
+
 vi.mock("./contractManifest.js", () => ({
     PLAYGROUND_REGISTRY_CONTRACT: "@w3s/playground-registry",
     suppressReviveTraceNoise: (contract: unknown) => contract,
@@ -69,10 +73,15 @@ describe("getRegistryContract", () => {
             ["@w3s/playground-registry"],
             { defaultOrigin: fakeSigner.address },
         );
-        expect(fromClientMock).toHaveBeenCalledWith(patchedManifest, rawClient, {
-            defaultSigner: fakeSigner.signer,
-            defaultOrigin: fakeSigner.address,
-        });
+        expect(fromClientMock).toHaveBeenCalledWith(
+            patchedManifest,
+            rawClient,
+            { genesis: "0xasset" },
+            {
+                defaultSigner: fakeSigner.signer,
+                defaultOrigin: fakeSigner.address,
+            },
+        );
         expect(getContractMock).toHaveBeenCalledWith("@w3s/playground-registry");
     });
 

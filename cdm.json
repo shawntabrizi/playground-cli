@@ -1,10 +1,5 @@
 {
   "targets": {
-    "4963ba95e259237b": {
-      "asset-hub": "wss://paseo-asset-hub-next-rpc.polkadot.io",
-      "bulletin": "https://paseo-bulletin-next-ipfs.polkadot.io",
-      "registry": "0x5c7b23d386ff622c7f7a4e7a95d5c7a67b10a00d"
-    },
     "8e7e0cf0a51d8e5e": {
       "asset-hub": "wss://paseo-asset-hub-next-rpc.polkadot.io",
       "bulletin": "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs",
@@ -12,13 +7,11 @@
     }
   },
   "dependencies": {
-    "4963ba95e259237b": {},
     "8e7e0cf0a51d8e5e": {
       "@w3s/playground-registry": "latest"
     }
   },
   "contracts": {
-    "4963ba95e259237b": {},
     "8e7e0cf0a51d8e5e": {
       "@w3s/playground-registry": {
         "version": 0,

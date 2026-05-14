@@ -308,13 +308,16 @@ async function runHeadless(ctx: {
     //
     // `ownerSs58Address` MUST match whoever will actually sign the DotNS
     // `register()` extrinsic — otherwise the preflight reports "taken" on a
-    // re-deploy. In phone mode bulletin-deploy uses the user's signer, so
-    // passing the user's address is correct. In dev mode bulletin-deploy
-    // falls back to its built-in DEFAULT_MNEMONIC, so the user's H160 does
-    // NOT match the on-chain owner — we omit the address and let
-    // bulletin-deploy's own preflight (run with the right signer during
-    // `deploy()`) do the comparison.
+    // re-deploy. Phone mode signs with the session account; dev-with-SURI signs
+    // with that local account. Pure dev mode still falls back to bulletin-deploy's
+    // built-in DEFAULT_MNEMONIC, so we omit the address there.
     process.stdout.write(`\nChecking availability of ${domain.replace(/\.dot$/, "") + ".dot"}…\n`);
+    const dotnsOwnerSs58Address =
+        mode === "phone"
+            ? ctx.userSigner?.address
+            : ctx.userSigner?.source === "dev"
+              ? ctx.userSigner.address
+              : undefined;
     const availability = await withSpan(
         "cli.deploy.availability",
         "check domain availability",
@@ -322,7 +325,7 @@ async function runHeadless(ctx: {
         () =>
             checkDomainAvailability(domain, {
                 env: ctx.env,
-                ownerSs58Address: mode === "phone" ? ctx.userSigner?.address : undefined,
+                ownerSs58Address: dotnsOwnerSs58Address,
             }),
     );
     if (availability.status !== "available") {

@@ -292,12 +292,13 @@ export function DeployScreen({
             {stage.kind === "validate-domain" && (
                 <ValidateDomainStage
                     domain={stage.domain}
-                    // Only gate on the user's address in phone mode — see
-                    // `ownerSs58Address` docs in availability.ts. In dev mode
-                    // bulletin-deploy signs DotNS with its own DEFAULT_MNEMONIC,
-                    // so the user's H160 does not match the registrar's H160
-                    // and the preflight would mis-report re-deploys as "taken".
-                    ownerSs58Address={mode === "phone" ? userSigner?.address : undefined}
+                    ownerSs58Address={
+                        mode === "phone"
+                            ? userSigner?.address
+                            : userSigner?.source === "dev"
+                              ? userSigner.address
+                              : undefined
+                    }
                     onAvailable={(result) => {
                         setDomain(result.fullDomain);
                         setPlan(result.plan);

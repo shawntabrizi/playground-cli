@@ -19,6 +19,7 @@
 
 import { ContractManager, type CdmJson } from "@parity/product-sdk-contracts";
 import { ss58Encode } from "@parity/product-sdk-address";
+import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { getDevPublicKey } from "@parity/product-sdk-tx";
 import type { ResolvedSigner } from "./signer.js";
 import {
@@ -67,7 +68,7 @@ export async function getRegistryContract(
     signer: ResolvedSigner,
 ) {
     const manifest = await loadManifest(rawClient, signer.address);
-    const manager = await ContractManager.fromClient(manifest, rawClient, {
+    const manager = await ContractManager.fromClient(manifest, rawClient, paseo_asset_hub, {
         defaultSigner: signer.signer,
         defaultOrigin: signer.address,
     });
@@ -88,7 +89,7 @@ export async function getReadOnlyRegistryContract(
     rawClient: Parameters<typeof ContractManager.fromClient>[1],
 ) {
     const manifest = await loadManifest(rawClient, READ_ONLY_QUERY_ORIGIN);
-    const manager = await ContractManager.fromClient(manifest, rawClient, {
+    const manager = await ContractManager.fromClient(manifest, rawClient, paseo_asset_hub, {
         defaultOrigin: READ_ONLY_QUERY_ORIGIN,
     });
     return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));

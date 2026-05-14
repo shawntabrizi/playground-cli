@@ -130,10 +130,13 @@ export function createPlaygroundSessionSigner(
         };
     };
 
-    const signRaw = async (payload: { address: string; data: `0x${string}`; type: "bytes" }) => {
+    const signRaw = async (payload: { address: string; data: string; type: "bytes" }) => {
+        if (!payload.data.startsWith("0x")) {
+            throw new Error("Raw signing payload must be 0x-prefixed hex");
+        }
         const result = await session.signRaw({
             productAccountId,
-            data: { tag: "Bytes", value: fromHex(payload.data) },
+            data: { tag: "Bytes", value: fromHex(payload.data as `0x${string}`) },
         });
         if (result.isErr()) {
             throw new Error(`Mobile signing rejected: ${result.error.message}`);

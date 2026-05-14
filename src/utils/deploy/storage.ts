@@ -62,13 +62,18 @@ export interface StorageDeployOptions {
     attributes?: Record<string, string>;
 }
 
+type EnvironmentAwareDeployOptions = DeployOptions & {
+    env?: Env;
+    assetHubEndpoints?: string[];
+};
+
 export async function runStorageDeploy(options: StorageDeployOptions): Promise<DeployResult> {
     const cfg = getChainConfig(options.env);
     const parser = new DeployLogParser();
     const restore = interceptConsoleLog(options.onLogEvent, parser);
 
     try {
-        return await bulletinDeploy(options.content, options.domainName, {
+        const deployOptions: EnvironmentAwareDeployOptions = {
             // Intentionally NOT setting `jsMerkle: true` — bulletin-deploy's
             // pure-JS merkleizer (`merkleizeJS`) produces CARs that are
             // missing their DAG-PB structural blocks (directory + file nodes)
@@ -86,10 +91,13 @@ export async function runStorageDeploy(options: StorageDeployOptions): Promise<D
             // — then flip `jsMerkle: true` back on for the WebContainer (RevX)
             // story. See `src/utils/deploy/playground.ts` for an ongoing
             // WebContainer-safe path for metadata upload.
+            env: cfg.env,
             rpc: cfg.bulletinRpc,
+            assetHubEndpoints: [cfg.assetHubRpc],
             ...options.auth,
             attributes: options.attributes,
-        });
+        };
+        return await bulletinDeploy(options.content, options.domainName, deployOptions);
     } finally {
         restore();
     }

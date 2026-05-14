@@ -52,6 +52,22 @@ describe("resolveSignerSetup — dev mode", () => {
         // Dev mode keeps bulletin-deploy on its built-in default mnemonic.
         expect(result.bulletinDeployAuthOptions).toEqual({});
     });
+
+    it("dev SURI signer is forwarded to DotNS auth for CI deploys", () => {
+        const user = fakeSigner("dev", "5DevSuri");
+        const result = resolveSignerSetup({
+            mode: "dev",
+            userSigner: user,
+            publishToPlayground: true,
+        });
+
+        expect(result.approvals).toEqual([
+            { phase: "playground", label: "Publish to Playground registry" },
+        ]);
+        expect(result.publishSigner).toBe(user);
+        expect(result.bulletinDeployAuthOptions.signer).toBe(user.signer);
+        expect(result.bulletinDeployAuthOptions.signerAddress).toBe("5DevSuri");
+    });
 });
 
 describe("resolveSignerSetup — phone mode", () => {

@@ -23,8 +23,6 @@
  * today; others throw from `getChainConfig` until they're populated.
  */
 
-import { REGISTRY_ADDRESS } from "@dotdm/contracts";
-
 export type Env =
     | "preview"
     | "paseo-next"
@@ -35,23 +33,6 @@ export type Env =
 
 export const ACTIVE_TESTNET_ENV: Env = "paseo-next-v2";
 export const DEFAULT_ENV: Env = ACTIVE_TESTNET_ENV;
-
-/**
- * DotNS contract addresses for an env. Resolved by bulletin-deploy when
- * `skipDotnsCli: true`; included here so other callers (mod, registry
- * lookups) can read the live set without re-parsing bulletin-deploy's bundled
- * environments.json.
- */
-export interface DotnsContracts {
-    REGISTRAR: string;
-    REGISTRAR_CONTROLLER: string;
-    REGISTRY: string;
-    RESOLVER: string;
-    CONTENT_RESOLVER: string;
-    REVERSE_RESOLVER: string;
-    POP_RULES: string;
-    STORE_FACTORY: string;
-}
 
 export interface ChainConfig {
     /** Env identifier — passes straight through to bulletin-deploy's `deploy({ env })`. */
@@ -83,14 +64,12 @@ export interface ChainConfig {
     autoAccountMapping: boolean;
     /** True when `authorize_account` takes the v2 `{who, transactions, bytes}` signature. */
     bulletinAuthorizeV2: boolean;
-    /** DotNS contract addresses. null when bulletin-deploy/dotns-cli has hardcoded defaults. */
-    dotnsContracts: DotnsContracts | null;
     /** Public faucet URL, or null when allowances replace the funder flow. */
     faucetUrl: string | null;
 }
 
-// Paseo Next v2 — the active env. Source for endpoints + DotNS addresses:
-// bulletin-deploy/assets/environments.json (v2 entry).
+// Paseo Next v2 — the active env. DotNS contracts are owned by
+// bulletin-deploy's environment catalog and keyed by `env`.
 const PASEO_NEXT_V2: ChainConfig = {
     env: "paseo-next-v2",
     network: "testnet",
@@ -99,21 +78,11 @@ const PASEO_NEXT_V2: ChainConfig = {
     bulletinRpc: "wss://paseo-bulletin-next-rpc.polkadot.io",
     bulletinRpcFallbacks: [],
     peopleEndpoints: ["wss://paseo-people-next-system-rpc.polkadot.io"],
-    bulletinGateway: "https://paseo-bulletin-next-ipfs.polkadot.io/",
+    bulletinGateway: "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs/",
     identityBackendUrl: "https://identity-backend-next.parity-testnet.parity.io",
     appViewerOrigin: "https://dot.li",
     autoAccountMapping: true,
     bulletinAuthorizeV2: true,
-    dotnsContracts: {
-        REGISTRAR: "0xE67B22B285912FFfaE23BdfAc8C80c779d99B3e0",
-        REGISTRAR_CONTROLLER: "0x8403e49Ec12F4EA5788f7bc0C0c2F649205774cC",
-        REGISTRY: "0xDeFE1AAE21eC2455bd04b213a51C16d4b426c7ef",
-        RESOLVER: "0xB436A271Beff1DBa6abDf2dbCc7E6d723d505EE6",
-        CONTENT_RESOLVER: "0xBcFa907Ff85dFc62a21b41d48F23D7A73aC42914",
-        REVERSE_RESOLVER: "0x4Ca32Dd0233D8c1B1709e20D9E4edBF2a77D21c3",
-        POP_RULES: "0xd3F059FA65dA566B294b5d755a06054d4bE7ce7C",
-        STORE_FACTORY: "0x4f1885fB6e0b154dCf9C2A8661e578B94aD50775",
-    },
     faucetUrl: null,
 };
 
@@ -178,9 +147,6 @@ export function getNetworkLabel(env: Env = DEFAULT_ENV): string {
             return "kusama";
     }
 }
-
-/** CDM meta-registry contract address, sourced from `@dotdm/contracts`. */
-export const CDM_REGISTRY_ADDRESS = REGISTRY_ADDRESS;
 
 /** Identifier the terminal adapter reports during SSO. Kept stable so mobile pairings persist across releases. */
 export const DAPP_ID = "dot-cli";

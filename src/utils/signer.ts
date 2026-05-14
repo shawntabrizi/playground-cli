@@ -86,7 +86,7 @@ export async function resolveSigner(options?: SignerOptions): Promise<ResolvedSi
         // to expose a separate `--derivation` flag.
         const sepIdx = options.suri.indexOf("//");
         const mnemonic = (sepIdx === -1 ? options.suri : options.suri.slice(0, sepIdx)).trim();
-        const path = sepIdx === -1 ? undefined : options.suri.slice(sepIdx);
+        const path = sepIdx === -1 ? "" : options.suri.slice(sepIdx);
         try {
             const account = seedToAccount(mnemonic, path);
             return {

@@ -20,9 +20,11 @@
  * rewriting callers.
  *
  * Today (testnet):
- *   - Dev mode: bulletin-deploy uses its built-in default mnemonic for
- *     storage AND DotNS. Playground publish (if enabled) still uses the
- *     user's phone signer so myApps ownership lands on the correct address.
+ *   - Dev mode: without a resolved local signer, bulletin-deploy uses its
+ *     built-in default mnemonic for storage AND DotNS. With `--suri`, DotNS
+ *     uses that local signer so CI can register/update names without mobile.
+ *     Playground publish uses the resolved signer so myApps ownership lands
+ *     on the account that ran the deploy.
  *   - Phone mode: bulletin-deploy uses the user's phone signer for DotNS
  *     (3 taps). Storage always uses the bulletin-deploy pool mnemonic.
  *     Playground publish uses the user's phone signer (1 more tap).
@@ -150,9 +152,16 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
         approvals.push(...dotnsApprovals(opts.plan));
     }
 
+    if (opts.mode === "dev" && opts.userSigner?.source === "dev") {
+        bulletinDeployAuthOptions = {
+            signer: opts.userSigner.signer,
+            signerAddress: opts.userSigner.address,
+        };
+    }
+
     // Playground publish always uses the user's signer so ownership ties to
-    // their address — otherwise the registry would record a shared dev key
-    // and the myApps view would be useless.
+    // their address. In `--signer dev --suri ...` that user is the local SURI
+    // account; in phone mode it is the mobile session account.
     //
     // userSigner is guaranteed non-null here: shouldResolveUserSigner() returns
     // true whenever publishToPlayground is true, so resolveSigner() in the
