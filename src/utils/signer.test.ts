@@ -31,6 +31,8 @@ const mockCreateDevSigner = vi.fn().mockReturnValue({ __signer: "dev" });
 const mockGetDevPublicKey = vi.fn().mockReturnValue(new Uint8Array(32));
 const mockSs58Encode = vi.fn().mockReturnValue("5GrwvaEF...");
 const mockGetSessionSigner = vi.fn<() => Promise<unknown>>();
+const mockSeedToAccount = vi.fn();
+const TEST_MNEMONIC = "test test test test test test test test test test test junk";
 
 vi.mock("@parity/product-sdk-tx", () => ({
     createDevSigner: (...args: unknown[]) => mockCreateDevSigner(...args),
@@ -41,6 +43,10 @@ vi.mock("@parity/product-sdk-address", () => ({
     ss58Encode: (...args: unknown[]) => mockSs58Encode(...args),
 }));
 
+vi.mock("@parity/product-sdk-keys", () => ({
+    seedToAccount: (...args: unknown[]) => mockSeedToAccount(...args),
+}));
+
 vi.mock("./auth.js", () => ({
     getSessionSigner: () => mockGetSessionSigner(),
 }));
@@ -49,6 +55,13 @@ const { resolveSigner, parseDevAccountName, SignerNotAvailableError } = await im
 
 beforeEach(() => {
     vi.clearAllMocks();
+    mockSeedToAccount.mockImplementation((mnemonic: string) => {
+        if (mnemonic !== TEST_MNEMONIC) throw new Error("Invalid mnemonic phrase");
+        return {
+            signer: { __signer: "seed" },
+            publicKey: new Uint8Array(32).fill(7),
+        };
+    });
 });
 
 // ── parseDevAccountName ─────────────────────────────────────────────────────
@@ -107,6 +120,18 @@ describe("resolveSigner", () => {
 
     it("lists supported names in error message", async () => {
         await expect(resolveSigner({ suri: "//Bad" })).rejects.toThrow(/Alice.*Ferdie/);
+    });
+
+    it("uses the root account for a bare mnemonic", async () => {
+        await resolveSigner({ suri: TEST_MNEMONIC });
+
+        expect(mockSeedToAccount).toHaveBeenCalledWith(TEST_MNEMONIC, "");
+    });
+
+    it("uses an explicit derivation suffix when the mnemonic includes one", async () => {
+        await resolveSigner({ suri: `${TEST_MNEMONIC}//0` });
+
+        expect(mockSeedToAccount).toHaveBeenCalledWith(TEST_MNEMONIC, "//0");
     });
 
     it("falls back to session signer when no SURI", async () => {
