@@ -26,14 +26,18 @@
 
 import { parseArgs } from "node:util";
 import { destroyConnection } from "../src/utils/connection.js";
+import { checkAllowance, ensureAllowance } from "../src/utils/account/allowance.js";
 import { publishToPlayground, normalizeDomain } from "../src/utils/deploy/playground.js";
+import { getReadOnlyRegistryContract } from "../src/utils/registry.js";
 import { resolveSigner } from "../src/utils/signer.js";
 import { SIGNER, E2E_DOMAINS } from "../e2e/cli/fixtures/accounts.js";
-import { destroyTestClient } from "../e2e/cli/helpers/chain.js";
+import { destroyTestClient, getTestClient } from "../e2e/cli/helpers/chain.js";
 import { fundAccountIfLow } from "../e2e/cli/setup/fund.js";
 
 const DEFAULT_TEMPLATE_DOMAIN = "dot-cli-mod-fixture.dot";
 const DEFAULT_TEMPLATE_REPO = "https://github.com/paritytech/Rock-Paper-Scissors";
+const REGISTRY_READBACK_ATTEMPTS = 5;
+const REGISTRY_READBACK_DELAY_MS = 2_000;
 
 interface Fixture {
 	domain: string;
@@ -88,6 +92,71 @@ function logPlan(fixtures: readonly Fixture[]): void {
 	console.log();
 }
 
+function errorText(error: unknown): string {
+	if (error instanceof Error) return `${error.name}: ${error.message}`;
+	return String(error);
+}
+
+function isBulletinTeardownNoise(error: unknown): boolean {
+	const text = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ""}` : String(error);
+	return (
+		text.includes("ChainHead disjointed") ||
+		(text.includes("UnsubscriptionError") && text.includes("Not connected"))
+	);
+}
+
+function suppressStandaloneBulletinTeardownNoise(): () => void {
+	const onUncaught = (error: unknown) => {
+		if (isBulletinTeardownNoise(error)) {
+			console.warn(`ignored Bulletin client teardown noise: ${errorText(error)}`);
+			return;
+		}
+		process.off("uncaughtException", onUncaught);
+		throw error;
+	};
+
+	process.prependListener("uncaughtException", onUncaught);
+	return () => process.off("uncaughtException", onUncaught);
+}
+
+async function delay(ms: number): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatAllowance(status: Awaited<ReturnType<typeof checkAllowance>>): string {
+	if (!status.authorized) return "not authorized";
+	return `${status.remainingTxs} tx / ${status.remainingBytes} bytes`;
+}
+
+async function ensureFixtureStorageAllowance(address: string): Promise<void> {
+	const client = await getTestClient();
+	const before = await checkAllowance(client, address);
+	console.log(`Bulletin allowance ${formatAllowance(before)}`);
+
+	await ensureAllowance(client, address);
+
+	const after = await checkAllowance(client, address);
+	if (formatAllowance(after) !== formatAllowance(before)) {
+		console.log(`Bulletin allowance ${formatAllowance(after)}`);
+	}
+	console.log();
+}
+
+async function verifyRegistryEntry(domain: string, metadataCid: string): Promise<void> {
+	const client = await getTestClient();
+	const registry = await getReadOnlyRegistryContract(client.raw.assetHub);
+
+	for (let attempt = 1; attempt <= REGISTRY_READBACK_ATTEMPTS; attempt++) {
+		const result = await registry.getMetadataUri.query(domain);
+		const value = result.value as { isSome?: boolean; value?: string } | undefined;
+		if (result.success && value?.isSome && value.value === metadataCid) return;
+
+		if (attempt < REGISTRY_READBACK_ATTEMPTS) await delay(REGISTRY_READBACK_DELAY_MS);
+	}
+
+	throw new Error(`Registry readback failed for ${domain}: expected metadata CID ${metadataCid}`);
+}
+
 async function registerFixture(
 	fixture: Fixture,
 	signer: Awaited<ReturnType<typeof resolveSigner>>,
@@ -110,7 +179,10 @@ async function registerFixture(
 		},
 	});
 
+	await verifyRegistryEntry(result.fullDomain, result.metadataCid);
+
 	const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+	console.log("  verified    registry readback");
 	console.log(`  published   ${result.metadataCid} (${elapsed}s)`);
 	console.log();
 }
@@ -145,11 +217,13 @@ async function main(): Promise<number> {
 	}
 
 	const signer = await resolveSigner({ suri: values.suri ?? SIGNER.suri });
+	const restoreErrorHandling = suppressStandaloneBulletinTeardownNoise();
 	try {
 		logPlan(fixtures);
 		console.log(`signer ${signer.address} (${signer.source})`);
 		await fundAccountIfLow({ name: "fixture signer", address: signer.address });
 		console.log();
+		await ensureFixtureStorageAllowance(signer.address);
 
 		for (const [index, fixture] of fixtures.entries()) {
 			await registerFixture(fixture, signer, index + 1, fixtures.length);
@@ -157,6 +231,7 @@ async function main(): Promise<number> {
 		console.log(`registered ${fixtures.length} fixture(s)`);
 		return 0;
 	} finally {
+		restoreErrorHandling();
 		signer.destroy();
 		destroyTestClient();
 		destroyConnection();
