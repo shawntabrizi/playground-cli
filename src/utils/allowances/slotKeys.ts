@@ -27,6 +27,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getPublicKey, sign } from "@scure/sr25519";
+import { AccountId } from "polkadot-api";
 import { toHex, fromHex } from "polkadot-api/utils";
 import { getPolkadotSigner } from "polkadot-api/signer";
 import type { PolkadotSigner } from "polkadot-api";
@@ -178,6 +179,10 @@ export function createSlotAccountSigner(slotAccountKey: Uint8Array): PolkadotSig
     const secret = normalizeSlotAccountKey(slotAccountKey);
     const publicKey = getPublicKey(secret);
     return getPolkadotSigner(publicKey, "Sr25519", (payload) => sign(secret, payload));
+}
+
+export function getSlotAccountAddress(slotAccountKey: Uint8Array): string {
+    return AccountId().dec(getPublicKey(normalizeSlotAccountKey(slotAccountKey)));
 }
 
 /** Visible for tests; not part of the public API. @internal */

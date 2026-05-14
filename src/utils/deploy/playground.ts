@@ -240,6 +240,8 @@ export async function publishToPlayground(
                     ownerAddress: options.publishSigner.address,
                     productId: PLAYGROUND_PRODUCT_ID,
                     publishSigner: options.publishSigner,
+                    bulletinApi,
+                    requiredBytes: metadataBytes.length,
                     onRequest: () =>
                         options.onLogEvent?.({
                             kind: "info",
@@ -261,6 +263,8 @@ export async function publishToPlayground(
                         ownerAddress: options.publishSigner.address,
                         productId: PLAYGROUND_PRODUCT_ID,
                         publishSigner: options.publishSigner,
+                        bulletinApi,
+                        requiredBytes: metadataBytes.length,
                         policy: "Increase",
                     });
                     await withRetry(() => submitAndWatch(storeTx, storageSigner));

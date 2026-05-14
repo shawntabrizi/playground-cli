@@ -29,7 +29,13 @@ import {
 } from "../../utils/allowances/host.js";
 import { hasAllowance, markAllowance } from "../../utils/allowances/marker.js";
 import {
+    hasUsableBulletinSlotAuthorization,
+    waitForBulletinSlotAuthorization,
+} from "../../utils/allowances/bulletin.js";
+import {
+    extractSlotAccountKey,
     hasSlotAccountKey,
+    readSlotAccountKey,
     storeSlotAccountKeysFromOutcomes,
 } from "../../utils/allowances/slotKeys.js";
 
@@ -147,12 +153,25 @@ export function AccountSetup({
             try {
                 const tags = PLAYGROUND_RESOURCES.map((r) => r.tag);
                 const marked = await Promise.all(tags.map((t) => hasAllowance(env, address, t)));
+                const cachedBulletinKey = await readSlotAccountKey(
+                    env,
+                    address,
+                    "BulletInAllowance",
+                );
                 const slotKeys = await Promise.all([
-                    hasSlotAccountKey(env, address, "BulletInAllowance"),
+                    Promise.resolve(cachedBulletinKey !== null),
                     hasSlotAccountKey(env, address, "StatementStoreAllowance"),
                 ]);
                 if (cancelled) return;
-                const allMarked = marked.every(Boolean) && slotKeys.every(Boolean);
+                const cachedBulletinUsable =
+                    cachedBulletinKey === null
+                        ? false
+                        : await hasUsableBulletinSlotAuthorization(
+                              client.bulletin,
+                              cachedBulletinKey,
+                          );
+                const allMarked =
+                    marked.every(Boolean) && slotKeys.every(Boolean) && cachedBulletinUsable;
                 if (allMarked) {
                     update(0, {
                         status: "ok",
@@ -178,12 +197,16 @@ export function AccountSetup({
                     if (cancelled) return;
                     setPhonePrompt(null);
                     const summary = summarizeOutcomes(outcomes, PLAYGROUND_RESOURCES);
+                    const bulletinKey = extractSlotAccountKey(outcomes, "BulletInAllowance");
+                    if (bulletinKey) {
+                        await waitForBulletinSlotAuthorization(client.bulletin, bulletinKey);
+                    }
+                    await storeSlotAccountKeysFromOutcomes(env, address, outcomes);
                     // RFC-0010 allocation outcomes are independent: keep any
                     // successful keys even if a sibling resource was denied.
                     await Promise.all(
                         summary.granted.map((r) => markAllowance(env, address, r.tag, "host")),
                     );
-                    await storeSlotAccountKeysFromOutcomes(env, address, outcomes);
                     if (summary.rejected.length > 0 || summary.unavailable.length > 0) {
                         const denied = [...summary.rejected, ...summary.unavailable]
                             .map(describeResource)
