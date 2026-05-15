@@ -16,18 +16,18 @@
 /**
  * Own playground-registry publish flow.
  *
- * We upload the metadata JSON through `bulletin-deploy`'s `storeFile` (just
- * storage, NO DotNS) and then call `registry.publish(domain, metadataCid)`
- * ourselves via `getRegistryContract()`. Publishing is always signed by the
- * user so the contract's `env::caller()` matches their address — that's
- * what drives the playground-app "myApps" view.
+ * We upload the metadata JSON through Bulletin `TransactionStorage.store`
+ * with the product-scoped RFC-0010 Bulletin allowance account, then call
+ * `registry.publish(domain, metadataCid)` ourselves via `getRegistryContract()`.
+ * Publishing is always signed by the user's product account so the contract's
+ * `env::caller()` matches their address — that's what drives the playground-app
+ * "myApps" view.
  *
  * We deliberately do NOT use `bulletin-deploy.deploy()` for the metadata
  * upload: `deploy()` unconditionally runs a DotNS `register()` +
  * `setContenthash()` on whatever name you give it (or a randomly generated
  * `test-domain-*` when you pass `null`). That second DotNS pass is wasteful
- * and has been observed to revert with opaque contract errors. Calling
- * `storeFile` directly is the scalpel we want.
+ * and has been observed to revert with opaque contract errors.
  */
 
 import { execFileSync } from "node:child_process";
@@ -40,8 +40,13 @@ import { calculateCid } from "@parity/product-sdk-bulletin";
 import { submitAndWatch, withRetry } from "@parity/product-sdk-tx";
 import { getRegistryContract } from "../registry.js";
 import { getConnection } from "../connection.js";
-import { getChainConfig, type Env } from "../../config.js";
+import { getChainConfig, PLAYGROUND_PRODUCT_ID, type Env } from "../../config.js";
 import { captureWarning, withSpan, errorMessage } from "../../telemetry.js";
+import {
+    getBulletinAllowanceSigner,
+    isInvalidPaymentError,
+    requestAndStoreBulletinAllowanceSigner,
+} from "../allowances/bulletin.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { DeployLogEvent } from "./progress.js";
 
@@ -209,8 +214,7 @@ export async function publishToPlayground(
     options.onLogEvent?.({ kind: "info", message: "Uploading playground metadata to Bulletin…" });
     // Storage-only upload using product-sdk Bulletin CID helpers. Submits
     // `TransactionStorage.store` directly — no DotNS, no `register()`, no
-    // `setContenthash()`. The signer defaults to the Alice dev signer on
-    // testnet, which is fine for a small metadata JSON.
+    // `setContenthash()`.
     //
     // We spin up a DEDICATED Bulletin client with a 300 s WS heartbeat rather
     // than reusing the shared one from `getConnection()`. The shared client
@@ -230,21 +234,41 @@ export async function publishToPlayground(
             try {
                 const bulletinApi = bulletinClient.getTypedApi(bulletin);
                 const cid = (await calculateCid(metadataBytes)).toString();
-                // Sign with the user's signer — paseo-next-v2's BulletinAuthorize v2
-                // model means the user's BulletInAllowance (granted via the host
-                // during `dot init`) covers their own `TransactionStorage.store`
-                // submissions. The legacy Alice-signed path worked on stable
-                // Paseo because Alice held a global authorization there; v2
-                // doesn't auto-authorize Alice, so submitting from her would
-                // fail with "Payment" on a non-bootstrapped Bulletin Next.
-                await withRetry(() =>
-                    submitAndWatch(
-                        bulletinApi.tx.TransactionStorage.store({
-                            data: metadataBytes,
+                const storeTx = bulletinApi.tx.TransactionStorage.store({ data: metadataBytes });
+                let storageSigner = await getBulletinAllowanceSigner({
+                    env: options.env ?? getChainConfig().env,
+                    ownerAddress: options.publishSigner.address,
+                    productId: PLAYGROUND_PRODUCT_ID,
+                    publishSigner: options.publishSigner,
+                    bulletinApi,
+                    requiredBytes: metadataBytes.length,
+                    onRequest: () =>
+                        options.onLogEvent?.({
+                            kind: "info",
+                            message: "Requesting Bulletin storage allowance…",
                         }),
-                        options.publishSigner.signer,
-                    ),
-                );
+                });
+                try {
+                    await withRetry(() => submitAndWatch(storeTx, storageSigner));
+                } catch (err) {
+                    if (!isInvalidPaymentError(err) || options.publishSigner.source !== "session") {
+                        throw err;
+                    }
+                    options.onLogEvent?.({
+                        kind: "info",
+                        message: "Refreshing Bulletin storage allowance…",
+                    });
+                    storageSigner = await requestAndStoreBulletinAllowanceSigner({
+                        env: options.env ?? getChainConfig().env,
+                        ownerAddress: options.publishSigner.address,
+                        productId: PLAYGROUND_PRODUCT_ID,
+                        publishSigner: options.publishSigner,
+                        bulletinApi,
+                        requiredBytes: metadataBytes.length,
+                        policy: "Increase",
+                    });
+                    await withRetry(() => submitAndWatch(storeTx, storageSigner));
+                }
                 return cid;
             } finally {
                 bulletinClient.destroy();

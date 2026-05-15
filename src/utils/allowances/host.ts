@@ -70,6 +70,8 @@ export type AllocationOutcome =
 /** Tag-only view, handy for downstream code that doesn't care about payloads. */
 export type ResourceTag = AllocatableResource["tag"];
 
+export type OnExistingAllowancePolicy = "Ignore" | "Increase";
+
 /** Default resource set for the playground product. */
 export const PLAYGROUND_RESOURCES: AllocatableResource[] = [
     { tag: "BulletInAllowance", value: undefined },
@@ -91,11 +93,12 @@ export async function requestResourceAllocation(
     session: UserSession,
     productId: string,
     resources: AllocatableResource[] = PLAYGROUND_RESOURCES,
+    onExisting: OnExistingAllowancePolicy = "Ignore",
 ): Promise<AllocationOutcome[]> {
     const result = await session.requestResourceAllocation({
         callingProductId: productId,
         resources,
-        onExisting: "Ignore",
+        onExisting,
     });
     if (result.isErr()) {
         throw new Error(`Resource allocation request failed: ${result.error.message}`);

@@ -33,6 +33,8 @@ export interface ResolvedSigner {
     signer: PolkadotSigner;
     address: string;
     source: SignerSource;
+    /** Present for QR/mobile sessions; absent for local dev/SURI signers. */
+    userSession?: SessionHandle["userSession"];
     /** Tear down session adapter. Call in finally block. No-op for dev signers. */
     destroy(): void;
 }

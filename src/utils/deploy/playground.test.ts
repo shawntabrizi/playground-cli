@@ -18,9 +18,20 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const { captureWarningMock, withSpanMock } = vi.hoisted(() => ({
+const {
+    captureWarningMock,
+    withSpanMock,
+    bulletinStorageSigner,
+    getBulletinAllowanceSignerMock,
+    requestAndStoreBulletinAllowanceSignerMock,
+} = vi.hoisted(() => ({
     captureWarningMock: vi.fn(),
     withSpanMock: vi.fn(async (_op: string, _name: string, _attrs: any, fn: any) => fn()),
+    bulletinStorageSigner: { __signer: "bulletin-allowance" },
+    getBulletinAllowanceSignerMock: vi.fn(async () => ({ __signer: "bulletin-allowance" })),
+    requestAndStoreBulletinAllowanceSignerMock: vi.fn(async () => ({
+        __signer: "bulletin-allowance-refreshed",
+    })),
 }));
 
 // Mock the metadata upload path so we never actually touch the network.
@@ -32,6 +43,12 @@ vi.mock("@parity/product-sdk-tx", () => ({
     createDevSigner: vi.fn(() => ({ __devSigner: "Alice" })),
     submitAndWatch: vi.fn(async () => ({ ok: true, block: { hash: "0x0" } })),
     withRetry: vi.fn((fn: () => Promise<unknown>) => fn()),
+}));
+vi.mock("../allowances/bulletin.js", () => ({
+    getBulletinAllowanceSigner: (options: unknown) => getBulletinAllowanceSignerMock(options),
+    requestAndStoreBulletinAllowanceSigner: (options: unknown) =>
+        requestAndStoreBulletinAllowanceSignerMock(options),
+    isInvalidPaymentError: (err: unknown) => String(err).includes("Payment"),
 }));
 vi.mock("polkadot-api", () => ({
     createClient: vi.fn(() => ({
@@ -76,6 +93,7 @@ import {
     readReadme,
     README_CAP_BYTES,
 } from "./playground.js";
+import { submitAndWatch } from "@parity/product-sdk-tx";
 import type { ResolvedSigner } from "../signer.js";
 
 const makeTmpDir = () => mkdtempSync(join(tmpdir(), "dot-playground-test-"));
@@ -92,6 +110,17 @@ beforeEach(() => {
     publishTx.mockImplementation(async () => ({ ok: true, txHash: "0xdead" }));
     captureWarningMock.mockClear();
     withSpanMock.mockClear();
+    getBulletinAllowanceSignerMock.mockClear();
+    getBulletinAllowanceSignerMock.mockResolvedValue(bulletinStorageSigner);
+    requestAndStoreBulletinAllowanceSignerMock.mockClear();
+    requestAndStoreBulletinAllowanceSignerMock.mockResolvedValue({
+        __signer: "bulletin-allowance-refreshed",
+    });
+    vi.mocked(submitAndWatch).mockClear();
+    vi.mocked(submitAndWatch).mockResolvedValue({
+        ok: true,
+        block: { hash: "0x0", number: 0, index: 0 },
+    });
 });
 
 describe("normalizeDomain", () => {
@@ -292,7 +321,7 @@ describe("publishToPlayground", () => {
     // Every test needs a cwd that doesn't accidentally pick up the repo's own
     // README.md (the CLI's real README is ~10 KB and would be inlined if we
     // defaulted to `process.cwd()`). Each test opts into a tmpdir explicitly.
-    it("uploads metadata JSON and calls registry.publish with the phone signer", async () => {
+    it("uploads metadata JSON with the Bulletin allowance signer and calls registry.publish with the phone signer", async () => {
         const dir = makeTmpDir();
         try {
             const result = await publishToPlayground({
@@ -307,6 +336,10 @@ describe("publishToPlayground", () => {
                 repository: "https://github.com/paritytech/example",
             });
             expect(result.metadataCid).toBe("bafymeta");
+            expect(submitAndWatch).toHaveBeenCalledWith(
+                expect.objectContaining({ __kind: "store" }),
+                bulletinStorageSigner,
+            );
             expect(publishTx).toHaveBeenCalledWith("my-app.dot", "bafymeta", 1);
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -421,6 +454,24 @@ describe("publishToPlayground", () => {
         const ops = withSpanMock.mock.calls.map((call) => call[0]);
         expect(ops).toContain("cli.deploy.playground.metadata-upload");
         expect(ops).toContain("cli.deploy.playground.registry-publish");
+    });
+
+    it("refreshes Bulletin allowance once when metadata upload fails with Invalid Payment", async () => {
+        vi.mocked(submitAndWatch)
+            .mockRejectedValueOnce(new Error('{"type":"Invalid","value":{"type":"Payment"}}'))
+            .mockResolvedValueOnce({ ok: true, block: { hash: "0x1", number: 1, index: 0 } });
+
+        await publishToPlayground({
+            domain: "my-app.dot",
+            publishSigner: fakeSigner,
+            repositoryUrl: null,
+            cwd: undefined,
+        });
+
+        expect(requestAndStoreBulletinAllowanceSignerMock).toHaveBeenCalledWith(
+            expect.objectContaining({ policy: "Increase" }),
+        );
+        expect(submitAndWatch).toHaveBeenCalledTimes(2);
     });
 
     it("surfaces the last error after exhausting retries", async () => {

@@ -16,8 +16,9 @@
 /**
  * Local cache of "we already asked the host for allowance X on env Y for
  * address Z". RFC-0010 provides no on-chain query for allowance status, so
- * we persist a marker after a successful grant and skip the host round-trip
- * (and the user-facing approval prompt) on subsequent `dot init` runs.
+ * we persist a marker after a successful grant. Slot-account resources also
+ * need the secret key cached in `allowance-keys.json`; callers that need to
+ * sign must check both files before skipping the host round-trip.
  *
  * Stored at `$POLKADOT_ROOT/allowances.json` (default `~/.polkadot/`), mode
  * 0600, sibling to `accounts.json`. Keyed `env → ss58Address → resourceTag`
