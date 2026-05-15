@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.21.5
+
+### Patch Changes
+
+- d8fbc44: Use cached RFC-0010 Bulletin allowance keys for Playground metadata uploads instead of signing Bulletin storage with the product account.
+
 ## 0.21.4
 
 ### Patch Changes
