@@ -297,9 +297,12 @@ export async function checkDomainAvailability(
 
         const plan: DeployPlan = { action: "register", needsPopUpgrade };
 
-        // Names that require Proof-of-Personhood are still registrable on
-        // testnet — bulletin-deploy self-attests during `register()` via
-        // `setUserPopStatus`. Surface it as an advisory note, not a blocker.
+        // Names that require Proof-of-Personhood are registrable on testnet
+        // environments where self-attestation is allowed (bulletin-deploy calls
+        // `setUserPopStatus` during `register()`). On paseo-next-v2 that call
+        // is owner-gated, so a NoStatus signer cannot self-attest and the
+        // deploy will fail at the network phase. We surface this as an advisory
+        // note rather than a hard block because the rule varies per environment.
         if (
             classification.status === POP_STATUS_LITE ||
             classification.status === POP_STATUS_FULL

@@ -89,9 +89,11 @@ export const BOB: TestAccount = devAccount("Bob");
  * publish path (storage / re-deploy / cross-owner collision); reuse a single
  * domain for the preflight / validation tests.
  *
- * DotNS classifies names with a 6-8 character base plus exactly two trailing
- * digits as PopLite. Keep these labels in that shape so E2E tests do not
- * accidentally require Full personhood on testnet.
+ * DotNS classifies names with a base of ≥ 9 chars plus exactly two trailing
+ * digits as NoStatus (no PoP required). Keep these labels in that shape so
+ * the E2E deployer (NoStatus signer) can register them on any environment,
+ * including paseo-next-v2 where setUserPopStatus is owner-gated and
+ * self-attestation is not available.
  *
  * NOTE: do not assert on the registry state of `preflight` — it's shared by
  * six tests in the same file and the metadata at any moment reflects whichever
@@ -105,22 +107,22 @@ export const E2E_DOMAINS = {
 	 * tests do reach `registry.publish`. SIGNER ends up owning this domain
 	 * regardless; subsequent runs are same-owner re-publishes.
 	 */
-	preflight: "e2epre00",
+	preflight: "e2eprefly00",
 	/** Used by the storage-phase happy path. */
-	storage: "e2estr00",
+	storage: "e2estorag00",
 	/** Used by the same-owner re-deploy test. */
-	redeploy: "e2ered00",
+	redeploy: "e2eredepl00",
 	/** Used by the cross-owner collision test (BOB tries to take SIGNER's). */
-	collision: "e2ecol00",
+	collision: "e2ecollis00",
 	/**
 	 * Phase 3 cell domains — registered by `tools/register-e2e-fixtures.ts`.
 	 * Owned by SIGNER; subsequent runs are same-owner re-publishes.
 	 * Not yet wired to any test — see Phase 4 of docs-internal/2026-05-02-e2e-test-suite-design.md.
 	 */
-	foundry: "e2efnd00",
-	cdm: "e2ecdm00",
-	hardhat: "e2ehat00",
-	multi: "e2emul00",
+	foundry: "e2efoundry00",
+	cdm: "e2ecdmapp00",
+	hardhat: "e2ehardhat00",
+	multi: "e2emultip00",
 	/**
 	 * Used by the nightly-chaos-sigint cell only. The deploy is interrupted by
 	 * SIGINT before it completes, so this domain is never actually registered.
@@ -128,5 +130,5 @@ export const E2E_DOMAINS = {
 	 * storage test in test-publish when both run in a nightly that triggers all
 	 * matrices.
 	 */
-	chaos: "e2echs00",
+	chaos: "e2echaosp00",
 } as const;
