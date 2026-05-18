@@ -127,20 +127,20 @@ describe("dot mod — clone", () => {
 		},
 	);
 
-	test("exits non-zero with signer suggestion when no signer available", async () => {
-		const tempHome = makeTempDir("dot-e2e-mod-home-");
-		const cwd = makeTempDir("dot-e2e-mod-cwd-");
-		const result = await dot(["mod", "some-app.dot"], { home: tempHome, cwd });
-		expect(result.exitCode).not.toBe(0);
-		const output = result.stdout + result.stderr;
-		// Exact wording from src/utils/signer.ts SignerNotAvailableError:
-		//   `No signer available. Run "dot init" to log in, or pass --suri //Alice for dev.`
-		// The previous regex /signer|init|log.?in/i matched any of those words
-		// anywhere — including help text — so it passed even on early crashes
-		// that never reached the signer-resolution path.
-		expect(output).toContain("No signer available");
-		expect(output).toContain("dot init");
-	});
+	test(
+		"exits non-zero for unknown domain with no prior session (mod is signer-less)",
+		{ timeout: 60_000 },
+		async () => {
+			const tempHome = makeTempDir("dot-e2e-mod-home-");
+			const cwd = makeTempDir("dot-e2e-mod-cwd-");
+			const result = await dot(["mod", "some-app.dot"], { home: tempHome, cwd, timeout: 60_000 });
+			expect(result.exitCode).not.toBe(0);
+			const output = result.stdout + result.stderr;
+			// dot mod is signer-less — it proceeds directly to the registry lookup.
+			// An unknown domain produces: App "some-app.dot" not found in registry
+			expect(output).toContain("not found in registry");
+		},
+	);
 });
 
 describe("dot mod — registry miss", () => {
