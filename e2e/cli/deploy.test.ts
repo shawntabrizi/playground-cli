@@ -128,11 +128,10 @@ describe("dot deploy — preflight and validation", () => {
 			result.exitCode,
 			`expected non-zero exit for --env mainnet, got 0\n${output}`,
 		).not.toBe(0);
-		// Exact wording from src/commands/deploy/index.ts: "`--env mainnet` is
-		// not yet supported. Use `--env testnet` (default) while mainnet launch
-		// is pending."
+		// Exact wording from src/config.ts::getChainConfig():
+		//   "--env polkadot is not yet supported. Use --env paseo-next-v2 (default)."
 		expect(output).toContain("not yet supported");
-		expect(output).toContain("--env testnet");
+		expect(output).toContain("--env paseo-next-v2");
 	});
 
 	test("detects foundry contracts type in project", async () => {
