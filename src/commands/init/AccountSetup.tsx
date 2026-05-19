@@ -154,6 +154,7 @@ export function AccountSetup({
             try {
                 const tags = PLAYGROUND_RESOURCES.map((r) => r.tag);
                 const marked = await Promise.all(tags.map((t) => hasAllowance(env, address, t)));
+                const markedByTag = new Map(tags.map((tag, i) => [tag, marked[i]]));
                 const cachedBulletinKey = await readSlotAccountKey(
                     env,
                     address,
@@ -170,10 +171,18 @@ export function AccountSetup({
                         : await hasUsableBulletinSlotAuthorization(
                               client.bulletin,
                               cachedBulletinKey,
+                              1,
                           );
                 const allMarked =
-                    marked.every(Boolean) && slotKeys.every(Boolean) && cachedBulletinUsable;
+                    PLAYGROUND_RESOURCES.filter((r) => r.tag !== "BulletInAllowance").every((r) =>
+                        markedByTag.get(r.tag),
+                    ) &&
+                    slotKeys.every(Boolean) &&
+                    cachedBulletinUsable;
                 if (allMarked) {
+                    if (!markedByTag.get("BulletInAllowance") && cachedBulletinKey) {
+                        await markAllowance(env, address, "BulletInAllowance", "host");
+                    }
                     update(0, {
                         status: "ok",
                         value: "already granted",
@@ -202,6 +211,7 @@ export function AccountSetup({
                     // successful keys even if a sibling resource was denied or
                     // Bulletin propagation is still catching up.
                     for (const resource of summary.granted) {
+                        if (resource.tag === "BulletInAllowance") continue;
                         await markAllowance(env, address, resource.tag, "host");
                     }
 
@@ -216,6 +226,7 @@ export function AccountSetup({
                             : await hasUsableBulletinSlotAuthorization(
                                   client.bulletin,
                                   bulletinKey,
+                                  1,
                               );
                     if (summary.rejected.length > 0 || summary.unavailable.length > 0) {
                         const denied = [...summary.rejected, ...summary.unavailable]
@@ -239,6 +250,9 @@ export function AccountSetup({
                             valueTone: "danger",
                         });
                     } else {
+                        if (bulletinKey) {
+                            await markAllowance(env, address, "BulletInAllowance", "host");
+                        }
                         update(0, {
                             status: "ok",
                             value: `granted (${summary.granted.length})`,

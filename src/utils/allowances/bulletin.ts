@@ -41,7 +41,7 @@ const BULLETIN_AUTH_WAIT_MS = 75_000;
 const BULLETIN_AUTH_POLL_MS = 3_000;
 
 export function bulletinAuthorizationHelp(slotAccountAddress: string): string {
-    return `Authorize Bulletin allowance account ${slotAccountAddress} at ${BULLETIN_AUTHORIZATION_URL}, then re-run \`dot init\`.`;
+    return `Open the Bulletin authorization faucet at ${BULLETIN_AUTHORIZATION_URL} and authorize account ${slotAccountAddress}, then re-run \`dot init\`.`;
 }
 
 function hasUsableAuthorization(

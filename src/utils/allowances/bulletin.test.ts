@@ -72,7 +72,7 @@ afterEach(async () => {
 describe("Bulletin allowance authorization", () => {
     it("formats manual authorization help for slot-account recovery", () => {
         expect(bulletinAuthorizationHelp("5Slot")).toBe(
-            "Authorize Bulletin allowance account 5Slot at https://paritytech.github.io/polkadot-bulletin-chain/authorizations, then re-run `dot init`.",
+            "Open the Bulletin authorization faucet at https://paritytech.github.io/polkadot-bulletin-chain/authorizations and authorize account 5Slot, then re-run `dot init`.",
         );
     });
 
