@@ -168,6 +168,9 @@ export async function storeSlotAccountKeysFromOutcomes(
     // saves would interleave and the second write would clobber the
     // first slot key.
     const file = await loadFile();
+    // One timestamp for the whole batch — these keys all came from the same
+    // `requestResourceAllocation` round-trip and represent one cohort.
+    const storedAt = Date.now();
     let mutated = false;
 
     for (const outcome of outcomes) {
@@ -183,7 +186,7 @@ export async function storeSlotAccountKeysFromOutcomes(
         const addrBucket = envBucket[address] ?? {};
         addrBucket[allocated.tag] = {
             slotAccountKey: toHex(normalizeSlotAccountKey(key)) as `0x${string}`,
-            storedAt: Date.now(),
+            storedAt,
         };
         envBucket[address] = addrBucket;
         file.envs[env] = envBucket;

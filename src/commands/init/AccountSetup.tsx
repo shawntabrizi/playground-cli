@@ -29,13 +29,11 @@ import {
 } from "../../utils/allowances/host.js";
 import { hasAllowance, markAllowance } from "../../utils/allowances/marker.js";
 import {
-    bulletinAuthorizationHelp,
     hasUsableBulletinSlotAuthorization,
     waitForBulletinSlotAuthorization,
 } from "../../utils/allowances/bulletin.js";
 import {
     extractSlotAccountKey,
-    getSlotAccountAddress,
     hasSlotAccountKey,
     readSlotAccountKey,
     storeSlotAccountKeysFromOutcomes,
@@ -243,17 +241,16 @@ export function AccountSetup({
                             // Soft failure: key + marker are cached above, so
                             // the next run / `dot deploy` will see them. The
                             // funding/mapping step doesn't need this, so we
-                            // surface the help and keep going.
+                            // surface the help and keep going. The user has
+                            // already approved on their phone at this point
+                            // — the problem is People→Bulletin propagation,
+                            // not a pending mobile prompt, so the row label
+                            // mustn't ask them to re-approve.
                             accountSetupOk = false;
                             update(0, {
                                 status: "failed",
-                                value: "approve on your Polkadot mobile app…",
-                                error:
-                                    waitErr instanceof Error
-                                        ? waitErr.message
-                                        : bulletinAuthorizationHelp(
-                                              getSlotAccountAddress(bulletinKey),
-                                          ),
+                                value: "Bulletin authorization pending",
+                                error: describe(waitErr),
                                 valueTone: "warning",
                             });
                         }
