@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.22.1
+
+### Patch Changes
+
+- 7d7e7eb: Internal: bump `@parity/product-sdk-*` packages and `bulletin-deploy` to current latest, and consume `deriveProductAccountPublicKey` from `@parity/product-sdk-keys` instead of a local mirror. No user-visible behaviour change; output is byte-identical for production inputs.
+
 ## 0.22.0
 
 ### Minor Changes
