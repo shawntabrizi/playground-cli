@@ -26,16 +26,32 @@
  * piece we do need: the storage query + the byte mapping. Same precedent as
  * `src/utils/allowances/host.ts` (which mirrors host-papp's RFC-0010 call).
  *
- * The upstream source we're mirroring lives in
- * `@novasamatech/host-papp@0.7.9-4/dist/identity/rpcAdapter.js`; keep this in
- * sync if that ever changes pallet/storage names.
+ * NOTE on the storage key: `unsafeApi.query.Resources.Consumers.getValues`
+ * expects the key in JS form — for `AccountId32`, that's an SS58 string. The
+ * upstream `createIdentityRpcAdapter` runs the input through
+ * `AccountId().dec(x)` because *its* caller passes a 0x-prefixed pubkey hex
+ * (see dotli `packages/auth/src/auth.ts`, which calls `getIdentity(\`0x${pk}\`)`),
+ * so the `.dec` round-trips hex → SS58 before handing it to PAPI. We already
+ * receive the SS58 string from the QR-login flow, so the `.dec` step would
+ * silently corrupt it: under the hood `.dec` runs the string through
+ * scale-ts's `fromHex`, which reads each character via `HEX_MAP[ch]` — most
+ * SS58 chars (`G`, `H`, `J`, `K`, `P`, `U`, `p`, `r`, …) aren't in the map
+ * so they coerce to 0 (`undefined << 4 | undefined` → `0`). The resulting
+ * mostly-zero buffer is then re-encoded by `fromBufferToBase58` into a
+ * malformed SS58 (wrong length, wrong checksum). That bogus key is what
+ * gets handed to PAPI's storage encoder, where `getSs58AddressInfo` rejects
+ * it and the lookup surfaces as `(lookup failed)`. Pass the SS58 directly.
  */
 
-import { AccountId, createClient } from "polkadot-api";
+import { createClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { getChainConfig } from "../config.js";
 
-const LOOKUP_TIMEOUT_MS = 5_000;
+// Cold-start WS connects to paseo-people-next-system-rpc on a slow conference
+// network can take a few seconds before metadata + the first query are ready.
+// The success path is sub-second on a fast network; the 10s budget only kicks
+// in when the chain is genuinely unreachable.
+const LOOKUP_TIMEOUT_MS = 10_000;
 
 export type UsernameLookup =
     | { kind: "loading" }
@@ -79,8 +95,6 @@ export async function lookupUsername(rootAccountSs58: string): Promise<UsernameL
     const { peopleEndpoints } = getChainConfig();
     const client = createClient(getWsProvider(peopleEndpoints));
     try {
-        const accCodec = AccountId();
-        const accountKey = accCodec.dec(rootAccountSs58);
         const unsafeApi = client.getUnsafeApi();
         const query = unsafeApi.query.Resources?.Consumers;
         if (!query) {
@@ -91,7 +105,9 @@ export async function lookupUsername(rootAccountSs58: string): Promise<UsernameL
         }
 
         const result = await Promise.race([
-            query.getValues([[accountKey]]) as Promise<Array<ConsumerRecord | undefined | null>>,
+            query.getValues([[rootAccountSs58]]) as Promise<
+                Array<ConsumerRecord | undefined | null>
+            >,
             new Promise<"timeout">((resolve) =>
                 setTimeout(() => resolve("timeout"), LOOKUP_TIMEOUT_MS),
             ),

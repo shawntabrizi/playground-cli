@@ -20,7 +20,7 @@
  * `completion.ts` next to `InitScreen.tsx` for the same pattern).
  */
 
-import { deriveH160, ss58Decode, ss58Encode, truncateAddress } from "@parity/product-sdk-address";
+import { deriveH160, ss58Decode, ss58Encode } from "@parity/product-sdk-address";
 import { deriveProductAccountPublicKey } from "@parity/product-sdk-keys";
 import { PLAYGROUND_PRODUCT_ID } from "../../config.js";
 
@@ -40,5 +40,5 @@ export function productAccountAddresses(rootAccountSs58: string): ProductAccount
 
 export function productAccountDisplay(rootAccountSs58: string): string {
     const { ss58, h160 } = productAccountAddresses(rootAccountSs58);
-    return `${truncateAddress(ss58, 6, 4)} (${truncateAddress(h160, 6, 4)})`;
+    return `${ss58} (${h160})`;
 }

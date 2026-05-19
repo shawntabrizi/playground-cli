@@ -22,13 +22,15 @@ import { productAccountDisplay } from "./identityLine.js";
  * Two-line identity block shown after a successful login:
  *
  *   username        alice.dot
- *   product account 5Grwva...utQY (0x1a2b...ef34)
+ *   product account <full ss58> (<full 0x h160>)
  *
- * The username lookup is async (queries People parachain) and has a 5s
- * timeout inside `lookupUsername`; the product account is synchronous (pure
- * sr25519 soft derivation). A `(looking up...)` placeholder renders while
- * the lookup is in flight; failures and missing identities fall through to
- * the relevant fallback strings from `formatUsernameLine`.
+ * Both the SS58 and the 0x H160 are printed in full so the user can copy
+ * them directly. The username lookup is async (queries People parachain)
+ * and has a 10s timeout inside `lookupUsername`; the product account is
+ * synchronous (pure sr25519 soft derivation). A `(looking up...)`
+ * placeholder renders while the lookup is in flight; failures and missing
+ * identities fall through to the relevant fallback strings from
+ * `formatUsernameLine`.
  */
 export function IdentityLines({ address }: { address: string }) {
     const [username, setUsername] = useState<UsernameLookup>({ kind: "loading" });

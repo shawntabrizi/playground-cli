@@ -27,7 +27,11 @@ describe("productAccountAddresses", () => {
     it("derives a non-empty SS58 + a 42-char H160 from a root SS58", () => {
         const { ss58, h160 } = productAccountAddresses(ZERO_ROOT_SS58);
         expect(typeof ss58).toBe("string");
-        expect(ss58.length).toBeGreaterThan(40);
+        // Substrate SS58 addresses for a 32-byte pubkey are 47–48 chars on
+        // the default ss58Format=42 prefix. Anything shorter would mean
+        // we'd accidentally re-introduced truncation.
+        expect(ss58.length).toBeGreaterThanOrEqual(47);
+        expect(ss58).toMatch(/^[1-9A-HJ-NP-Za-km-z]+$/);
         expect(h160).toMatch(/^0x[0-9a-fA-F]{40}$/);
     });
 
@@ -40,8 +44,12 @@ describe("productAccountAddresses", () => {
 });
 
 describe("productAccountDisplay", () => {
-    it("renders 'ss58 (h160)' with both addresses truncated", () => {
+    it("renders 'ss58 (h160)' with the full SS58 + full 0x-prefixed H160", () => {
         const display = productAccountDisplay(ZERO_ROOT_SS58);
-        expect(display).toMatch(/^.+\.\.\..+ \(0x.+\.\.\..+\)$/);
+        const match = display.match(/^([1-9A-HJ-NP-Za-km-z]+) \((0x[0-9a-fA-F]{40})\)$/);
+        expect(match).not.toBeNull();
+        // No ellipses anywhere — the whole point of the change is that we
+        // print the full address so the user can copy it directly.
+        expect(display).not.toContain("...");
     });
 });
