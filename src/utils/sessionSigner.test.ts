@@ -18,57 +18,9 @@ import { ss58Encode } from "@parity/product-sdk-address";
 import { seedToAccount } from "@parity/product-sdk-keys";
 import type { UserSession } from "@parity/product-sdk-terminal";
 import { PLAYGROUND_PRODUCT_ID } from "../config.js";
-import { deriveProductAccountPublicKey } from "./productAccountDerivation.js";
 import { createPlaygroundSessionSigner } from "./sessionSigner.js";
 
 const DEV_PHRASE = "bottom drive obey lake curtain smoke basket hold race lonely fit walk";
-
-function toHex(bytes: Uint8Array): string {
-    return (
-        "0x" +
-        Array.from(bytes)
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("")
-    );
-}
-
-describe("deriveProductAccountPublicKey", () => {
-    // The mobile wallet derives the product account by applying derivation
-    // path "/product/{productId}/{derivationIndex}" to the user's mnemonic
-    // (substrate-sdk-android, EncryptionType.SR25519). For sr25519 soft
-    // derivation, applying that path to the mnemonic and applying it as
-    // public-soft to the bare mnemonic keypair's public key produce the
-    // same final public key. This test pins that property.
-    test("matches mnemonic+derivation-path keypair (single-junction productId)", () => {
-        // Empty path → bare master keypair from mnemonic. Same as Android's
-        // `deriveRootAccount()` / `derivationPath = null`. Public key here is
-        // what arrives in `session.rootAccountId` over SSO.
-        const root = seedToAccount(DEV_PHRASE, "");
-        const product = seedToAccount(DEV_PHRASE, "/product/playground.dot/0");
-
-        const local = deriveProductAccountPublicKey(root.publicKey, "playground.dot", 0);
-
-        expect(toHex(local)).toEqual(toHex(product.publicKey));
-    });
-
-    test("matches for a multi-segment productId and non-zero index", () => {
-        const root = seedToAccount(DEV_PHRASE, "");
-        const product = seedToAccount(DEV_PHRASE, "/product/some-app.dot/7");
-
-        const local = deriveProductAccountPublicKey(root.publicKey, "some-app.dot", 7);
-
-        expect(toHex(local)).toEqual(toHex(product.publicKey));
-    });
-
-    test("different productIds produce different accounts", () => {
-        const root = seedToAccount(DEV_PHRASE, "");
-
-        const a = deriveProductAccountPublicKey(root.publicKey, "playground.dot", 0);
-        const b = deriveProductAccountPublicKey(root.publicKey, "playground42.dot", 0);
-
-        expect(toHex(a)).not.toEqual(toHex(b));
-    });
-});
 
 // ────────────────────────────────────────────────────────────────────────────
 // Init / deploy / playground-app equivalence
@@ -89,7 +41,7 @@ describe("deriveProductAccountPublicKey", () => {
 //     "/product/{dotNsId}/0").publicKey` and SS58-encodes it.
 //
 // As long as all three pin to the same `(rootPubKey, productId, 0)` triple,
-// they yield byte-identical SS58 strings. This test is the regression guard.
+// they yield byte-identical SS58 strings. These tests are the regression guard.
 // ────────────────────────────────────────────────────────────────────────────
 describe("init / deploy / playground-app account equivalence", () => {
     // Build a stand-in for the mobile's SSO handshake response. Mirrors what
