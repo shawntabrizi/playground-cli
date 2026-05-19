@@ -19,14 +19,16 @@
  * This is intentionally small and isolated so it can be replaced by a
  * product-sdk-terminal host/preimage helper once the SDK owns terminal
  * allowance-key persistence. Until then the CLI is the Host for terminal
- * sessions: it receives scoped allowance private keys from mobile, stores
- * them locally, and uses them to sign Bulletin/SSS submissions.
+ * sessions: it stores scoped allowance private keys from mobile or locally
+ * generated slot keys that users authorize manually, then uses them to sign
+ * Bulletin/SSS submissions.
  */
 
+import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { getPublicKey, sign } from "@scure/sr25519";
+import { getPublicKey, secretFromSeed, sign } from "@scure/sr25519";
 import { AccountId } from "polkadot-api";
 import { toHex, fromHex } from "polkadot-api/utils";
 import { getPolkadotSigner } from "polkadot-api/signer";
@@ -138,6 +140,18 @@ export async function storeSlotAccountKey(
     envBucket[address] = addrBucket;
     file.envs[env] = envBucket;
     await saveFile(file);
+}
+
+export async function getOrCreateSlotAccountKey(
+    env: Env,
+    address: string,
+    resource: SlotAccountResourceTag,
+): Promise<Uint8Array> {
+    const existing = await readSlotAccountKey(env, address, resource);
+    if (existing) return existing;
+    const key = secretFromSeed(randomBytes(32));
+    await storeSlotAccountKey(env, address, resource, key);
+    return key;
 }
 
 export function extractSlotAccountKey(

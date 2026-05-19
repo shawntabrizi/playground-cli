@@ -42,6 +42,9 @@ import type { UserSession } from "@parity/product-sdk-terminal";
  *
  *   StatementStoreAllowance — write to the SSS (host_chat, allowance ring).
  *   BulletInAllowance       — write to Bulletin (TransactionStorage.store).
+ *                             Not requested by `dot init` today; the CLI uses
+ *                             a locally cached slot key and asks the user to
+ *                             authorize it through the Bulletin faucet.
  *   SmartContractAllowance  — PGAS sponsoring for Revive contract calls.
  *                             The `value` is the derivation index of the
  *                             product account (0 for the default playground
@@ -72,9 +75,8 @@ export type ResourceTag = AllocatableResource["tag"];
 
 export type OnExistingAllowancePolicy = "Ignore" | "Increase";
 
-/** Default resource set for the playground product. */
+/** Default mobile-granted resource set for the playground product. */
 export const PLAYGROUND_RESOURCES: AllocatableResource[] = [
-    { tag: "BulletInAllowance", value: undefined },
     { tag: "StatementStoreAllowance", value: undefined },
     // derivation index 0 = playground42.dot's default product account.
     { tag: "SmartContractAllowance", value: 0 },

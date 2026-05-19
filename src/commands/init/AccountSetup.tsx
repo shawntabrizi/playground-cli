@@ -20,7 +20,7 @@ import { getConnection } from "../../utils/connection.js";
 import { getSessionSigner, type SessionHandle } from "../../utils/auth.js";
 import { topUpFromBulletinDev } from "../../utils/account/bulletinTopUp.js";
 import { checkMapping, ensureMapped } from "../../utils/account/mapping.js";
-import { DEFAULT_ENV, PLAYGROUND_PRODUCT_ID } from "../../config.js";
+import { BULLETIN_AUTHORIZATION_URL, DEFAULT_ENV, PLAYGROUND_PRODUCT_ID } from "../../config.js";
 import {
     PLAYGROUND_RESOURCES,
     requestResourceAllocation,
@@ -28,15 +28,11 @@ import {
     type AllocatableResource,
 } from "../../utils/allowances/host.js";
 import { hasAllowance, markAllowance } from "../../utils/allowances/marker.js";
+import { hasUsableBulletinSlotAuthorization } from "../../utils/allowances/bulletin.js";
 import {
-    bulletinAuthorizationHelp,
-    hasUsableBulletinSlotAuthorization,
-} from "../../utils/allowances/bulletin.js";
-import {
-    extractSlotAccountKey,
+    getOrCreateSlotAccountKey,
     getSlotAccountAddress,
     hasSlotAccountKey,
-    readSlotAccountKey,
     storeSlotAccountKeysFromOutcomes,
 } from "../../utils/allowances/slotKeys.js";
 
@@ -72,6 +68,10 @@ interface PhonePrompt {
     label: string;
 }
 
+interface BulletinWarning {
+    slotAccountAddress: string;
+}
+
 /** Human-readable name for a resource tag, used in failure messages. */
 function describeResource(r: AllocatableResource): string {
     switch (r.tag) {
@@ -98,6 +98,7 @@ export function AccountSetup({
         { label: "funding", status: "pending" },
     ]);
     const [phonePrompt, setPhonePrompt] = useState<PhonePrompt | null>(null);
+    const [bulletinWarning, setBulletinWarning] = useState<BulletinWarning | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -154,35 +155,40 @@ export function AccountSetup({
             try {
                 const tags = PLAYGROUND_RESOURCES.map((r) => r.tag);
                 const marked = await Promise.all(tags.map((t) => hasAllowance(env, address, t)));
-                const markedByTag = new Map(tags.map((tag, i) => [tag, marked[i]]));
-                const cachedBulletinKey = await readSlotAccountKey(
+                const slotKeys = await Promise.all([
+                    hasSlotAccountKey(env, address, "StatementStoreAllowance"),
+                ]);
+                const bulletinKey = await getOrCreateSlotAccountKey(
                     env,
                     address,
                     "BulletInAllowance",
                 );
-                const slotKeys = await Promise.all([
-                    Promise.resolve(cachedBulletinKey !== null),
-                    hasSlotAccountKey(env, address, "StatementStoreAllowance"),
-                ]);
                 if (cancelled) return;
-                const cachedBulletinUsable =
-                    cachedBulletinKey === null
-                        ? false
-                        : await hasUsableBulletinSlotAuthorization(
-                              client.bulletin,
-                              cachedBulletinKey,
-                              1,
-                          );
-                const allMarked =
-                    PLAYGROUND_RESOURCES.filter((r) => r.tag !== "BulletInAllowance").every((r) =>
-                        markedByTag.get(r.tag),
-                    ) &&
-                    slotKeys.every(Boolean) &&
-                    cachedBulletinUsable;
+                let bulletinUsable = false;
+                try {
+                    bulletinUsable = await hasUsableBulletinSlotAuthorization(
+                        client.bulletin,
+                        bulletinKey,
+                        1,
+                    );
+                } catch {
+                    bulletinUsable = false;
+                }
+                if (cancelled) return;
+                const slotAccountAddress = getSlotAccountAddress(bulletinKey);
+                setBulletinWarning(
+                    bulletinUsable
+                        ? null
+                        : {
+                              slotAccountAddress,
+                          },
+                );
+                if (bulletinUsable) {
+                    await markAllowance(env, address, "BulletInAllowance", "host");
+                }
+
+                const allMarked = marked.every(Boolean) && slotKeys.every(Boolean);
                 if (allMarked) {
-                    if (!markedByTag.get("BulletInAllowance") && cachedBulletinKey) {
-                        await markAllowance(env, address, "BulletInAllowance", "host");
-                    }
                     update(0, {
                         status: "ok",
                         value: "already granted",
@@ -211,48 +217,20 @@ export function AccountSetup({
                     // successful keys even if a sibling resource was denied or
                     // Bulletin propagation is still catching up.
                     for (const resource of summary.granted) {
-                        if (resource.tag === "BulletInAllowance") continue;
                         await markAllowance(env, address, resource.tag, "host");
                     }
 
-                    const bulletinKey =
-                        extractSlotAccountKey(outcomes, "BulletInAllowance") ?? cachedBulletinKey;
-                    const bulletinDenied =
-                        summary.rejected.some((r) => r.tag === "BulletInAllowance") ||
-                        summary.unavailable.some((r) => r.tag === "BulletInAllowance");
-                    const bulletinReady =
-                        bulletinKey === null
-                            ? !bulletinDenied
-                            : await hasUsableBulletinSlotAuthorization(
-                                  client.bulletin,
-                                  bulletinKey,
-                                  1,
-                              );
                     if (summary.rejected.length > 0 || summary.unavailable.length > 0) {
                         const denied = [...summary.rejected, ...summary.unavailable]
                             .map(describeResource)
                             .join(", ");
-                        const bulletinHint =
-                            bulletinDenied && bulletinKey
-                                ? ` ${bulletinAuthorizationHelp(getSlotAccountAddress(bulletinKey))}`
-                                : "";
                         accountSetupOk = false;
                         update(0, {
                             status: "failed",
-                            error: `denied: ${denied}. Re-run \`dot init\` and approve on your phone.${bulletinHint}`,
-                            valueTone: "danger",
-                        });
-                    } else if (!bulletinReady && bulletinKey) {
-                        accountSetupOk = false;
-                        update(0, {
-                            status: "failed",
-                            error: bulletinAuthorizationHelp(getSlotAccountAddress(bulletinKey)),
+                            error: `denied: ${denied}. Re-run \`dot init\` and approve on your phone.`,
                             valueTone: "danger",
                         });
                     } else {
-                        if (bulletinKey) {
-                            await markAllowance(env, address, "BulletInAllowance", "host");
-                        }
                         update(0, {
                             status: "ok",
                             value: `granted (${summary.granted.length})`,
@@ -361,6 +339,19 @@ export function AccountSetup({
                     <Text>
                         approve step {phonePrompt.step} of {phonePrompt.total}:{" "}
                         <Text bold>{phonePrompt.label}</Text>
+                    </Text>
+                </Callout>
+            )}
+            {bulletinWarning && (
+                <Callout tone="warning" title="Bulletin authorization needed">
+                    <Text>
+                        Open the Bulletin authorization faucet at{" "}
+                        <Text bold>{BULLETIN_AUTHORIZATION_URL}</Text>
+                    </Text>
+                    <Text>
+                        and authorize account <Text bold>{bulletinWarning.slotAccountAddress}</Text>
+                        {", then re-run "}
+                        <Text bold>dot init</Text>.
                     </Text>
                 </Callout>
             )}

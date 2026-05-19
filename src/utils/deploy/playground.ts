@@ -40,13 +40,9 @@ import { calculateCid } from "@parity/product-sdk-bulletin";
 import { submitAndWatch, withRetry } from "@parity/product-sdk-tx";
 import { getRegistryContract } from "../registry.js";
 import { getConnection } from "../connection.js";
-import { getChainConfig, PLAYGROUND_PRODUCT_ID, type Env } from "../../config.js";
+import { getChainConfig, type Env } from "../../config.js";
 import { captureWarning, withSpan, errorMessage } from "../../telemetry.js";
-import {
-    getBulletinAllowanceSigner,
-    isInvalidPaymentError,
-    requestAndStoreBulletinAllowanceSigner,
-} from "../allowances/bulletin.js";
+import { getBulletinAllowanceSigner, isInvalidPaymentError } from "../allowances/bulletin.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { DeployLogEvent } from "./progress.js";
 
@@ -238,15 +234,9 @@ export async function publishToPlayground(
                 let storageSigner = await getBulletinAllowanceSigner({
                     env: options.env ?? getChainConfig().env,
                     ownerAddress: options.publishSigner.address,
-                    productId: PLAYGROUND_PRODUCT_ID,
                     publishSigner: options.publishSigner,
                     bulletinApi,
                     requiredBytes: metadataBytes.length,
-                    onRequest: () =>
-                        options.onLogEvent?.({
-                            kind: "info",
-                            message: "Requesting Bulletin storage allowance…",
-                        }),
                 });
                 try {
                     await withRetry(() => submitAndWatch(storeTx, storageSigner));
@@ -256,16 +246,14 @@ export async function publishToPlayground(
                     }
                     options.onLogEvent?.({
                         kind: "info",
-                        message: "Refreshing Bulletin storage allowance…",
+                        message: "Checking Bulletin storage allowance…",
                     });
-                    storageSigner = await requestAndStoreBulletinAllowanceSigner({
+                    storageSigner = await getBulletinAllowanceSigner({
                         env: options.env ?? getChainConfig().env,
                         ownerAddress: options.publishSigner.address,
-                        productId: PLAYGROUND_PRODUCT_ID,
                         publishSigner: options.publishSigner,
                         bulletinApi,
                         requiredBytes: metadataBytes.length,
-                        policy: "Increase",
                     });
                     await withRetry(() => submitAndWatch(storeTx, storageSigner));
                 }

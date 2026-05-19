@@ -22,6 +22,7 @@ import {
     _internal,
     createSlotAccountSigner,
     extractSlotAccountKey,
+    getOrCreateSlotAccountKey,
     hasSlotAccountKey,
     readSlotAccountKey,
     storeSlotAccountKey,
@@ -99,5 +100,13 @@ describe("slot account key cache", () => {
 
         expect(signer.publicKey).toHaveLength(32);
         await expect(signer.signBytes(new Uint8Array([1, 2, 3]))).resolves.toHaveLength(64);
+    });
+
+    it("creates and then reuses a local slot key when none is cached", async () => {
+        const first = await getOrCreateSlotAccountKey("paseo-next-v2", ADDR, "BulletInAllowance");
+        const second = await getOrCreateSlotAccountKey("paseo-next-v2", ADDR, "BulletInAllowance");
+
+        expect(first).toHaveLength(64);
+        expect(second).toEqual(first);
     });
 });

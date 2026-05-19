@@ -19,39 +19,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { checkAuthorizationMock, requestResourceAllocationMock, markAllowanceMock } = vi.hoisted(
-    () => ({
-        checkAuthorizationMock: vi.fn(),
-        requestResourceAllocationMock: vi.fn(),
-        markAllowanceMock: vi.fn(),
-    }),
-);
+const { checkAuthorizationMock } = vi.hoisted(() => ({
+    checkAuthorizationMock: vi.fn(),
+}));
 
 vi.mock("@parity/product-sdk-bulletin", () => ({
     checkAuthorization: checkAuthorizationMock,
-}));
-
-vi.mock("./host.js", () => ({
-    requestResourceAllocation: requestResourceAllocationMock,
-}));
-
-vi.mock("./marker.js", () => ({
-    markAllowance: markAllowanceMock,
 }));
 
 import {
     bulletinAuthorizationHelp,
     getBulletinAllowanceSigner,
     hasUsableBulletinSlotAuthorization,
-    requestAndStoreBulletinAllowanceSigner,
 } from "./bulletin.js";
 import { readSlotAccountKey, storeSlotAccountKey } from "./slotKeys.js";
 
 const KEY = secretFromSeed(new Uint8Array(32).fill(7));
-const KEY_2 = secretFromSeed(new Uint8Array(32).fill(8));
 const ENV = "paseo-next-v2";
 const OWNER = "5Owner";
-const PRODUCT_ID = "playground.dot";
 
 let root: string | null = null;
 
@@ -59,8 +44,6 @@ beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "playground-cli-allowances-"));
     process.env.POLKADOT_ROOT = root;
     checkAuthorizationMock.mockReset();
-    requestResourceAllocationMock.mockReset();
-    markAllowanceMock.mockReset();
 });
 
 afterEach(async () => {
@@ -109,89 +92,54 @@ describe("Bulletin allowance authorization", () => {
         await expect(hasUsableBulletinSlotAuthorization({} as any, KEY, 50)).resolves.toBe(false);
     });
 
-    it("stores the returned slot key before waiting for Bulletin propagation", async () => {
-        requestResourceAllocationMock.mockResolvedValueOnce([
-            {
-                tag: "Allocated",
-                value: {
-                    tag: "BulletInAllowance",
-                    value: { slotAccountKey: KEY },
-                },
-            },
-        ]);
-        checkAuthorizationMock.mockRejectedValueOnce(new Error("rpc unavailable"));
-
-        await expect(
-            requestAndStoreBulletinAllowanceSigner({
-                env: ENV,
-                ownerAddress: OWNER,
-                productId: PRODUCT_ID,
-                publishSigner: {
-                    source: "session",
-                    address: OWNER,
-                    userSession: {} as any,
-                    signer: {} as any,
-                    destroy() {},
-                },
-                bulletinApi: {} as any,
-                policy: "Ignore",
-            }),
-        ).rejects.toThrow("rpc unavailable");
-
-        await expect(readSlotAccountKey(ENV, OWNER, "BulletInAllowance")).resolves.toEqual(KEY);
-        expect(markAllowanceMock).not.toHaveBeenCalled();
-    });
-
-    it("requests an increased allocation when a cached slot key is live but out of quota", async () => {
+    it("uses a cached slot key when it has enough Bulletin authorization", async () => {
         await storeSlotAccountKey(ENV, OWNER, "BulletInAllowance", KEY);
-        const userSession = {};
-        const requestedPolicies: string[] = [];
+        checkAuthorizationMock.mockResolvedValueOnce({
+            authorized: true,
+            remainingTransactions: 1,
+            remainingBytes: 100n,
+            expiration: 1,
+        });
 
-        checkAuthorizationMock
-            .mockResolvedValueOnce({
-                authorized: true,
-                remainingTransactions: 0,
-                remainingBytes: 100n,
-                expiration: 1,
-            })
-            .mockResolvedValueOnce({
-                authorized: true,
-                remainingTransactions: 1,
-                remainingBytes: 100n,
-                expiration: 1,
-            });
-        requestResourceAllocationMock.mockResolvedValueOnce([
-            {
-                tag: "Allocated",
-                value: {
-                    tag: "BulletInAllowance",
-                    value: { slotAccountKey: KEY_2 },
-                },
-            },
-        ]);
-
-        await getBulletinAllowanceSigner({
+        const signer = await getBulletinAllowanceSigner({
             env: ENV,
             ownerAddress: OWNER,
-            productId: PRODUCT_ID,
             publishSigner: {
                 source: "session",
                 address: OWNER,
-                userSession: userSession as any,
                 signer: {} as any,
                 destroy() {},
             },
             bulletinApi: {} as any,
             requiredBytes: 50,
-            onRequest: (policy) => requestedPolicies.push(policy),
         });
 
-        expect(requestedPolicies).toEqual(["Increase"]);
-        expect(requestResourceAllocationMock).toHaveBeenCalledWith(
-            userSession,
-            PRODUCT_ID,
-            [{ tag: "BulletInAllowance", value: undefined }],
-            "Increase",
-        );
+        expect(signer.publicKey).toHaveLength(32);
+    });
+
+    it("creates a local slot key and points to the faucet when it is not authorized", async () => {
+        checkAuthorizationMock.mockResolvedValueOnce({
+            authorized: false,
+            remainingTransactions: 0,
+            remainingBytes: 0n,
+            expiration: 0,
+        });
+
+        await expect(
+            getBulletinAllowanceSigner({
+                env: ENV,
+                ownerAddress: OWNER,
+                publishSigner: {
+                    source: "session",
+                    address: OWNER,
+                    signer: {} as any,
+                    destroy() {},
+                },
+                bulletinApi: {} as any,
+                requiredBytes: 50,
+            }),
+        ).rejects.toThrow(/Bulletin authorization faucet/);
+
+        await expect(readSlotAccountKey(ENV, OWNER, "BulletInAllowance")).resolves.toHaveLength(64);
     });
 });

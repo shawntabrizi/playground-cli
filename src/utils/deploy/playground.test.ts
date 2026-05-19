@@ -18,21 +18,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const {
-    captureWarningMock,
-    withSpanMock,
-    bulletinStorageSigner,
-    getBulletinAllowanceSignerMock,
-    requestAndStoreBulletinAllowanceSignerMock,
-} = vi.hoisted(() => ({
-    captureWarningMock: vi.fn(),
-    withSpanMock: vi.fn(async (_op: string, _name: string, _attrs: any, fn: any) => fn()),
-    bulletinStorageSigner: { __signer: "bulletin-allowance" },
-    getBulletinAllowanceSignerMock: vi.fn(async () => ({ __signer: "bulletin-allowance" })),
-    requestAndStoreBulletinAllowanceSignerMock: vi.fn(async () => ({
-        __signer: "bulletin-allowance-refreshed",
-    })),
-}));
+const { captureWarningMock, withSpanMock, bulletinStorageSigner, getBulletinAllowanceSignerMock } =
+    vi.hoisted(() => ({
+        captureWarningMock: vi.fn(),
+        withSpanMock: vi.fn(async (_op: string, _name: string, _attrs: any, fn: any) => fn()),
+        bulletinStorageSigner: { __signer: "bulletin-allowance" },
+        getBulletinAllowanceSignerMock: vi.fn(async () => ({ __signer: "bulletin-allowance" })),
+    }));
 
 // Mock the metadata upload path so we never actually touch the network.
 // The mock returns a fake CID that publish() treats as the metadata CID.
@@ -46,8 +38,6 @@ vi.mock("@parity/product-sdk-tx", () => ({
 }));
 vi.mock("../allowances/bulletin.js", () => ({
     getBulletinAllowanceSigner: (options: unknown) => getBulletinAllowanceSignerMock(options),
-    requestAndStoreBulletinAllowanceSigner: (options: unknown) =>
-        requestAndStoreBulletinAllowanceSignerMock(options),
     isInvalidPaymentError: (err: unknown) => String(err).includes("Payment"),
 }));
 vi.mock("polkadot-api", () => ({
@@ -112,10 +102,6 @@ beforeEach(() => {
     withSpanMock.mockClear();
     getBulletinAllowanceSignerMock.mockClear();
     getBulletinAllowanceSignerMock.mockResolvedValue(bulletinStorageSigner);
-    requestAndStoreBulletinAllowanceSignerMock.mockClear();
-    requestAndStoreBulletinAllowanceSignerMock.mockResolvedValue({
-        __signer: "bulletin-allowance-refreshed",
-    });
     vi.mocked(submitAndWatch).mockClear();
     vi.mocked(submitAndWatch).mockResolvedValue({
         ok: true,
@@ -456,7 +442,7 @@ describe("publishToPlayground", () => {
         expect(ops).toContain("cli.deploy.playground.registry-publish");
     });
 
-    it("refreshes Bulletin allowance once when metadata upload fails with Invalid Payment", async () => {
+    it("re-checks Bulletin allowance once when metadata upload fails with Invalid Payment", async () => {
         vi.mocked(submitAndWatch)
             .mockRejectedValueOnce(new Error('{"type":"Invalid","value":{"type":"Payment"}}'))
             .mockResolvedValueOnce({ ok: true, block: { hash: "0x1", number: 1, index: 0 } });
@@ -468,9 +454,7 @@ describe("publishToPlayground", () => {
             cwd: undefined,
         });
 
-        expect(requestAndStoreBulletinAllowanceSignerMock).toHaveBeenCalledWith(
-            expect.objectContaining({ policy: "Increase" }),
-        );
+        expect(getBulletinAllowanceSignerMock).toHaveBeenCalledTimes(2);
         expect(submitAndWatch).toHaveBeenCalledTimes(2);
     });
 
