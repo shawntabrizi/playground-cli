@@ -66,6 +66,13 @@ export interface ChainConfig {
     bulletinAuthorizeV2: boolean;
     /** Public faucet URL, or null when allowances replace the funder flow. */
     faucetUrl: string | null;
+    /**
+     * Web faucet URL for manually authorizing the CLI's Bulletin slot account.
+     * Surfaced in `bulletinAuthorizationHelp` so the user has a recovery path
+     * on testnets. `null` on production / closed-devnet envs where allowances
+     * are pre-allocated and no manual path exists.
+     */
+    bulletinAuthorizationUrl: string | null;
 }
 
 // Paseo Next v2 — the active env. DotNS contracts are owned by
@@ -84,6 +91,7 @@ const PASEO_NEXT_V2: ChainConfig = {
     autoAccountMapping: true,
     bulletinAuthorizeV2: true,
     faucetUrl: null,
+    bulletinAuthorizationUrl: "https://paritytech.github.io/polkadot-bulletin-chain/authorizations",
 };
 
 const CONFIGS: Partial<Record<Env, ChainConfig>> = {
@@ -170,10 +178,6 @@ export const PLAYGROUND_PRODUCT_ID = "playground.dot";
  */
 export const TERMINAL_METADATA_URL =
     "https://gist.githubusercontent.com/ReinhardHatko/1967dd3f4afe78683cc0ba14d6ec8744/raw/c1625eb7ed7671b7e09a3fa2a25998dde33c70b8/metadata.json";
-
-/** Manual Bulletin authorization page for slot-account allowance recovery. */
-export const BULLETIN_AUTHORIZATION_URL =
-    "https://paritytech.github.io/polkadot-bulletin-chain/authorizations";
 
 /** Default build output directory — matches Vite and the interactive prompt default. */
 export const DEFAULT_BUILD_DIR = "dist";

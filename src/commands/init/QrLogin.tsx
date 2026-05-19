@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Row } from "../../utils/ui/theme/index.js";
 import {
     waitForLogin,
@@ -30,18 +30,22 @@ export function QrLogin({
     onDone: (addresses: SessionAddresses | null) => void;
 }) {
     const [status, setStatus] = useState<LoginStatus>({ step: "waiting" });
+    // Snapshot the SessionAddresses from the success status update so the
+    // `.then` handler below can hand them to the parent without reading
+    // QrLogin's React state. Calling `onDone` inside a `setStatus(updater)`
+    // would invoke the parent's `setAddresses` from within React's render
+    // phase — that's the "Cannot update a component while rendering a
+    // different component" warning we shipped accidentally in #188.
+    const addressesRef = useRef<SessionAddresses | null>(null);
 
     useEffect(() => {
-        // `waitForLogin` resolves with the product-account SS58 string for
-        // back-compat, but the full `SessionAddresses` bundle only lives on
-        // the most-recent "success" status update. Snapshot it via
-        // `setStatus` so we hand the parent the whole triple, not just the
-        // SS58 — the parent needs `rootAddress` for the username lookup.
-        waitForLogin(login, setStatus).then(() => {
-            setStatus((current) => {
-                onDone(current.step === "success" ? current.addresses : null);
-                return current;
-            });
+        waitForLogin(login, (next) => {
+            setStatus(next);
+            if (next.step === "success") {
+                addressesRef.current = next.addresses;
+            }
+        }).then(() => {
+            onDone(addressesRef.current);
         });
     }, []);
 

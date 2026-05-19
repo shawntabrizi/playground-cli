@@ -175,10 +175,17 @@ export async function storeSlotAccountKeysFromOutcomes(
     address: string,
     outcomes: AllocationOutcome[],
 ): Promise<void> {
+    // Single read-modify-write so two slot keys returned in one call
+    // (e.g. BulletInAllowance + StatementStoreAllowance) can't race —
+    // the old `Promise.all([...storeSlotAccountKey])` pattern had each
+    // call load the file, mutate one resource, save the file; the
+    // saves would interleave and the second write would clobber the
+    // first slot key.
     const file = await loadFile();
-    const envBucket = file.envs[env] ?? {};
-    const addrBucket = envBucket[address] ?? {};
-    let changed = false;
+    // One timestamp for the whole batch — these keys all came from the same
+    // `requestResourceAllocation` round-trip and represent one cohort.
+    const storedAt = Date.now();
+    let mutated = false;
 
     for (const outcome of outcomes) {
         if (outcome.tag !== "Allocated") continue;
@@ -188,17 +195,19 @@ export async function storeSlotAccountKeysFromOutcomes(
         if (!allocated?.tag || !isSlotAccountResource(allocated.tag)) continue;
         const key = allocated.value?.slotAccountKey;
         if (!(key instanceof Uint8Array)) continue;
+
+        const envBucket = file.envs[env] ?? {};
+        const addrBucket = envBucket[address] ?? {};
         addrBucket[allocated.tag] = {
             slotAccountKey: toHex(normalizeSlotAccountKey(key)) as `0x${string}`,
-            storedAt: Date.now(),
+            storedAt,
         };
-        changed = true;
+        envBucket[address] = addrBucket;
+        file.envs[env] = envBucket;
+        mutated = true;
     }
 
-    if (!changed) return;
-    envBucket[address] = addrBucket;
-    file.envs[env] = envBucket;
-    await saveFile(file);
+    if (mutated) await saveFile(file);
 }
 
 export function createSlotAccountSigner(slotAccountKey: Uint8Array): PolkadotSigner {

@@ -15,7 +15,7 @@
 
 import type { PolkadotSigner } from "polkadot-api";
 import { checkAuthorization, type BulletinApi } from "@parity/product-sdk-bulletin";
-import { BULLETIN_AUTHORIZATION_URL, type Env } from "../../config.js";
+import { getChainConfig, type Env } from "../../config.js";
 import type { ResolvedSigner } from "../signer.js";
 import {
     createSlotAccountSigner,
@@ -31,8 +31,13 @@ export interface BulletinAllowanceSignerOptions {
     requiredBytes?: number;
 }
 
-export function bulletinAuthorizationHelp(slotAccountAddress: string): string {
-    return `Open the Bulletin authorization faucet at ${BULLETIN_AUTHORIZATION_URL} and authorize account ${slotAccountAddress}, then re-run \`dot init\`.`;
+export function bulletinAuthorizationHelp(
+    slotAccountAddress: string,
+    faucetUrl: string | null = getChainConfig().bulletinAuthorizationUrl,
+): string {
+    return faucetUrl
+        ? `Open the Bulletin authorization faucet at ${faucetUrl} and authorize account ${slotAccountAddress}, then re-run \`dot init\`.`
+        : `Bulletin allowance account ${slotAccountAddress} is not authorized yet. Re-run \`dot init\` after authorizing it.`;
 }
 
 function hasUsableAuthorization(

@@ -20,7 +20,7 @@ import { getConnection } from "../../utils/connection.js";
 import { getSessionSigner, type SessionHandle } from "../../utils/auth.js";
 import { topUpFromBulletinDev } from "../../utils/account/bulletinTopUp.js";
 import { checkMapping, ensureMapped } from "../../utils/account/mapping.js";
-import { BULLETIN_AUTHORIZATION_URL, DEFAULT_ENV, PLAYGROUND_PRODUCT_ID } from "../../config.js";
+import { DEFAULT_ENV, PLAYGROUND_PRODUCT_ID, getChainConfig } from "../../config.js";
 import {
     PLAYGROUND_RESOURCES,
     requestResourceAllocation,
@@ -99,6 +99,7 @@ export function AccountSetup({
     ]);
     const [phonePrompt, setPhonePrompt] = useState<PhonePrompt | null>(null);
     const [bulletinWarning, setBulletinWarning] = useState<BulletinWarning | null>(null);
+    const bulletinAuthorizationUrl = getChainConfig(DEFAULT_ENV).bulletinAuthorizationUrl;
 
     useEffect(() => {
         let cancelled = false;
@@ -149,7 +150,11 @@ export function AccountSetup({
             // ── Step 0: Resource allowances ─────────────────────────────────
             // Allowances are requested against the product-derived account
             // (host-papp's `productAccountId = [PLAYGROUND_PRODUCT_ID, 0]`),
-            // which is the same SS58 used everywhere else in this flow.
+            // which is the same SS58 used everywhere else in this flow. Bulletin
+            // is intentionally not requested from mobile here: the CLI creates
+            // a local slot account and tells the user to authorize that account
+            // through the Bulletin faucet until product-sdk exposes the proper
+            // host-side preimage path.
             update(0, { status: "active", value: "checking…", valueTone: "muted" });
             let accountSetupOk = true;
             try {
@@ -212,10 +217,10 @@ export function AccountSetup({
                     if (cancelled) return;
                     setPhonePrompt(null);
                     const summary = summarizeOutcomes(outcomes, PLAYGROUND_RESOURCES);
+
                     await storeSlotAccountKeysFromOutcomes(env, address, outcomes);
                     // RFC-0010 allocation outcomes are independent: keep any
-                    // successful keys even if a sibling resource was denied or
-                    // Bulletin propagation is still catching up.
+                    // successful keys even if a sibling resource was denied.
                     for (const resource of summary.granted) {
                         await markAllowance(env, address, resource.tag, "host");
                     }
@@ -237,6 +242,7 @@ export function AccountSetup({
                             valueTone: "muted",
                         });
                     }
+
                     if (cancelled) return;
                 }
             } catch (err) {
@@ -344,15 +350,31 @@ export function AccountSetup({
             )}
             {bulletinWarning && (
                 <Callout tone="warning" title="Bulletin authorization needed">
-                    <Text>
-                        Open the Bulletin authorization faucet at{" "}
-                        <Text bold>{BULLETIN_AUTHORIZATION_URL}</Text>
-                    </Text>
-                    <Text>
-                        and authorize account <Text bold>{bulletinWarning.slotAccountAddress}</Text>
-                        {", then re-run "}
-                        <Text bold>dot init</Text>.
-                    </Text>
+                    {bulletinAuthorizationUrl ? (
+                        <>
+                            <Text>
+                                Open the Bulletin authorization faucet at{" "}
+                                <Text bold>{bulletinAuthorizationUrl}</Text>
+                            </Text>
+                            <Text>
+                                and authorize account{" "}
+                                <Text bold>{bulletinWarning.slotAccountAddress}</Text>
+                                {", then re-run "}
+                                <Text bold>dot init</Text>.
+                            </Text>
+                        </>
+                    ) : (
+                        <>
+                            <Text>
+                                Bulletin allowance account{" "}
+                                <Text bold>{bulletinWarning.slotAccountAddress}</Text> is not
+                                authorized yet.
+                            </Text>
+                            <Text>
+                                Re-run <Text bold>dot init</Text> after authorizing it.
+                            </Text>
+                        </>
+                    )}
                 </Callout>
             )}
         </Box>

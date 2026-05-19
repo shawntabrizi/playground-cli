@@ -95,6 +95,32 @@ describe("slot account key cache", () => {
         );
     });
 
+    it("preserves sibling slot keys when multiple resources are returned at once", async () => {
+        // Regression guard: the previous implementation looped via
+        // Promise.all(...storeSlotAccountKey) and each save read+wrote
+        // the file, so concurrent saves clobbered each other's writes
+        // and the second-returned sibling key would be dropped. The
+        // batched read-modify-write must keep both keys.
+        const otherKey = secretFromSeed(new Uint8Array(32).fill(13));
+        const outcomes: AllocationOutcome[] = [
+            {
+                tag: "Allocated",
+                value: { tag: "BulletInAllowance", value: { slotAccountKey: KEY } },
+            },
+            {
+                tag: "Allocated",
+                value: { tag: "StatementStoreAllowance", value: { slotAccountKey: otherKey } },
+            },
+        ];
+
+        await storeSlotAccountKeysFromOutcomes("paseo-next-v2", ADDR, outcomes);
+
+        expect(await readSlotAccountKey("paseo-next-v2", ADDR, "BulletInAllowance")).toEqual(KEY);
+        expect(await readSlotAccountKey("paseo-next-v2", ADDR, "StatementStoreAllowance")).toEqual(
+            otherKey,
+        );
+    });
+
     it("creates a signer from a raw slot account key", async () => {
         const signer = createSlotAccountSigner(KEY);
 
