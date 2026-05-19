@@ -31,6 +31,7 @@ import type { AllocationOutcome } from "./host.js";
 
 const ADDR = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 const KEY = secretFromSeed(new Uint8Array(32).fill(7));
+const KEY_2 = secretFromSeed(new Uint8Array(32).fill(8));
 
 let tempRoot: string;
 let originalPolkadotRoot: string | undefined;
@@ -78,12 +79,19 @@ describe("slot account key cache", () => {
                 tag: "Allocated",
                 value: { tag: "BulletInAllowance", value: { slotAccountKey: KEY } },
             },
+            {
+                tag: "Allocated",
+                value: { tag: "StatementStoreAllowance", value: { slotAccountKey: KEY_2 } },
+            },
             { tag: "Allocated", value: { tag: "SmartContractAllowance", value: undefined } },
         ];
 
         expect(extractSlotAccountKey(outcomes, "BulletInAllowance")).toEqual(KEY);
         await storeSlotAccountKeysFromOutcomes("paseo-next-v2", ADDR, outcomes);
         expect(await readSlotAccountKey("paseo-next-v2", ADDR, "BulletInAllowance")).toEqual(KEY);
+        expect(await readSlotAccountKey("paseo-next-v2", ADDR, "StatementStoreAllowance")).toEqual(
+            KEY_2,
+        );
     });
 
     it("creates a signer from a raw slot account key", async () => {

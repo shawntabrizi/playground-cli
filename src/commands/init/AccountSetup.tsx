@@ -149,7 +149,7 @@ export function AccountSetup({
             // (host-papp's `productAccountId = [PLAYGROUND_PRODUCT_ID, 0]`),
             // which is the same SS58 used everywhere else in this flow.
             update(0, { status: "active", value: "checking…", valueTone: "muted" });
-            let allowancesOk = false;
+            let accountSetupOk = true;
             try {
                 const tags = PLAYGROUND_RESOURCES.map((r) => r.tag);
                 const marked = await Promise.all(tags.map((t) => hasAllowance(env, address, t)));
@@ -178,7 +178,6 @@ export function AccountSetup({
                         value: "already granted",
                         valueTone: "muted",
                     });
-                    allowancesOk = true;
                 } else {
                     update(0, {
                         status: "active",
@@ -197,45 +196,56 @@ export function AccountSetup({
                     if (cancelled) return;
                     setPhonePrompt(null);
                     const summary = summarizeOutcomes(outcomes, PLAYGROUND_RESOURCES);
-                    const bulletinKey = extractSlotAccountKey(outcomes, "BulletInAllowance");
-                    if (bulletinKey) {
-                        await waitForBulletinSlotAuthorization(client.bulletin, bulletinKey);
-                    }
                     await storeSlotAccountKeysFromOutcomes(env, address, outcomes);
                     // RFC-0010 allocation outcomes are independent: keep any
-                    // successful keys even if a sibling resource was denied.
-                    await Promise.all(
-                        summary.granted.map((r) => markAllowance(env, address, r.tag, "host")),
-                    );
+                    // successful keys even if a sibling resource was denied or
+                    // Bulletin propagation is still catching up.
+                    for (const resource of summary.granted) {
+                        await markAllowance(env, address, resource.tag, "host");
+                    }
+
+                    const bulletinKey = extractSlotAccountKey(outcomes, "BulletInAllowance");
+                    let bulletinReady = true;
+                    if (bulletinKey) {
+                        try {
+                            await waitForBulletinSlotAuthorization(client.bulletin, bulletinKey);
+                        } catch (err) {
+                            bulletinReady = false;
+                            accountSetupOk = false;
+                            update(0, {
+                                status: "failed",
+                                error: describe(err),
+                                valueTone: "danger",
+                            });
+                        }
+                    }
                     if (summary.rejected.length > 0 || summary.unavailable.length > 0) {
                         const denied = [...summary.rejected, ...summary.unavailable]
                             .map(describeResource)
                             .join(", ");
+                        accountSetupOk = false;
                         update(0, {
                             status: "failed",
                             error: `denied: ${denied}. Re-run \`dot init\` and approve on your phone.`,
                             valueTone: "danger",
                         });
-                        finish(false);
-                        return;
+                    } else if (bulletinReady) {
+                        update(0, {
+                            status: "ok",
+                            value: `granted (${summary.granted.length})`,
+                            valueTone: "muted",
+                        });
                     }
                     if (cancelled) return;
-                    update(0, {
-                        status: "ok",
-                        value: `granted (${summary.granted.length})`,
-                        valueTone: "muted",
-                    });
-                    allowancesOk = true;
                 }
             } catch (err) {
                 setPhonePrompt(null);
+                accountSetupOk = false;
                 update(0, {
                     status: "failed",
                     error: describe(err),
                     valueTone: "danger",
                 });
-                finish(false);
-                return;
             }
 
             // ── Step 1: Top up the product-derived account ──────────────────
@@ -256,15 +266,6 @@ export function AccountSetup({
             // covers the cold-start case the deploy preflight error message
             // ("Account is not mapped in Revive. Run `dot init`...") would
             // otherwise leave the user stuck on.
-            if (!allowancesOk) {
-                update(1, {
-                    status: "skipped",
-                    value: "skipped — allowances missing",
-                    valueTone: "muted",
-                });
-                finish(false);
-                return;
-            }
             update(1, { status: "active", value: "checking balance…", valueTone: "muted" });
             try {
                 const result = await topUpFromBulletinDev(client, address);
@@ -299,7 +300,7 @@ export function AccountSetup({
                 return;
             }
 
-            finish(true);
+            finish(accountSetupOk);
         })();
 
         // Cleanup is the SOLE owner of `session?.destroy()`. Calling destroy()

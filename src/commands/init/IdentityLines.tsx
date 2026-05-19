@@ -26,11 +26,11 @@ import { productAccountDisplay } from "./identityLine.js";
  *
  * Both the SS58 and the 0x H160 are printed in full so the user can copy
  * them directly. The username lookup is async (queries People parachain)
- * and has a 10s timeout inside `lookupUsername`; the product account is
- * synchronous (pure sr25519 soft derivation). A `(looking up...)`
- * placeholder renders while the lookup is in flight; failures and missing
- * identities fall through to the relevant fallback strings from
- * `formatUsernameLine`.
+ * and has a 10s timeout inside `lookupUsername`; the product account row is
+ * synchronous and mirrors the signer address used by deploy. A
+ * `(looking up...)` placeholder renders while the lookup is in flight;
+ * failures and missing identities fall through to the relevant fallback
+ * strings from `formatUsernameLine`.
  */
 export function IdentityLines({ address }: { address: string }) {
     const [username, setUsername] = useState<UsernameLookup>({ kind: "loading" });

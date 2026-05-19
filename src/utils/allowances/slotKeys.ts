@@ -161,18 +161,30 @@ export async function storeSlotAccountKeysFromOutcomes(
     address: string,
     outcomes: AllocationOutcome[],
 ): Promise<void> {
-    await Promise.all(
-        outcomes.map(async (outcome) => {
-            if (outcome.tag !== "Allocated") return;
-            const allocated = outcome.value as
-                | { tag?: ResourceTag; value?: { slotAccountKey?: Uint8Array } }
-                | undefined;
-            if (!allocated?.tag || !isSlotAccountResource(allocated.tag)) return;
-            const key = allocated.value?.slotAccountKey;
-            if (!(key instanceof Uint8Array)) return;
-            await storeSlotAccountKey(env, address, allocated.tag, key);
-        }),
-    );
+    const file = await loadFile();
+    const envBucket = file.envs[env] ?? {};
+    const addrBucket = envBucket[address] ?? {};
+    let changed = false;
+
+    for (const outcome of outcomes) {
+        if (outcome.tag !== "Allocated") continue;
+        const allocated = outcome.value as
+            | { tag?: ResourceTag; value?: { slotAccountKey?: Uint8Array } }
+            | undefined;
+        if (!allocated?.tag || !isSlotAccountResource(allocated.tag)) continue;
+        const key = allocated.value?.slotAccountKey;
+        if (!(key instanceof Uint8Array)) continue;
+        addrBucket[allocated.tag] = {
+            slotAccountKey: toHex(normalizeSlotAccountKey(key)) as `0x${string}`,
+            storedAt: Date.now(),
+        };
+        changed = true;
+    }
+
+    if (!changed) return;
+    envBucket[address] = addrBucket;
+    file.envs[env] = envBucket;
+    await saveFile(file);
 }
 
 export function createSlotAccountSigner(slotAccountKey: Uint8Array): PolkadotSigner {

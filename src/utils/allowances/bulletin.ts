@@ -37,7 +37,7 @@ export interface BulletinAllowanceSignerOptions {
     onRequest?: (policy: OnExistingAllowancePolicy) => void;
 }
 
-const BULLETIN_AUTH_WAIT_MS = 75_000;
+const BULLETIN_AUTH_WAIT_MS = 300_000;
 const BULLETIN_AUTH_POLL_MS = 3_000;
 
 function hasUsableAuthorization(
@@ -56,9 +56,15 @@ export async function hasUsableBulletinSlotAuthorization(
     slotAccountKey: Uint8Array,
     requiredBytes = 0,
 ): Promise<boolean> {
-    const address = getSlotAccountAddress(slotAccountKey);
-    const status = await checkAuthorization(bulletinApi, address);
+    const status = await getBulletinSlotAuthorization(bulletinApi, slotAccountKey);
     return hasUsableAuthorization(status, requiredBytes);
+}
+
+async function getBulletinSlotAuthorization(
+    bulletinApi: BulletinApi,
+    slotAccountKey: Uint8Array,
+): Promise<Awaited<ReturnType<typeof checkAuthorization>>> {
+    return await checkAuthorization(bulletinApi, getSlotAccountAddress(slotAccountKey));
 }
 
 export async function waitForBulletinSlotAuthorization(
@@ -80,7 +86,7 @@ export async function waitForBulletinSlotAuthorization(
     throw new Error(
         lastAuthorized
             ? `Bulletin allowance for ${address} is live but does not have enough quota.`
-            : `Mobile returned Bulletin allowance key ${address}, but it is not authorized on Bulletin yet.`,
+            : `Mobile returned Bulletin allowance key ${address}, but it is not authorized on Bulletin yet. This is usually delayed allowance propagation; re-run \`dot init\` after a minute.`,
     );
 }
 
@@ -100,7 +106,8 @@ export async function getBulletinAllowanceSigner({
     const cached = await readSlotAccountKey(env, ownerAddress, "BulletInAllowance");
     if (cached) {
         if (!bulletinApi) return createSlotAccountSigner(cached);
-        if (await hasUsableBulletinSlotAuthorization(bulletinApi, cached, requiredBytes)) {
+        const status = await getBulletinSlotAuthorization(bulletinApi, cached);
+        if (hasUsableAuthorization(status, requiredBytes)) {
             return createSlotAccountSigner(cached);
         }
         if (!publishSigner.userSession) {
@@ -113,7 +120,7 @@ export async function getBulletinAllowanceSigner({
             publishSigner,
             bulletinApi,
             requiredBytes,
-            policy: "Ignore",
+            policy: status.authorized ? "Increase" : "Ignore",
             onRequest,
         });
     }
@@ -164,11 +171,12 @@ export async function requestAndStoreBulletinAllowanceSigner({
         throw new Error(`Bulletin allowance was not granted (${outcome}).`);
     }
 
+    await storeSlotAccountKey(env, ownerAddress, "BulletInAllowance", key);
+
     if (bulletinApi) {
         await waitForBulletinSlotAuthorization(bulletinApi, key, requiredBytes);
     }
 
-    await storeSlotAccountKey(env, ownerAddress, "BulletInAllowance", key);
     await markAllowance(env, ownerAddress, "BulletInAllowance", "host");
     return createSlotAccountSigner(key);
 }

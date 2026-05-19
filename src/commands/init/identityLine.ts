@@ -20,25 +20,22 @@
  * `completion.ts` next to `InitScreen.tsx` for the same pattern).
  */
 
-import { deriveH160, ss58Decode, ss58Encode } from "@parity/product-sdk-address";
-import { deriveProductAccountPublicKey } from "@parity/product-sdk-keys";
-import { PLAYGROUND_PRODUCT_ID } from "../../config.js";
+import { deriveH160, ss58Decode } from "@parity/product-sdk-address";
 
 export interface ProductAccountAddresses {
     ss58: string;
     h160: `0x${string}`;
 }
 
-export function productAccountAddresses(rootAccountSs58: string): ProductAccountAddresses {
-    const { publicKey } = ss58Decode(rootAccountSs58);
-    const productPubkey = deriveProductAccountPublicKey(publicKey, PLAYGROUND_PRODUCT_ID, 0);
+export function productAccountAddresses(productAccountSs58: string): ProductAccountAddresses {
+    const { publicKey } = ss58Decode(productAccountSs58);
     return {
-        ss58: ss58Encode(productPubkey),
-        h160: deriveH160(productPubkey),
+        ss58: productAccountSs58,
+        h160: deriveH160(publicKey),
     };
 }
 
-export function productAccountDisplay(rootAccountSs58: string): string {
-    const { ss58, h160 } = productAccountAddresses(rootAccountSs58);
+export function productAccountDisplay(productAccountSs58: string): string {
+    const { ss58, h160 } = productAccountAddresses(productAccountSs58);
     return `${ss58} (${h160})`;
 }
