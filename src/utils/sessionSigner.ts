@@ -57,7 +57,7 @@ import { fromHex, toHex } from "polkadot-api/utils";
 import { ss58Encode } from "@parity/product-sdk-address";
 import type { UserSession } from "@parity/product-sdk-terminal";
 import type { PolkadotSigner } from "polkadot-api";
-import { deriveProductAccountPublicKey } from "./productAccountDerivation.js";
+import { deriveProductAccountPublicKey } from "@parity/product-sdk-keys";
 
 export interface ProductAccountRef {
     productId: string;
@@ -111,7 +111,8 @@ export function createPlaygroundSessionSigner(
     // `derivationPath = null`). Sr25519 soft derivation is composable on
     // public keys alone, so deriving from it locally produces the SAME public
     // key the mobile derives privately via `mnemonic + "/product/...{idx}"`.
-    // See `productAccountDerivation.test.ts` for the proof-of-equivalence.
+    // Algorithm parity with mobile/desktop is locked by the frozen vectors in
+    // `@parity/product-sdk-keys`'s `product-account.test.ts`.
     const publicKey = deriveProductAccountPublicKey(
         new Uint8Array(session.rootAccountId),
         ref.productId,

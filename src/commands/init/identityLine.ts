@@ -18,16 +18,11 @@
  * `.tsx` per the repo convention "pure logic that lives inside a `.tsx`
  * component should be lifted into a sibling `.ts` file" (see
  * `completion.ts` next to `InitScreen.tsx` for the same pattern).
- *
- * The product-account derivation here uses the local
- * `src/utils/productAccountDerivation.ts` mirror; Phase 3 of the
- * product-account unification migration will swap that for the canonical
- * `@parity/product-sdk-keys` export. Output is byte-identical either way.
  */
 
 import { deriveH160, ss58Decode, ss58Encode, truncateAddress } from "@parity/product-sdk-address";
+import { deriveProductAccountPublicKey } from "@parity/product-sdk-keys";
 import { PLAYGROUND_PRODUCT_ID } from "../../config.js";
-import { deriveProductAccountPublicKey } from "../../utils/productAccountDerivation.js";
 
 export interface ProductAccountAddresses {
     ss58: string;
