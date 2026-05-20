@@ -28,7 +28,6 @@ function input(overrides: Partial<DetectInput> = {}): DetectInput {
         packageJson: null,
         lockfiles: new Set(),
         configFiles: new Set(),
-        hasNodeModules: true,
         cargoToml: null,
         ...overrides,
     };
@@ -147,19 +146,23 @@ describe("detectBuildConfig", () => {
 });
 
 describe("detectInstallConfig", () => {
-    it("returns null when node_modules is already present", () => {
+    it("returns an install command even when node_modules already exists (idempotent reconcile)", () => {
+        // A stale node_modules/ — e.g. after a branch switch — bypasses any
+        // missing-folder guard and lets the build run against package versions
+        // that don't match the lockfile. We install unconditionally so that
+        // case can't reach the build step.
         expect(
             detectInstallConfig(
                 input({
                     packageJson: { dependencies: { vite: "^5.0.0" } },
-                    hasNodeModules: true,
+                    lockfiles: new Set(["pnpm-lock.yaml"]),
                 }),
             ),
-        ).toBeNull();
+        ).toEqual({ cmd: "pnpm", args: ["install"], description: "pnpm install" });
     });
 
     it("returns null when package.json is missing", () => {
-        expect(detectInstallConfig(input({ hasNodeModules: false }))).toBeNull();
+        expect(detectInstallConfig(input())).toBeNull();
     });
 
     it("returns null when the project declares no dependencies", () => {
@@ -169,7 +172,6 @@ describe("detectInstallConfig", () => {
             detectInstallConfig(
                 input({
                     packageJson: { scripts: { build: "echo hi" } },
-                    hasNodeModules: false,
                 }),
             ),
         ).toBeNull();
@@ -180,7 +182,6 @@ describe("detectInstallConfig", () => {
             detectInstallConfig(
                 input({
                     packageJson: { devDependencies: { vite: "^7.0.0" } },
-                    hasNodeModules: false,
                 }),
             ),
         ).toEqual({ cmd: "npm", args: ["install"], description: "npm install" });
@@ -192,7 +193,6 @@ describe("detectInstallConfig", () => {
                 input({
                     packageJson: { dependencies: { react: "^19.0.0" } },
                     lockfiles: new Set(["pnpm-lock.yaml"]),
-                    hasNodeModules: false,
                 }),
             ),
         ).toEqual({ cmd: "pnpm", args: ["install"], description: "pnpm install" });
@@ -202,7 +202,6 @@ describe("detectInstallConfig", () => {
                 input({
                     packageJson: { dependencies: { react: "^19.0.0" } },
                     lockfiles: new Set(["bun.lockb"]),
-                    hasNodeModules: false,
                 }),
             ),
         ).toEqual({ cmd: "bun", args: ["install"], description: "bun install" });
@@ -212,7 +211,6 @@ describe("detectInstallConfig", () => {
                 input({
                     packageJson: { dependencies: { react: "^19.0.0" } },
                     lockfiles: new Set(["yarn.lock"]),
-                    hasNodeModules: false,
                 }),
             ),
         ).toEqual({ cmd: "yarn", args: ["install"], description: "yarn install" });

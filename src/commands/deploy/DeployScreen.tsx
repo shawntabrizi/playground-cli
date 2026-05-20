@@ -997,7 +997,6 @@ function RunningStage({
                     <Row
                         mark={stepMark(playgroundState.status)}
                         label="publish to playground"
-                        value={playgroundState.error}
                         tone={playgroundState.status === "error" ? "danger" : "muted"}
                     />
                 </Box>
@@ -1030,7 +1029,6 @@ function ContractsSectionView({ state }: { state: ContractsSectionState }) {
             <Row
                 mark={stepMark(state.deployStatus)}
                 label="deploy"
-                value={state.error}
                 tone={state.deployStatus === "error" ? "danger" : "muted"}
             />
             {state.contracts.length > 0 && (
@@ -1072,7 +1070,6 @@ function FrontendSectionView({ state }: { state: FrontendSectionState }) {
             <Row
                 mark={stepMark(state.uploadStatus)}
                 label="upload + dotns"
-                value={state.error}
                 tone={state.uploadStatus === "error" ? "danger" : "muted"}
             />
             {running && state.latestLog && <Hint indent={2}>{truncate(state.latestLog, 120)}</Hint>}
