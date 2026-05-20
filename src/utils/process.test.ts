@@ -87,9 +87,9 @@ describe("runStreamed", () => {
         ).rejects.toThrow(/\(no output\)/);
     });
 
-    it("caps the captured tail and reports only the LAST 10 lines on failure (not the first)", async () => {
+    it("caps the captured tail and reports only the LAST 40 lines on failure (not the first)", async () => {
         // Generate 60 numbered lines, then exit 1. Tail buffer holds the last
-        // 50; the error message shows the last 10 of those — so 51..60.
+        // 40, which is what the error message reports — so 21..60.
         try {
             await runStreamed({
                 cmd: "/bin/sh",
@@ -99,15 +99,50 @@ describe("runStreamed", () => {
             expect.fail("expected rejection");
         } catch (err) {
             const msg = (err as Error).message;
-            // Last 10 lines must appear.
-            for (let i = 51; i <= 60; i++) {
+            // Last 40 lines must appear.
+            for (let i = 21; i <= 60; i++) {
                 expect(msg).toContain(`line-${i}`);
             }
             // Anything earlier must NOT: confirms we're taking the tail, not
-            // the head, and that the slice is capped at 10.
+            // the head, and that the buffer is capped at 40.
             expect(msg).not.toContain("line-1\n");
-            expect(msg).not.toContain("line-50\n");
-            expect(msg).not.toContain("line-10\n");
+            expect(msg).not.toContain("line-20\n");
+        }
+    });
+
+    it("preserves a Vite/Rollup-style error message that precedes a long stack trace", async () => {
+        // Realistic shape: vite prints the build banner, a single descriptive
+        // error line, a code snippet, and finally a ~12-frame stack trace.
+        // With the older 10-line snippet the actual error was pushed off the
+        // window by the trailing trace; the wider window keeps it visible.
+        const script = [
+            "echo 'vite v7.3.2 building client environment for production...'",
+            "echo 'transforming...'",
+            "echo '✓ 1544 modules transformed.'",
+            "echo '✗ Build failed in 843ms'",
+            "echo 'error during build:'",
+            `echo '  src/utils/contracts.ts (40:9): \"createContractRuntimeFromClient\" is not exported by node_modules/@parity/product-sdk-contracts/dist/index.js'`,
+            "echo 'file: /tmp/contracts.ts:40:9'",
+            "echo '38: import type { PolkadotSigner } from \"polkadot-api\";'",
+            "echo '39: import { keccak256 } from \"@parity/product-sdk-utils\";'",
+            "echo '40: import { createContractRuntimeFromClient } from \"@parity/product-sdk-contracts\";'",
+            "echo '             ^'",
+            "echo '41: import { paseo_asset_hub } from \"@parity/product-sdk-descriptors\";'",
+            "for i in $(seq 1 12); do echo '    at frame-'$i' (file:///.../rollup/dist/es/shared/node-entry.js:1234:5)'; done",
+            "exit 1",
+        ].join("; ");
+
+        try {
+            await runStreamed({
+                cmd: "/bin/sh",
+                args: ["-c", script],
+                description: "vite-like-failure",
+            });
+            expect.fail("expected rejection");
+        } catch (err) {
+            const msg = (err as Error).message;
+            expect(msg).toContain('"createContractRuntimeFromClient" is not exported');
+            expect(msg).toContain("at frame-12");
         }
     });
 });

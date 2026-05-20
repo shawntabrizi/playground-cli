@@ -61,8 +61,6 @@ export interface DetectInput {
     lockfiles: Set<string>;
     /** Set of additional config-file basenames (e.g. vite.config.ts). */
     configFiles: Set<string>;
-    /** Whether a node_modules/ directory exists at the project root. */
-    hasNodeModules: boolean;
     /** Raw Cargo.toml contents (used to gate the cdm contract flow). Null when absent. */
     cargoToml: string | null;
 }
@@ -172,17 +170,19 @@ export function detectContractsType(input: DetectInput): ContractsType | null {
 
 /**
  * Decide whether we need to run an install step before building. Returns the
- * install command when the project has dependencies declared but no
- * node_modules/ directory, otherwise null.
+ * install command whenever the project declares any dependencies, otherwise
+ * null.
  *
- * Rationale: without this check, `dot build` for an uninstalled project falls
- * through to `npx vite build` (or similar), which ephemerally downloads the
- * framework binary but can't resolve the project's own `vite.config.ts`
- * imports — yielding a confusing ERR_MODULE_NOT_FOUND deep in the config
- * loader. Auto-installing first eliminates the footgun.
+ * We install unconditionally (not just when node_modules/ is missing) because
+ * a stale node_modules/ — e.g. after a branch switch or a teammate bumping the
+ * lockfile — bypasses the missing-folder guard and lets the build run against
+ * package versions that don't match the lockfile. The resulting "X is not
+ * exported by Y" error from Vite/Rollup is opaque and the user has no signal
+ * that the fix is a re-install. pnpm/yarn/npm are all idempotent when in sync
+ * (~1s no-op), so the cost is negligible. Skipping install for a deps-free
+ * package.json is still safe: there's nothing to install.
  */
 export function detectInstallConfig(input: DetectInput): InstallConfig | null {
-    if (input.hasNodeModules) return null;
     const pkg = input.packageJson;
     if (!pkg) return null;
     const depCount =

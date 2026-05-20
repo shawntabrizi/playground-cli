@@ -62,7 +62,7 @@ const {
         packageJson: { scripts: { build: "vite build" } },
         lockfiles: new Set<string>(),
         configFiles: new Set<string>(),
-        hasNodeModules: true,
+        cargoToml: null,
     })),
     detectContractsTypeMock: vi.fn<() => "foundry" | "hardhat" | "cdm" | null>(() => null),
     runContractsPhaseMock: vi.fn<

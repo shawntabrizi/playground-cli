@@ -76,7 +76,6 @@ export function loadDetectInput(projectDir: string): DetectInput {
         packageJson,
         lockfiles,
         configFiles,
-        hasNodeModules: existsSync(join(root, "node_modules")),
         cargoToml,
     };
 }

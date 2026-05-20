@@ -34,8 +34,12 @@ export interface RunStreamedOptions {
 
 /**
  * Spawn a child process, stream every non-empty stdout/stderr line through
- * `onData`, and resolve/reject based on exit code. Includes the last ~10
+ * `onData`, and resolve/reject based on exit code. Includes the last ~40
  * lines of output in the rejection message so failures are diagnosable.
+ *
+ * The window is 40 (not 10) because Vite/Rollup and many bundlers print the
+ * meaningful error first and then a 10–20 line stack trace; a smaller window
+ * keeps the trace and drops the message that explains what actually broke.
  */
 export async function runStreamed(opts: RunStreamedOptions): Promise<void> {
     const description = opts.description ?? `${opts.cmd} ${opts.args.join(" ")}`;
@@ -49,7 +53,7 @@ export async function runStreamed(opts: RunStreamedOptions): Promise<void> {
         });
 
         const tail: string[] = [];
-        const MAX_TAIL = 50;
+        const MAX_TAIL = 40;
 
         const forward = (chunk: Buffer) => {
             for (const line of chunk.toString().split("\n")) {
@@ -71,7 +75,7 @@ export async function runStreamed(opts: RunStreamedOptions): Promise<void> {
             if (code === 0) {
                 resolvePromise();
             } else {
-                const snippet = tail.slice(-10).join("\n") || "(no output)";
+                const snippet = tail.join("\n") || "(no output)";
                 rejectPromise(
                     new Error(
                         `${failurePrefix} (${description}) with exit code ${code}.\n${snippet}`,
