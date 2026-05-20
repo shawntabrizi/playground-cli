@@ -28,11 +28,10 @@ import {
     type AllocatableResource,
 } from "../../utils/allowances/host.js";
 import { hasAllowance, markAllowance } from "../../utils/allowances/marker.js";
-import { hasUsableBulletinSlotAuthorization } from "../../utils/allowances/bulletin.js";
+import { getBulletinSlotAuthorization } from "../../utils/allowances/bulletin.js";
 import {
-    getOrCreateSlotAccountKey,
-    getSlotAccountAddress,
     hasSlotAccountKey,
+    readSlotAccountKey,
     storeSlotAccountKeysFromOutcomes,
 } from "../../utils/allowances/slotKeys.js";
 
@@ -148,49 +147,45 @@ export function AccountSetup({
             const env = DEFAULT_ENV;
 
             // ── Step 0: Resource allowances ─────────────────────────────────
-            // Allowances are requested against the product-derived account
-            // (host-papp's `productAccountId = [PLAYGROUND_PRODUCT_ID, 0]`),
-            // which is the same SS58 used everywhere else in this flow. Bulletin
-            // is intentionally not requested from mobile here: the CLI creates
-            // a local slot account and tells the user to authorize that account
-            // through the Bulletin faucet until product-sdk exposes the proper
-            // host-side preimage path.
+            // The CLI acts as the Host for terminal sessions: request RFC-0010
+            // allocations from mobile, cache returned slot keys, then use the
+            // Bulletin slot key for metadata uploads.
             update(0, { status: "active", value: "checking…", valueTone: "muted" });
             let accountSetupOk = true;
             try {
                 const tags = PLAYGROUND_RESOURCES.map((r) => r.tag);
                 const marked = await Promise.all(tags.map((t) => hasAllowance(env, address, t)));
                 const slotKeys = await Promise.all([
+                    hasSlotAccountKey(env, address, "BulletInAllowance"),
                     hasSlotAccountKey(env, address, "StatementStoreAllowance"),
                 ]);
-                const bulletinKey = await getOrCreateSlotAccountKey(
-                    env,
-                    address,
-                    "BulletInAllowance",
-                );
-                if (cancelled) return;
-                let bulletinUsable = false;
-                try {
-                    bulletinUsable = await hasUsableBulletinSlotAuthorization(
-                        client.bulletin,
-                        bulletinKey,
-                        1,
-                    );
-                } catch {
-                    bulletinUsable = false;
-                }
-                if (cancelled) return;
-                const slotAccountAddress = getSlotAccountAddress(bulletinKey);
-                setBulletinWarning(
-                    bulletinUsable
-                        ? null
-                        : {
-                              slotAccountAddress,
-                          },
-                );
-                if (bulletinUsable) {
-                    await markAllowance(env, address, "BulletInAllowance", "host");
-                }
+
+                const refreshBulletinWarning = async () => {
+                    const bulletinKey = await readSlotAccountKey(env, address, "BulletInAllowance");
+                    if (!bulletinKey) {
+                        setBulletinWarning(null);
+                        return;
+                    }
+                    try {
+                        const authorization = await getBulletinSlotAuthorization(
+                            client.bulletin,
+                            bulletinKey,
+                            1,
+                        );
+                        setBulletinWarning(
+                            authorization.usable
+                                ? null
+                                : { slotAccountAddress: authorization.address },
+                        );
+                        if (authorization.usable) {
+                            await markAllowance(env, address, "BulletInAllowance", "host");
+                        }
+                    } catch {
+                        setBulletinWarning(null);
+                    }
+                };
+
+                await refreshBulletinWarning();
 
                 const allMarked = marked.every(Boolean) && slotKeys.every(Boolean);
                 if (allMarked) {
@@ -224,6 +219,7 @@ export function AccountSetup({
                     for (const resource of summary.granted) {
                         await markAllowance(env, address, resource.tag, "host");
                     }
+                    await refreshBulletinWarning();
 
                     if (summary.rejected.length > 0 || summary.unavailable.length > 0) {
                         const denied = [...summary.rejected, ...summary.unavailable]

@@ -96,10 +96,84 @@ function isSlotAccountResource(tag: ResourceTag): tag is SlotAccountResourceTag 
 }
 
 function normalizeSlotAccountKey(key: Uint8Array): Uint8Array {
-    if (key.length !== 64) {
-        throw new Error(`Expected 64-byte sr25519 slot account key, got ${key.length} bytes`);
+    if (key.length !== 32 && key.length !== 64) {
+        throw new Error(
+            `Expected 32-byte sr25519 mini-secret or 64-byte slot account key, got ${key.length} bytes`,
+        );
     }
     return new Uint8Array(key);
+}
+
+function encodeSchnorrkelScalarForScure(secret: Uint8Array): Uint8Array {
+    const encoded = new Uint8Array(32);
+    let carry = 0;
+    for (let i = 0; i < 32; i++) {
+        const value = secret[i] * 8 + carry;
+        encoded[i] = value & 0xff;
+        carry = value >> 8;
+    }
+    return encoded;
+}
+
+function normalizeSchnorrkelSecretKeyBytes(secret: Uint8Array): Uint8Array {
+    const normalized = new Uint8Array(secret);
+    normalized.set(encodeSchnorrkelScalarForScure(secret.subarray(0, 32)), 0);
+    return normalized;
+}
+
+function normalizeAllocatedSlotAccountKey(key: Uint8Array): Uint8Array {
+    const normalized = normalizeSlotAccountKey(key);
+    if (normalized.length === 32) return normalized;
+
+    // Account Protocol mobile implementations hand over schnorrkel
+    // `SecretKey::to_bytes()` material. @scure/sr25519 signs with the
+    // `to_ed25519_bytes()` scalar representation, so normalize the scalar
+    // half before caching keys returned by `requestResourceAllocation`.
+    return normalizeSchnorrkelSecretKeyBytes(normalized);
+}
+
+function slotAccountSigningSecret(key: Uint8Array): Uint8Array {
+    const normalized = normalizeSlotAccountKey(key);
+    return normalized.length === 32 ? secretFromSeed(normalized) : normalized;
+}
+
+export interface SlotAccountKeyCandidate {
+    slotAccountKey: Uint8Array;
+    publicKey: Uint8Array;
+    address: string;
+}
+
+export function getSlotAccountKeyCandidates(slotAccountKey: Uint8Array): SlotAccountKeyCandidate[] {
+    const normalized = normalizeSlotAccountKey(slotAccountKey);
+    const secrets =
+        normalized.length === 32
+            ? [secretFromSeed(normalized)]
+            : [normalized, normalizeSchnorrkelSecretKeyBytes(normalized)];
+    const seen = new Set<string>();
+    const candidates: SlotAccountKeyCandidate[] = [];
+
+    for (const secret of secrets) {
+        let publicKey: Uint8Array;
+        try {
+            publicKey = getPublicKey(secret);
+        } catch {
+            continue;
+        }
+        const publicKeyHex = toHex(publicKey);
+        if (seen.has(publicKeyHex)) continue;
+        seen.add(publicKeyHex);
+        candidates.push({
+            slotAccountKey: secret,
+            publicKey,
+            address: AccountId().dec(publicKey),
+        });
+    }
+
+    if (candidates.length === 0) {
+        throw new Error("Unable to derive sr25519 public key from slot account key");
+    }
+
+    return candidates;
 }
 
 export async function readSlotAccountKey(
@@ -165,7 +239,7 @@ export function extractSlotAccountKey(
             | undefined;
         if (allocated?.tag !== resource) continue;
         const key = allocated.value?.slotAccountKey;
-        return key instanceof Uint8Array ? normalizeSlotAccountKey(key) : null;
+        return key instanceof Uint8Array ? normalizeAllocatedSlotAccountKey(key) : null;
     }
     return null;
 }
@@ -199,7 +273,7 @@ export async function storeSlotAccountKeysFromOutcomes(
         const envBucket = file.envs[env] ?? {};
         const addrBucket = envBucket[address] ?? {};
         addrBucket[allocated.tag] = {
-            slotAccountKey: toHex(normalizeSlotAccountKey(key)) as `0x${string}`,
+            slotAccountKey: toHex(normalizeAllocatedSlotAccountKey(key)) as `0x${string}`,
             storedAt,
         };
         envBucket[address] = addrBucket;
@@ -211,14 +285,20 @@ export async function storeSlotAccountKeysFromOutcomes(
 }
 
 export function createSlotAccountSigner(slotAccountKey: Uint8Array): PolkadotSigner {
-    const secret = normalizeSlotAccountKey(slotAccountKey);
+    const secret = slotAccountSigningSecret(slotAccountKey);
     const publicKey = getPublicKey(secret);
     return getPolkadotSigner(publicKey, "Sr25519", (payload) => sign(secret, payload));
 }
 
 export function getSlotAccountAddress(slotAccountKey: Uint8Array): string {
-    return AccountId().dec(getPublicKey(normalizeSlotAccountKey(slotAccountKey)));
+    return getSlotAccountKeyCandidates(slotAccountKey)[0].address;
 }
 
 /** Visible for tests; not part of the public API. @internal */
-export const _internal = { getKeyPath, loadFile, saveFile };
+export const _internal = {
+    getKeyPath,
+    loadFile,
+    saveFile,
+    normalizeAllocatedSlotAccountKey,
+    normalizeSchnorrkelSecretKeyBytes,
+};

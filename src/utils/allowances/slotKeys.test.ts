@@ -23,6 +23,7 @@ import {
     createSlotAccountSigner,
     extractSlotAccountKey,
     getOrCreateSlotAccountKey,
+    getSlotAccountKeyCandidates,
     hasSlotAccountKey,
     readSlotAccountKey,
     storeSlotAccountKey,
@@ -33,6 +34,18 @@ import type { AllocationOutcome } from "./host.js";
 const ADDR = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 const KEY = secretFromSeed(new Uint8Array(32).fill(7));
 const KEY_2 = secretFromSeed(new Uint8Array(32).fill(8));
+const MINI_SECRET = new Uint8Array(32).fill(9);
+
+function schnorrkelBytesFromScureSecret(secret: Uint8Array): Uint8Array {
+    const raw = new Uint8Array(secret);
+    let carry = 0;
+    for (let i = 31; i >= 0; i--) {
+        const value = secret[i] + carry * 256;
+        raw[i] = value >> 3;
+        carry = value & 0x07;
+    }
+    return raw;
+}
 
 let tempRoot: string;
 let originalPolkadotRoot: string | undefined;
@@ -74,15 +87,17 @@ describe("slot account key cache", () => {
         );
     });
 
-    it("extracts and stores slot account keys from allocation outcomes", async () => {
+    it("extracts and stores normalized slot account keys from allocation outcomes", async () => {
+        const mobileKey = schnorrkelBytesFromScureSecret(KEY);
+        const mobileKey2 = schnorrkelBytesFromScureSecret(KEY_2);
         const outcomes: AllocationOutcome[] = [
             {
                 tag: "Allocated",
-                value: { tag: "BulletInAllowance", value: { slotAccountKey: KEY } },
+                value: { tag: "BulletInAllowance", value: { slotAccountKey: mobileKey } },
             },
             {
                 tag: "Allocated",
-                value: { tag: "StatementStoreAllowance", value: { slotAccountKey: KEY_2 } },
+                value: { tag: "StatementStoreAllowance", value: { slotAccountKey: mobileKey2 } },
             },
             { tag: "Allocated", value: { tag: "SmartContractAllowance", value: undefined } },
         ];
@@ -102,14 +117,19 @@ describe("slot account key cache", () => {
         // and the second-returned sibling key would be dropped. The
         // batched read-modify-write must keep both keys.
         const otherKey = secretFromSeed(new Uint8Array(32).fill(13));
+        const mobileKey = schnorrkelBytesFromScureSecret(KEY);
+        const otherMobileKey = schnorrkelBytesFromScureSecret(otherKey);
         const outcomes: AllocationOutcome[] = [
             {
                 tag: "Allocated",
-                value: { tag: "BulletInAllowance", value: { slotAccountKey: KEY } },
+                value: { tag: "BulletInAllowance", value: { slotAccountKey: mobileKey } },
             },
             {
                 tag: "Allocated",
-                value: { tag: "StatementStoreAllowance", value: { slotAccountKey: otherKey } },
+                value: {
+                    tag: "StatementStoreAllowance",
+                    value: { slotAccountKey: otherMobileKey },
+                },
             },
         ];
 
@@ -126,6 +146,21 @@ describe("slot account key cache", () => {
 
         expect(signer.publicKey).toHaveLength(32);
         await expect(signer.signBytes(new Uint8Array([1, 2, 3]))).resolves.toHaveLength(64);
+    });
+
+    it("creates a signer from a 32-byte mini-secret slot account key", async () => {
+        const signer = createSlotAccountSigner(MINI_SECRET);
+
+        expect(signer.publicKey).toHaveLength(32);
+        await expect(signer.signBytes(new Uint8Array([1, 2, 3]))).resolves.toHaveLength(64);
+    });
+
+    it("returns compatibility candidates for legacy unnormalized 64-byte keys", () => {
+        const mobileKey = schnorrkelBytesFromScureSecret(KEY);
+        const candidates = getSlotAccountKeyCandidates(mobileKey);
+
+        expect(candidates).toHaveLength(2);
+        expect(candidates[1].slotAccountKey).toEqual(KEY);
     });
 
     it("creates and then reuses a local slot key when none is cached", async () => {

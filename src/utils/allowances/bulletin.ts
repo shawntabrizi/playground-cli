@@ -15,13 +15,15 @@
 
 import type { PolkadotSigner } from "polkadot-api";
 import { checkAuthorization, type BulletinApi } from "@parity/product-sdk-bulletin";
-import { getChainConfig, type Env } from "../../config.js";
+import { getChainConfig, PLAYGROUND_PRODUCT_ID, type Env } from "../../config.js";
 import type { ResolvedSigner } from "../signer.js";
 import {
     createSlotAccountSigner,
-    getOrCreateSlotAccountKey,
-    getSlotAccountAddress,
+    getSlotAccountKeyCandidates,
+    readSlotAccountKey,
+    storeSlotAccountKeysFromOutcomes,
 } from "./slotKeys.js";
+import { requestResourceAllocation, type AllocationOutcome } from "./host.js";
 
 export interface BulletinAllowanceSignerOptions {
     env: Env;
@@ -51,20 +53,91 @@ function hasUsableAuthorization(
     );
 }
 
+export interface BulletinSlotAuthorization {
+    slotAccountKey: Uint8Array;
+    address: string;
+    status: Awaited<ReturnType<typeof checkAuthorization>>;
+    usable: boolean;
+}
+
 export async function hasUsableBulletinSlotAuthorization(
     bulletinApi: BulletinApi,
     slotAccountKey: Uint8Array,
     requiredBytes = 0,
 ): Promise<boolean> {
-    const status = await getBulletinSlotAuthorization(bulletinApi, slotAccountKey);
-    return hasUsableAuthorization(status, requiredBytes);
+    const authorization = await getBulletinSlotAuthorization(
+        bulletinApi,
+        slotAccountKey,
+        requiredBytes,
+    );
+    return authorization.usable;
 }
 
-async function getBulletinSlotAuthorization(
+export async function getBulletinSlotAuthorization(
     bulletinApi: BulletinApi,
     slotAccountKey: Uint8Array,
-): Promise<Awaited<ReturnType<typeof checkAuthorization>>> {
-    return await checkAuthorization(bulletinApi, getSlotAccountAddress(slotAccountKey));
+    requiredBytes = 0,
+): Promise<BulletinSlotAuthorization> {
+    const candidates = getSlotAccountKeyCandidates(slotAccountKey);
+    const checked: BulletinSlotAuthorization[] = [];
+
+    for (const candidate of candidates) {
+        const status = await checkAuthorization(bulletinApi, candidate.address);
+        const usable = hasUsableAuthorization(status, requiredBytes);
+        const authorization = {
+            slotAccountKey: candidate.slotAccountKey,
+            address: candidate.address,
+            status,
+            usable,
+        };
+        if (usable || status.authorized) return authorization;
+        checked.push(authorization);
+    }
+
+    return checked.find((authorization) => authorization.status.authorized) ?? checked[0];
+}
+
+function allocatedBulletinKey(outcomes: AllocationOutcome[]): Uint8Array | null {
+    for (const outcome of outcomes) {
+        if (outcome.tag !== "Allocated") continue;
+        const value = outcome.value as
+            | { tag?: string; value?: { slotAccountKey?: Uint8Array } }
+            | undefined;
+        if (value?.tag !== "BulletInAllowance") continue;
+        return value.value?.slotAccountKey instanceof Uint8Array
+            ? value.value.slotAccountKey
+            : null;
+    }
+    return null;
+}
+
+async function requestBulletinAllowanceKey(
+    { env, ownerAddress, publishSigner }: BulletinAllowanceSignerOptions,
+    onExisting: "Ignore" | "Increase",
+): Promise<Uint8Array> {
+    if (!publishSigner.userSession) {
+        throw new Error(
+            'No Bulletin allowance account cached. Run "dot init" to grant allowances.',
+        );
+    }
+
+    const outcomes = await requestResourceAllocation(
+        publishSigner.userSession,
+        PLAYGROUND_PRODUCT_ID,
+        [{ tag: "BulletInAllowance", value: undefined }],
+        onExisting,
+    );
+    await storeSlotAccountKeysFromOutcomes(env, ownerAddress, outcomes);
+
+    const key = allocatedBulletinKey(outcomes);
+    const cached = await readSlotAccountKey(env, ownerAddress, "BulletInAllowance");
+    if (cached) return cached;
+
+    if (key) return key;
+    const outcome = outcomes[0];
+    throw new Error(
+        `Bulletin allowance allocation ${outcome?.tag ?? "returned no outcome"}. Re-run \`dot init\` and approve on your phone.`,
+    );
 }
 
 export async function getBulletinAllowanceSigner({
@@ -78,21 +151,35 @@ export async function getBulletinAllowanceSigner({
     // supplied a local key and owns making sure it has Bulletin allowance.
     if (publishSigner.source === "dev") return publishSigner.signer;
 
-    const key = await getOrCreateSlotAccountKey(env, ownerAddress, "BulletInAllowance");
+    let key = await readSlotAccountKey(env, ownerAddress, "BulletInAllowance");
+    if (!key) {
+        key = await requestBulletinAllowanceKey(
+            { env, ownerAddress, publishSigner, bulletinApi, requiredBytes },
+            "Ignore",
+        );
+    }
 
     if (!bulletinApi) return createSlotAccountSigner(key);
 
-    const status = await getBulletinSlotAuthorization(bulletinApi, key);
-    if (!hasUsableAuthorization(status, requiredBytes)) {
-        const address = getSlotAccountAddress(key);
+    let authorization = await getBulletinSlotAuthorization(bulletinApi, key, requiredBytes);
+    if (!authorization.usable && authorization.status.authorized) {
+        key = await requestBulletinAllowanceKey(
+            { env, ownerAddress, publishSigner, bulletinApi, requiredBytes },
+            "Increase",
+        );
+        authorization = await getBulletinSlotAuthorization(bulletinApi, key, requiredBytes);
+    }
+
+    if (!authorization.usable) {
+        const address = authorization.address;
         throw new Error(
-            status.authorized
+            authorization.status.authorized
                 ? `Bulletin allowance for ${address} is live but does not have enough quota. ${bulletinAuthorizationHelp(address)}`
                 : `Bulletin allowance account ${address} is not authorized. ${bulletinAuthorizationHelp(address)}`,
         );
     }
 
-    return createSlotAccountSigner(key);
+    return createSlotAccountSigner(authorization.slotAccountKey);
 }
 
 export function isInvalidPaymentError(err: unknown): boolean {

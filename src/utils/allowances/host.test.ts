@@ -23,9 +23,9 @@ import {
 } from "./host.js";
 
 describe("PLAYGROUND_RESOURCES", () => {
-    it("requests mobile-granted StatementStore + SmartContract resources by default", () => {
+    it("requests mobile-granted Bulletin + StatementStore + SmartContract resources by default", () => {
         const tags = PLAYGROUND_RESOURCES.map((r) => r.tag);
-        expect(tags).not.toContain("BulletInAllowance");
+        expect(tags).toContain("BulletInAllowance");
         expect(tags).toContain("StatementStoreAllowance");
         expect(tags).toContain("SmartContractAllowance");
     });

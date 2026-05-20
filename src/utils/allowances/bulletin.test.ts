@@ -36,8 +36,20 @@ import { readSlotAccountKey, storeSlotAccountKey } from "./slotKeys.js";
 import { getChainConfig } from "../../config.js";
 
 const KEY = secretFromSeed(new Uint8Array(32).fill(7));
+const MOBILE_KEY = schnorrkelBytesFromScureSecret(KEY);
 const ENV = "paseo-next-v2";
 const OWNER = "5Owner";
+
+function schnorrkelBytesFromScureSecret(secret: Uint8Array): Uint8Array {
+    const raw = new Uint8Array(secret);
+    let carry = 0;
+    for (let i = 31; i >= 0; i--) {
+        const value = secret[i] + carry * 256;
+        raw[i] = value >> 3;
+        carry = value & 0x07;
+    }
+    return raw;
+}
 
 let root: string | null = null;
 
@@ -101,7 +113,6 @@ describe("Bulletin allowance authorization", () => {
             remainingBytes: 100n,
             expiration: 1,
         });
-
         const signer = await getBulletinAllowanceSigner({
             env: ENV,
             ownerAddress: OWNER,
@@ -118,8 +129,104 @@ describe("Bulletin allowance authorization", () => {
         expect(signer.publicKey).toHaveLength(32);
     });
 
-    it("creates a local slot key and points to the faucet when it is not authorized", async () => {
+    it("normalizes and uses a mobile-returned slot key when none is cached", async () => {
+        const owner = `${OWNER}-mobile`;
+        const requestResourceAllocation = vi.fn(async () => ({
+            isErr: () => false,
+            value: [
+                {
+                    tag: "Allocated",
+                    value: {
+                        tag: "BulletInAllowance",
+                        value: { slotAccountKey: MOBILE_KEY },
+                    },
+                },
+            ],
+        }));
         checkAuthorizationMock.mockResolvedValueOnce({
+            authorized: true,
+            remainingTransactions: 1,
+            remainingBytes: 100n,
+            expiration: 1,
+        });
+        await expect(readSlotAccountKey(ENV, owner, "BulletInAllowance")).resolves.toBeNull();
+
+        const signer = await getBulletinAllowanceSigner({
+            env: ENV,
+            ownerAddress: owner,
+            publishSigner: {
+                source: "session",
+                address: owner,
+                signer: {} as any,
+                userSession: { requestResourceAllocation } as any,
+                destroy() {},
+            },
+            bulletinApi: {} as any,
+            requiredBytes: 50,
+        });
+
+        expect(requestResourceAllocation).toHaveBeenCalledWith({
+            callingProductId: "playground.dot",
+            resources: [{ tag: "BulletInAllowance", value: undefined }],
+            onExisting: "Ignore",
+        });
+        expect(signer.publicKey).toHaveLength(32);
+        await expect(readSlotAccountKey(ENV, owner, "BulletInAllowance")).resolves.toEqual(KEY);
+    });
+
+    it("requests an additional Bulletin slot when cached authorization lacks quota", async () => {
+        await storeSlotAccountKey(ENV, OWNER, "BulletInAllowance", KEY);
+        const requestResourceAllocation = vi.fn(async () => ({
+            isErr: () => false,
+            value: [
+                {
+                    tag: "Allocated",
+                    value: {
+                        tag: "BulletInAllowance",
+                        value: { slotAccountKey: MOBILE_KEY },
+                    },
+                },
+            ],
+        }));
+        checkAuthorizationMock
+            .mockResolvedValueOnce({
+                authorized: true,
+                remainingTransactions: 0,
+                remainingBytes: 100n,
+                expiration: 1,
+            })
+            .mockResolvedValueOnce({
+                authorized: true,
+                remainingTransactions: 1,
+                remainingBytes: 100n,
+                expiration: 1,
+            });
+
+        const signer = await getBulletinAllowanceSigner({
+            env: ENV,
+            ownerAddress: OWNER,
+            publishSigner: {
+                source: "session",
+                address: OWNER,
+                signer: {} as any,
+                userSession: { requestResourceAllocation } as any,
+                destroy() {},
+            },
+            bulletinApi: {} as any,
+            requiredBytes: 50,
+        });
+
+        expect(requestResourceAllocation).toHaveBeenCalledWith({
+            callingProductId: "playground.dot",
+            resources: [{ tag: "BulletInAllowance", value: undefined }],
+            onExisting: "Increase",
+        });
+        expect(signer.publicKey).toHaveLength(32);
+    });
+
+    it("points to the faucet when the cached slot key is not authorized", async () => {
+        await storeSlotAccountKey(ENV, OWNER, "BulletInAllowance", KEY);
+        checkAuthorizationMock.mockResolvedValue({
             authorized: false,
             remainingTransactions: 0,
             remainingBytes: 0n,
@@ -134,14 +241,13 @@ describe("Bulletin allowance authorization", () => {
                     source: "session",
                     address: OWNER,
                     signer: {} as any,
+                    userSession: { requestResourceAllocation: vi.fn() } as any,
                     destroy() {},
                 },
                 bulletinApi: {} as any,
                 requiredBytes: 50,
             }),
         ).rejects.toThrow(/Bulletin authorization faucet/);
-
-        await expect(readSlotAccountKey(ENV, OWNER, "BulletInAllowance")).resolves.toHaveLength(64);
     });
 });
 
