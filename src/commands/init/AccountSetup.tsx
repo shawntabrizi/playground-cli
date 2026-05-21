@@ -154,9 +154,9 @@ export function AccountSetup({
                     hasSlotAccountKey(env, address, "StatementStoreAllowance"),
                 ]);
 
-                const refreshBulletinAllowanceMarker = async () => {
+                const refreshBulletinAllowanceMarker = async (): Promise<boolean> => {
                     const bulletinKey = await readSlotAccountKey(env, address, "BulletInAllowance");
-                    if (!bulletinKey) return;
+                    if (!bulletinKey) return false;
                     try {
                         const authorization = await getBulletinSlotAuthorization(
                             client.bulletin,
@@ -166,12 +166,18 @@ export function AccountSetup({
                         if (authorization.usable) {
                             await markAllowance(env, address, "BulletInAllowance", "host");
                         }
-                    } catch {}
+                        return authorization.usable;
+                    } catch {
+                        return false;
+                    }
                 };
 
-                await refreshBulletinAllowanceMarker();
+                const bulletinReady = await refreshBulletinAllowanceMarker();
 
-                const allMarked = marked.every(Boolean) && slotKeys.every(Boolean);
+                const resourcesReady = tags.every((tag, index) =>
+                    tag === "BulletInAllowance" ? bulletinReady : marked[index],
+                );
+                const allMarked = resourcesReady && slotKeys.every(Boolean);
                 if (allMarked) {
                     update(0, {
                         status: "ok",
@@ -201,6 +207,7 @@ export function AccountSetup({
                     // RFC-0010 allocation outcomes are independent: keep any
                     // successful keys even if a sibling resource was denied.
                     for (const resource of summary.granted) {
+                        if (resource.tag === "BulletInAllowance") continue;
                         await markAllowance(env, address, resource.tag, "host");
                     }
                     await refreshBulletinAllowanceMarker();

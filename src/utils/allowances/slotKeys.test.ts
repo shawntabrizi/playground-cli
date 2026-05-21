@@ -23,7 +23,6 @@ import {
     createSlotAccountSigner,
     extractSlotAccountKey,
     getOrCreateSlotAccountKey,
-    getSlotAccountKeyCandidates,
     hasSlotAccountKey,
     readSlotAccountKey,
     storeSlotAccountKey,
@@ -153,14 +152,6 @@ describe("slot account key cache", () => {
 
         expect(signer.publicKey).toHaveLength(32);
         await expect(signer.signBytes(new Uint8Array([1, 2, 3]))).resolves.toHaveLength(64);
-    });
-
-    it("returns compatibility candidates for legacy unnormalized 64-byte keys", () => {
-        const mobileKey = schnorrkelBytesFromScureSecret(KEY);
-        const candidates = getSlotAccountKeyCandidates(mobileKey);
-
-        expect(candidates).toHaveLength(2);
-        expect(candidates[1].slotAccountKey).toEqual(KEY);
     });
 
     it("creates and then reuses a local slot key when none is cached", async () => {

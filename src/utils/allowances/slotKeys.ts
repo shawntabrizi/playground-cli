@@ -137,45 +137,6 @@ function slotAccountSigningSecret(key: Uint8Array): Uint8Array {
     return normalized.length === 32 ? secretFromSeed(normalized) : normalized;
 }
 
-export interface SlotAccountKeyCandidate {
-    slotAccountKey: Uint8Array;
-    publicKey: Uint8Array;
-    address: string;
-}
-
-export function getSlotAccountKeyCandidates(slotAccountKey: Uint8Array): SlotAccountKeyCandidate[] {
-    const normalized = normalizeSlotAccountKey(slotAccountKey);
-    const secrets =
-        normalized.length === 32
-            ? [secretFromSeed(normalized)]
-            : [normalized, normalizeSchnorrkelSecretKeyBytes(normalized)];
-    const seen = new Set<string>();
-    const candidates: SlotAccountKeyCandidate[] = [];
-
-    for (const secret of secrets) {
-        let publicKey: Uint8Array;
-        try {
-            publicKey = getPublicKey(secret);
-        } catch {
-            continue;
-        }
-        const publicKeyHex = toHex(publicKey);
-        if (seen.has(publicKeyHex)) continue;
-        seen.add(publicKeyHex);
-        candidates.push({
-            slotAccountKey: secret,
-            publicKey,
-            address: AccountId().dec(publicKey),
-        });
-    }
-
-    if (candidates.length === 0) {
-        throw new Error("Unable to derive sr25519 public key from slot account key");
-    }
-
-    return candidates;
-}
-
 export async function readSlotAccountKey(
     env: Env,
     address: string,
@@ -291,7 +252,7 @@ export function createSlotAccountSigner(slotAccountKey: Uint8Array): PolkadotSig
 }
 
 export function getSlotAccountAddress(slotAccountKey: Uint8Array): string {
-    return getSlotAccountKeyCandidates(slotAccountKey)[0].address;
+    return AccountId().dec(getPublicKey(slotAccountSigningSecret(slotAccountKey)));
 }
 
 /** Visible for tests; not part of the public API. @internal */

@@ -19,7 +19,7 @@ import { PLAYGROUND_PRODUCT_ID, type Env } from "../../config.js";
 import type { ResolvedSigner } from "../signer.js";
 import {
     createSlotAccountSigner,
-    getSlotAccountKeyCandidates,
+    getSlotAccountAddress,
     readSlotAccountKey,
     storeSlotAccountKeysFromOutcomes,
 } from "./slotKeys.js";
@@ -69,23 +69,14 @@ export async function getBulletinSlotAuthorization(
     slotAccountKey: Uint8Array,
     requiredBytes = 0,
 ): Promise<BulletinSlotAuthorization> {
-    const candidates = getSlotAccountKeyCandidates(slotAccountKey);
-    const checked: BulletinSlotAuthorization[] = [];
-
-    for (const candidate of candidates) {
-        const status = await checkAuthorization(bulletinApi, candidate.address);
-        const usable = hasUsableAuthorization(status, requiredBytes);
-        const authorization = {
-            slotAccountKey: candidate.slotAccountKey,
-            address: candidate.address,
-            status,
-            usable,
-        };
-        if (usable || status.authorized) return authorization;
-        checked.push(authorization);
-    }
-
-    return checked.find((authorization) => authorization.status.authorized) ?? checked[0];
+    const address = getSlotAccountAddress(slotAccountKey);
+    const status = await checkAuthorization(bulletinApi, address);
+    return {
+        slotAccountKey,
+        address,
+        status,
+        usable: hasUsableAuthorization(status, requiredBytes),
+    };
 }
 
 function allocatedBulletinKey(outcomes: AllocationOutcome[]): Uint8Array | null {
@@ -153,6 +144,14 @@ export async function getBulletinAllowanceSigner({
     if (!bulletinApi) return createSlotAccountSigner(key);
 
     let authorization = await getBulletinSlotAuthorization(bulletinApi, key, requiredBytes);
+    if (!authorization.usable && !authorization.status.authorized) {
+        key = await requestBulletinAllowanceKey(
+            { env, ownerAddress, publishSigner, bulletinApi, requiredBytes },
+            "Ignore",
+        );
+        authorization = await getBulletinSlotAuthorization(bulletinApi, key, requiredBytes);
+    }
+
     if (!authorization.usable && authorization.status.authorized) {
         key = await requestBulletinAllowanceKey(
             { env, ownerAddress, publishSigner, bulletinApi, requiredBytes },
