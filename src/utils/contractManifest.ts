@@ -19,7 +19,8 @@ import {
     type CdmJson,
 } from "@parity/product-sdk-contracts";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
-import { REGISTRY_ADDRESS, resolveTargetRegistryAddress } from "@dotdm/contracts";
+import { resolveTargetRegistryAddress } from "@dotdm/contracts";
+import { getRegistryAddress } from "@dotdm/env";
 import type { HexString, PolkadotClient } from "polkadot-api";
 
 export const PLAYGROUND_REGISTRY_CONTRACT = "@w3s/playground-registry";
@@ -149,7 +150,7 @@ export async function resolveLiveContractAddresses(
     libraries: readonly string[] = LIVE_CONTRACTS,
     options: LiveContractLookupOptions = {},
 ): Promise<Record<string, HexString>> {
-    const registryAddress = options.registryAddress ?? (REGISTRY_ADDRESS as HexString);
+    const registryAddress = options.registryAddress ?? (getRegistryAddress() as HexString);
     const registry = await createContractFromClient(
         assetHub,
         paseo_asset_hub,

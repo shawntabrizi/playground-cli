@@ -15,7 +15,7 @@
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { CdmJson } from "@parity/product-sdk-contracts";
-import { REGISTRY_ADDRESS } from "@dotdm/contracts";
+import { getRegistryAddress } from "@dotdm/env";
 
 const { createContractFromClientMock, getAddressQueryMock } = vi.hoisted(() => ({
     createContractFromClientMock: vi.fn(),
@@ -167,7 +167,7 @@ describe("resolveLiveContractAddresses", () => {
         expect(createContractFromClientMock).toHaveBeenCalledWith(
             {},
             { genesis: "0xasset" },
-            REGISTRY_ADDRESS,
+            getRegistryAddress(),
             expect.any(Array),
             expect.any(Object),
         );

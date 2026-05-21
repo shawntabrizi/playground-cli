@@ -35,9 +35,9 @@ import {
 import { VERSION_LABEL } from "../utils/version.js";
 import { ContractPipelineStatusAdapter, type ContractStatus } from "./contractPipelineStatus.js";
 
-const COL_CONTRACT = 24;
-const COL_BUILD = 20;
-const COL_PHASE = 8;
+const COL_CONTRACT = 22;
+const COL_BUILD = 18;
+const COL_PHASE = 5;
 const COL_ADDR = 14;
 const BAR_WIDTH = 12;
 
@@ -226,16 +226,16 @@ function HeaderRow() {
                 <Text dimColor>build</Text>
             </Cell>
             <Cell width={COL_PHASE}>
-                <Text dimColor>deploy</Text>
+                <Text dimColor>dep</Text>
             </Cell>
             <Cell width={COL_PHASE}>
                 <Text dimColor>meta</Text>
             </Cell>
             <Cell width={COL_PHASE}>
-                <Text dimColor>register</Text>
+                <Text dimColor>reg</Text>
             </Cell>
             <Cell width={COL_ADDR}>
-                <Text dimColor>address</Text>
+                <Text dimColor>addr</Text>
             </Cell>
         </Box>
     );

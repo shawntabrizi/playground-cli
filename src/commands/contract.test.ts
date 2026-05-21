@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { REGISTRY_ADDRESS } from "@dotdm/contracts";
+import { getRegistryAddress } from "@dotdm/env";
 import { describe, expect, it } from "vitest";
 import { getChainConfig } from "../config.js";
 import { cdmPassthroughArgs, resolveContractDeployTarget } from "./contract.js";
@@ -52,7 +52,7 @@ describe("resolveContractDeployTarget", () => {
             assethubUrl: cfg.assetHubRpc,
             bulletinUrl: cfg.bulletinRpc,
             bulletinUrls: [cfg.bulletinRpc, ...cfg.bulletinRpcFallbacks],
-            registryAddress: REGISTRY_ADDRESS,
+            registryAddress: getRegistryAddress(cfg.env),
         });
     });
 

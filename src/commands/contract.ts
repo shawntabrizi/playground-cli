@@ -15,7 +15,8 @@
 
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import { REGISTRY_ADDRESS, resolveFeatures, type PipelineChainClient } from "@dotdm/contracts";
+import { resolveFeatures, type PipelineChainClient } from "@dotdm/contracts";
+import { getRegistryAddress } from "@dotdm/env";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
 import { Command } from "commander";
@@ -112,7 +113,7 @@ export function resolveContractDeployTarget(opts: ContractDeployOpts): ContractD
             ? [opts.bulletinUrl]
             : [bulletinUrl, ...cfg.bulletinRpcFallbacks],
         registryAddress: assertHexAddress(
-            opts.registryAddress ?? REGISTRY_ADDRESS,
+            opts.registryAddress ?? getRegistryAddress(cfg.env),
             "Registry address",
         ),
     };
