@@ -18,7 +18,8 @@
  *
  * We upload the metadata JSON through Bulletin `TransactionStorage.store`
  * with the product-scoped RFC-0010 Bulletin allowance account, then call
- * `registry.publish(domain, metadataCid)` ourselves via `getRegistryContract()`.
+ * `registry.publish(domain, metadataCid, visibility, owner)` ourselves via
+ * `getRegistryContract()`.
  * Publishing is always signed by the user's product account so the contract's
  * `env::caller()` matches their address — that's what drives the playground-app
  * "myApps" view.
@@ -269,7 +270,10 @@ export async function publishToPlayground(
             for (let attempt = 1; attempt <= MAX_REGISTRY_RETRIES; attempt++) {
                 try {
                     const visibility = options.isPrivate ? 0 : 1;
-                    const result = await registry.publish.tx(fullDomain, metadataCid, visibility);
+                    const result = await registry.publish.tx(fullDomain, metadataCid, visibility, {
+                        isSome: false,
+                        value: "0x0000000000000000000000000000000000000000",
+                    });
                     if (result && result.ok === false) {
                         throw new Error("Registry publish transaction reverted");
                     }

@@ -326,7 +326,10 @@ describe("publishToPlayground", () => {
                 expect.objectContaining({ __kind: "store" }),
                 bulletinStorageSigner,
             );
-            expect(publishTx).toHaveBeenCalledWith("my-app.dot", "bafymeta", 1);
+            expect(publishTx).toHaveBeenCalledWith("my-app.dot", "bafymeta", 1, {
+                isSome: false,
+                value: "0x0000000000000000000000000000000000000000",
+            });
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -385,7 +388,10 @@ describe("publishToPlayground", () => {
             cwd: "/definitely/not/a/repo",
             isPrivate: true,
         });
-        expect(publishTx).toHaveBeenCalledWith("secret.dot", "bafymeta", 0);
+        expect(publishTx).toHaveBeenCalledWith("secret.dot", "bafymeta", 0, {
+            isSome: false,
+            value: "0x0000000000000000000000000000000000000000",
+        });
     });
 
     it("retries up to 3 times on registry publish failure", async () => {
