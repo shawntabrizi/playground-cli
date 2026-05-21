@@ -14,9 +14,14 @@
 // limitations under the License.
 
 import { getRegistryAddress } from "@dotdm/env";
+import { DEFAULT_MNEMONIC as BULLETIN_DEPLOY_DEFAULT_MNEMONIC } from "bulletin-deploy";
 import { describe, expect, it } from "vitest";
 import { getChainConfig } from "../config.js";
-import { cdmPassthroughArgs, resolveContractDeployTarget } from "./contract.js";
+import {
+    cdmPassthroughArgs,
+    resolveContractDeployTarget,
+    resolveContractSignerOptions,
+} from "./contract.js";
 
 describe("cdmPassthroughArgs", () => {
     it("returns arguments after the contract subcommand", () => {
@@ -74,6 +79,56 @@ describe("resolveContractDeployTarget", () => {
     it("rejects non-H160 registry addresses", () => {
         expect(() => resolveContractDeployTarget({ registryAddress: "0x1234" })).toThrow(
             "Registry address must be a 20-byte hex address",
+        );
+    });
+});
+
+describe("resolveContractSignerOptions", () => {
+    it("preserves the default contract signer behavior", () => {
+        expect(resolveContractSignerOptions({})).toEqual({ suri: undefined });
+    });
+
+    it("uses the explicit SURI when no signer mode is selected", () => {
+        expect(resolveContractSignerOptions({ suri: "//Bob" })).toEqual({ suri: "//Bob" });
+    });
+
+    it("uses bulletin-deploy's default dev mnemonic by default", () => {
+        expect(resolveContractSignerOptions({ signer: "dev" })).toEqual({
+            suri: BULLETIN_DEPLOY_DEFAULT_MNEMONIC,
+        });
+    });
+
+    it("honors bulletin-deploy mnemonic environment overrides", () => {
+        const previousDotnsMnemonic = process.env.DOTNS_MNEMONIC;
+        const previousMnemonic = process.env.MNEMONIC;
+        try {
+            process.env.DOTNS_MNEMONIC = "dotns env mnemonic";
+            process.env.MNEMONIC = "plain env mnemonic";
+            expect(resolveContractSignerOptions({ signer: "dev" })).toEqual({
+                suri: "dotns env mnemonic",
+            });
+
+            delete process.env.DOTNS_MNEMONIC;
+            expect(resolveContractSignerOptions({ signer: "dev" })).toEqual({
+                suri: "plain env mnemonic",
+            });
+        } finally {
+            if (previousDotnsMnemonic === undefined) delete process.env.DOTNS_MNEMONIC;
+            else process.env.DOTNS_MNEMONIC = previousDotnsMnemonic;
+            if (previousMnemonic === undefined) delete process.env.MNEMONIC;
+            else process.env.MNEMONIC = previousMnemonic;
+        }
+    });
+
+    it("allows a custom local signer in dev mode", () => {
+        expect(resolveContractSignerOptions({ signer: "dev", suri: "//Charlie" })).toEqual({
+            suri: "//Charlie",
+        });
+    });
+
+    it("rejects SURI with phone mode to avoid silently using a local signer", () => {
+        expect(() => resolveContractSignerOptions({ signer: "phone", suri: "//Alice" })).toThrow(
+            "--suri cannot be used with --signer phone",
         );
     });
 });

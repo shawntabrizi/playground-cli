@@ -19,15 +19,17 @@ import { resolveFeatures, type PipelineChainClient } from "@dotdm/contracts";
 import { getRegistryAddress } from "@dotdm/env";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
-import { Command } from "commander";
+import { DEFAULT_MNEMONIC as BULLETIN_DEPLOY_DEFAULT_MNEMONIC } from "bulletin-deploy";
+import { Command, Option } from "commander";
 import { createClient, type HexString, type SS58String } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { runCliCommand } from "../cli-runtime.js";
 import { getChainConfig } from "../config.js";
 import { getBulletinAllowanceSigner } from "../utils/allowances/bulletin.js";
 import { ensureSmartContractAllowance } from "../utils/allowances/smartContracts.js";
+import type { SignerMode } from "../utils/deploy/signerMode.js";
 import { onProcessShutdown } from "../utils/process-guard.js";
-import { resolveSigner, type ResolvedSigner } from "../utils/signer.js";
+import { resolveSigner, type ResolvedSigner, type SignerOptions } from "../utils/signer.js";
 import { runContractDeployWithUI } from "./contractDeployUi.js";
 
 type CdmSubcommand = "deploy" | "install";
@@ -36,6 +38,7 @@ interface ContractDeployOpts {
     assethubUrl?: string;
     bulletinUrl?: string;
     registryAddress?: string;
+    signer?: SignerMode;
     suri?: string;
     features?: string;
 }
@@ -102,6 +105,27 @@ function assertHexAddress(value: string, label: string): HexString {
         throw new Error(`${label} must be a 20-byte hex address`);
     }
     return value as HexString;
+}
+
+export function resolveContractSignerOptions(opts: ContractDeployOpts): SignerOptions {
+    if (opts.signer === "dev") {
+        return {
+            suri:
+                opts.suri ??
+                process.env.DOTNS_MNEMONIC ??
+                process.env.MNEMONIC ??
+                BULLETIN_DEPLOY_DEFAULT_MNEMONIC,
+        };
+    }
+    if (opts.signer === "phone") {
+        if (opts.suri) {
+            throw new Error(
+                "--suri cannot be used with --signer phone. Use --signer dev --suri <suri> for local signing.",
+            );
+        }
+        return {};
+    }
+    return { suri: opts.suri };
 }
 
 export function resolveContractDeployTarget(opts: ContractDeployOpts): ContractDeployTarget {
@@ -178,7 +202,7 @@ async function runContractDeploy(opts: ContractDeployOpts): Promise<void> {
     onProcessShutdown(cleanupOnce);
 
     try {
-        signer = await resolveSigner({ suri: opts.suri });
+        signer = await resolveSigner(resolveContractSignerOptions(opts));
         await ensureSmartContractAllowance({
             env: cfg.env,
             ownerAddress: signer.address,
@@ -215,10 +239,14 @@ async function runContractDeploy(opts: ContractDeployOpts): Promise<void> {
 function makeDeployCommand(): Command {
     return new Command("deploy")
         .description("Build, deploy, and register CDM contracts with the dot signer")
+        .addOption(new Option("--signer <mode>", "Signer mode").choices(["dev", "phone"]))
         .option("--assethub-url <url>", "Override the Asset Hub WebSocket URL")
         .option("--bulletin-url <url>", "Override the Bulletin WebSocket URL")
         .option("--registry-address <address>", "Registry contract address")
-        .option("--suri <suri>", "Secret URI for local signing; omit to use the logged-in signer")
+        .option(
+            "--suri <suri>",
+            "Secret URI for local signing; defaults to bulletin-deploy's dev mnemonic when --signer dev",
+        )
         .option("--features <features>", "Cargo feature flags to pass to the build")
         .action(async (opts: ContractDeployOpts) =>
             runCliCommand("contract", { watchdog: true, hardExit: true }, () =>
