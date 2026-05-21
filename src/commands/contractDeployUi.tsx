@@ -159,8 +159,8 @@ function ContractDeployScreen({
                 right={VERSION_LABEL}
             />
             <Section title="target">
-                <Row label="signer" value={truncateMiddle(signerAddress, 18)} tone="muted" />
-                <Row label="registry" value={truncateMiddle(registryAddress, 18)} tone="muted" />
+                <Row label="signer" value={signerAddress} tone="muted" />
+                <Row label="registry" value={registryAddress} tone="muted" />
                 <Row label="asset hub" value={truncateMiddle(assethubUrl, 72)} tone="muted" />
                 <Row label="bulletin" value={truncateMiddle(bulletinUrl, 72)} tone="muted" />
                 <Row label="gateway" value={truncateMiddle(ipfsGatewayUrl, 72)} tone="muted" />
