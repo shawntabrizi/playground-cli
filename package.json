@@ -24,7 +24,8 @@
         "test:e2e:nightly": "tools/e2e-local.sh nightly"
     },
     "dependencies": {
-        "@dotdm/contracts": "^3.0.0",
+        "@dotdm/cdm": "^0.6.13",
+        "@dotdm/contracts": "^3.1.0",
         "@dotdm/env": "^2.0.0",
         "@parity/dotns-cli": "0.6.1",
         "@parity/product-sdk-address": "^0.1.1",

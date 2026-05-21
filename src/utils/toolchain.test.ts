@@ -14,7 +14,7 @@
 // limitations under the License.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { prependPath } from "./toolchain.js";
+import { prependPath, TOOL_STEPS } from "./toolchain.js";
 
 describe("prependPath", () => {
     let originalPath: string | undefined;
@@ -50,5 +50,17 @@ describe("prependPath", () => {
         delete process.env.PATH;
         prependPath("/Users/me/.cargo/bin");
         expect(process.env.PATH).toBe("/Users/me/.cargo/bin");
+    });
+});
+
+describe("TOOL_STEPS", () => {
+    it("installs cargo-pvm-contract directly instead of the CDM CLI installer", () => {
+        const names = TOOL_STEPS.map((step) => step.name);
+        expect(names).toContain("cargo-pvm-contract");
+        expect(names).not.toContain("cdm & cargo-pvm-contract");
+
+        const step = TOOL_STEPS.find((entry) => entry.name === "cargo-pvm-contract");
+        expect(step?.manualHint).toContain("cargo-pvm-contract");
+        expect(step?.manualHint).not.toContain("contract-dependency-manager");
     });
 });

@@ -15,7 +15,7 @@
 
 /**
  * Tests for git.ts — focused on sanitize() since it handles tricky
- * ANSI/cursor output from child processes (pnpm, cdm, Ink programs),
+ * ANSI/cursor output from child processes (pnpm, Ink programs),
  * and runCommand's log-file tee behaviour.
  */
 

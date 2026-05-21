@@ -23,7 +23,7 @@ The installer drops the binary into `~/.polkadot/bin/`, symlinks it at `~/.local
 End-to-end first-run setup. Login and toolchain install run **concurrently**; account setup runs **once both have completed successfully**.
 
 1. **Login via the Polkadot mobile app** — a QR code is printed to the terminal. Scan it with the app. If you already have a session persisted in `~/.polkadot-apps/`, this step is skipped.
-2. **Toolchain install** — `rustup`, nightly, `rust-src`, `cdm`, IPFS, and `gh`. Existing installs are detected and skipped.
+2. **Toolchain install** — `rustup`, nightly, `rust-src`, `cargo-pvm-contract`, IPFS, and `git`. Existing installs are detected and skipped.
 3. **Account setup** (only if a session is available) — in order:
     - **Fund** — if your balance on Paseo Asset Hub is below 1 PAS, Alice sends 10 PAS (testnet).
     - **Map** — `Revive.map_account` is signed by you on the mobile app so an H160 is associated with your SS58 address.
@@ -83,7 +83,7 @@ CDM-backed workflows for contracts:
 - `dot contract deploy` builds, deploys, and registers CDM contracts with dot's logged-in signer by default. Pass `--suri //Alice` for local/dev signing.
 - `dot contract deploy --features <features>` forwards Cargo feature flags into CDM's build pipeline.
 - `dot contract deploy --registry-address <address>` targets a specific CDM registry.
-- `dot contract install [libraries...]` runs `cdm install [libraries...]`; CDM still owns dependency installation and post-install hooks.
+- `dot contract install [libraries...]` uses the CDM install backend with dot's native TUI, then writes `cdm.json` and CDM post-install outputs.
 
 ### `dot mod`
 

@@ -18,9 +18,12 @@ importers:
 
   .:
     dependencies:
+      '@dotdm/cdm':
+        specifier: ^0.6.13
+        version: 0.6.13(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@polkadot-api/ink-contracts@0.6.2)(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3)
       '@dotdm/contracts':
-        specifier: ^3.0.0
-        version: 3.0.0(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3)
+        specifier: ^3.1.0
+        version: 3.1.0(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3)
       '@dotdm/env':
         specifier: ^2.0.0
         version: 2.0.0(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(esbuild@0.27.7)(rxjs@7.8.2)
@@ -350,8 +353,11 @@ packages:
     resolution: {integrity: sha512-WXTuFvL3G+74SchFAtz3FgIYVOe196ycvGsMgvSH/8Goptb1qpIQtIuM4SOK9G9lhMWYpHxnXyy544ZhluFOew==}
     engines: {node: '>=6'}
 
-  '@dotdm/contracts@3.0.0':
-    resolution: {integrity: sha512-MumLFq8z+cP/EbeuiWtYVUU5qEEsKxvNZRCYU8hX7haAt7lFfqegeQKeZeXP0WWRS4Tn6ftKtSmCh9TJeXYP+g==}
+  '@dotdm/cdm@0.6.13':
+    resolution: {integrity: sha512-HW7auJUJcjjoWmjY/uRcOrlOtqdqAqWJRW/H/3Q4OwDgyN3glvROENBpbFf04KmzwbpRs4hz3wz4cN1g3sQCxg==}
+
+  '@dotdm/contracts@3.1.0':
+    resolution: {integrity: sha512-YgYyskbUR1SLdkI7Q8euZ0L3hEsRlS/HGyRj5gyi5Np0Q8HN+i1D1LGVXbG9sMjlB3Sp+uU+3VgY1Hz93uxiRQ==}
 
   '@dotdm/env@2.0.0':
     resolution: {integrity: sha512-oFsCUlYgi2r6F9t1+y+P2S53t8ZmYZ6kuen0deZjROElJTCOl+bhs7iIf/qDHemkkmRXsmxuoJGM1lcNhzyGCw==}
@@ -5239,7 +5245,28 @@ snapshots:
       '@leichtgewicht/ip-codec': 2.0.5
       utf8-codec: 1.0.0
 
-  '@dotdm/contracts@3.0.0(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3)':
+  '@dotdm/cdm@0.6.13(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@polkadot-api/ink-contracts@0.6.2)(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3)':
+    dependencies:
+      '@dotdm/contracts': 3.1.0(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3)
+      '@dotdm/env': 2.0.0(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(esbuild@0.27.7)(rxjs@7.8.2)
+      '@dotdm/utils': 0.4.0
+      '@polkadot-api/sdk-ink': 0.7.0(@polkadot-api/ink-contracts@0.6.2)(polkadot-api@2.1.3(esbuild@0.27.7)(rxjs@7.8.2))(rxjs@7.8.2)(typescript@5.9.3)
+      polkadot-api: 2.1.3(esbuild@0.27.7)(rxjs@7.8.2)
+    transitivePeerDependencies:
+      - '@novasamatech/host-api'
+      - '@novasamatech/product-sdk'
+      - '@polkadot-api/ink-contracts'
+      - '@polkadot/api'
+      - '@polkadot/util'
+      - bufferutil
+      - esbuild
+      - rxjs
+      - supports-color
+      - typescript
+      - utf-8-validate
+      - zod
+
+  '@dotdm/contracts@3.1.0(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3)':
     dependencies:
       '@dotdm/env': 2.0.0(@novasamatech/host-api@0.7.9-4)(@novasamatech/product-sdk@0.7.9-4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(esbuild@0.27.7)(rxjs@7.8.2)
       '@dotdm/utils': 0.4.0

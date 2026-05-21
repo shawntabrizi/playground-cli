@@ -14,39 +14,37 @@
 // limitations under the License.
 
 import { getRegistryAddress } from "@dotdm/env";
+import { computeTargetHash, type CdmJson } from "@dotdm/contracts";
 import { DEFAULT_MNEMONIC as BULLETIN_DEPLOY_DEFAULT_MNEMONIC } from "bulletin-deploy";
 import { describe, expect, it } from "vitest";
 import { getChainConfig } from "../config.js";
 import {
-    cdmPassthroughArgs,
+    parseContractInstallLibraryArg,
     resolveContractDeployTarget,
+    resolveContractInstallTarget,
     resolveContractSignerOptions,
 } from "./contract.js";
 
-describe("cdmPassthroughArgs", () => {
-    it("returns arguments after the contract subcommand", () => {
-        expect(
-            cdmPassthroughArgs(
-                ["node", "dot", "contract", "install", "@polkadot/reputation", "--name", "paseo"],
-                "install",
-            ),
-        ).toEqual(["@polkadot/reputation", "--name", "paseo"]);
+describe("parseContractInstallLibraryArg", () => {
+    it("defaults to latest", () => {
+        expect(parseContractInstallLibraryArg("@polkadot/reputation")).toEqual({
+            library: "@polkadot/reputation",
+            requestedVersion: "latest",
+        });
     });
 
-    it("handles the install alias", () => {
-        expect(
-            cdmPassthroughArgs(
-                ["node", "dot", "contract", "i", "@polkadot/reputation:3"],
-                "install",
-                ["i"],
-            ),
-        ).toEqual(["@polkadot/reputation:3"]);
+    it("parses explicit versions from the last colon", () => {
+        expect(parseContractInstallLibraryArg("@polkadot/reputation:3")).toEqual({
+            library: "@polkadot/reputation",
+            requestedVersion: 3,
+        });
     });
 
-    it("falls back to the first matching subcommand without a contract parent", () => {
-        expect(cdmPassthroughArgs(["node", "dot", "deploy", "--features", "ci"], "deploy")).toEqual(
-            ["--features", "ci"],
-        );
+    it("treats non-numeric suffixes as part of the package name", () => {
+        expect(parseContractInstallLibraryArg("@polkadot/reputation:beta")).toEqual({
+            library: "@polkadot/reputation:beta",
+            requestedVersion: "latest",
+        });
     });
 });
 
@@ -78,6 +76,145 @@ describe("resolveContractDeployTarget", () => {
 
     it("rejects non-H160 registry addresses", () => {
         expect(() => resolveContractDeployTarget({ registryAddress: "0x1234" })).toThrow(
+            "Registry address must be a 20-byte hex address",
+        );
+    });
+});
+
+describe("resolveContractInstallTarget", () => {
+    it("uses the active playground chain by default", () => {
+        const cfg = getChainConfig();
+        const ipfsGatewayUrl = cfg.bulletinGateway;
+        const registryAddress = getRegistryAddress(cfg.env);
+        expect(resolveContractInstallTarget({})).toEqual({
+            assethubUrl: cfg.assetHubRpc,
+            ipfsGatewayUrl,
+            registryAddress,
+            targetHash: computeTargetHash(cfg.assetHubRpc, ipfsGatewayUrl, registryAddress),
+            chainName: undefined,
+        });
+    });
+
+    it("prefers the first cdm.json target when no explicit target is supplied", () => {
+        const cdmJson: CdmJson = {
+            targets: {
+                abc123: {
+                    "asset-hub": "wss://asset.example",
+                    bulletin: "https://gateway.example/ipfs/",
+                    registry: "0x1111111111111111111111111111111111111111",
+                },
+            },
+            dependencies: {},
+            contracts: {},
+        };
+
+        expect(resolveContractInstallTarget({}, cdmJson)).toEqual({
+            assethubUrl: "wss://asset.example",
+            ipfsGatewayUrl: "https://gateway.example/ipfs/",
+            registryAddress: "0x1111111111111111111111111111111111111111",
+            targetHash: "abc123",
+            chainName: undefined,
+        });
+    });
+
+    it("prefers a cdm.json target with dependencies when reinstalling", () => {
+        const cdmJson: CdmJson = {
+            targets: {
+                empty: {
+                    "asset-hub": "wss://empty.example",
+                    bulletin: "https://empty.example/ipfs",
+                    registry: "0x1111111111111111111111111111111111111111",
+                },
+                withDeps: {
+                    "asset-hub": "wss://deps.example",
+                    bulletin: "https://deps.example/ipfs",
+                    registry: "0x2222222222222222222222222222222222222222",
+                },
+            },
+            dependencies: {
+                withDeps: {
+                    "@polkadot/contexts": "latest",
+                },
+            },
+            contracts: {},
+        };
+
+        expect(resolveContractInstallTarget({}, cdmJson)).toEqual({
+            assethubUrl: "wss://deps.example",
+            ipfsGatewayUrl: "https://deps.example/ipfs",
+            registryAddress: "0x2222222222222222222222222222222222222222",
+            targetHash: "withDeps",
+            chainName: undefined,
+        });
+    });
+
+    it("preserves legacy cdm.json target keys when resolving a saved target", () => {
+        const cdmJson: CdmJson = {
+            targets: {
+                legacyHash: {
+                    "asset-hub": "wss://asset.example",
+                    bulletin: "https://gateway.example/ipfs",
+                },
+            },
+            dependencies: {
+                legacyHash: {
+                    "@polkadot/contexts": "latest",
+                },
+            },
+            contracts: {},
+        };
+
+        const target = resolveContractInstallTarget({}, cdmJson);
+        expect(target.targetHash).toBe("legacyHash");
+        expect(target.targetHash).not.toBe(
+            computeTargetHash(target.assethubUrl, target.ipfsGatewayUrl, target.registryAddress),
+        );
+    });
+
+    it("allows --name custom to reuse cdm.json target connection details", () => {
+        const cdmJson: CdmJson = {
+            targets: {
+                abc123: {
+                    "asset-hub": "wss://asset.example",
+                    bulletin: "https://gateway.example/ipfs/",
+                    registry: "0x1111111111111111111111111111111111111111",
+                },
+            },
+            dependencies: {},
+            contracts: {},
+        };
+
+        expect(resolveContractInstallTarget({ name: "custom" }, cdmJson)).toEqual({
+            assethubUrl: "wss://asset.example",
+            ipfsGatewayUrl: "https://gateway.example/ipfs/",
+            registryAddress: "0x1111111111111111111111111111111111111111",
+            targetHash: "abc123",
+            chainName: undefined,
+        });
+    });
+
+    it("accepts explicit endpoint and registry overrides", () => {
+        expect(
+            resolveContractInstallTarget({
+                assethubUrl: "wss://asset.example",
+                ipfsGatewayUrl: "https://gateway.example/ipfs/",
+                registryAddress: "0x2222222222222222222222222222222222222222",
+            }),
+        ).toEqual({
+            assethubUrl: "wss://asset.example",
+            ipfsGatewayUrl: "https://gateway.example/ipfs/",
+            registryAddress: "0x2222222222222222222222222222222222222222",
+            targetHash: computeTargetHash(
+                "wss://asset.example",
+                "https://gateway.example/ipfs/",
+                "0x2222222222222222222222222222222222222222",
+            ),
+            chainName: undefined,
+        });
+    });
+
+    it("rejects non-H160 registry addresses", () => {
+        expect(() => resolveContractInstallTarget({ registryAddress: "0x1234" })).toThrow(
             "Registry address must be a 20-byte hex address",
         );
     });

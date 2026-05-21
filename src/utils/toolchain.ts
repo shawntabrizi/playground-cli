@@ -73,8 +73,8 @@ async function hasRustSrc(): Promise<boolean> {
     }
 }
 
-async function hasCdm(): Promise<boolean> {
-    return (await commandExists("cdm")) && (await commandExists("cargo-pvm-contract"));
+async function hasCargoPvmContract(): Promise<boolean> {
+    return commandExists("cargo-pvm-contract");
 }
 
 function isIpfsInitialized(): boolean {
@@ -87,6 +87,18 @@ export interface ToolStep {
     install: (onData?: (line: string) => void) => Promise<void>;
     manualHint?: string;
 }
+
+const CARGO_PVM_CONTRACT_INSTALL = `
+set -euo pipefail
+tmp_dir="$(mktemp -d)"
+cleanup() {
+    rm -rf "$tmp_dir"
+}
+trap cleanup EXIT
+git clone --depth 1 --branch charles/cdm-integration https://github.com/paritytech/cargo-pvm-contract.git "$tmp_dir"
+host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
+cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
+`.trim();
 
 export const TOOL_STEPS: ToolStep[] = [
     {
@@ -116,15 +128,11 @@ export const TOOL_STEPS: ToolStep[] = [
         install: (onData) => runPiped("rustup component add rust-src --toolchain nightly", onData),
     },
     {
-        name: "cdm & cargo-pvm-contract",
-        check: () => hasCdm(),
-        install: (onData) =>
-            runPiped(
-                "curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | bash",
-                onData,
-            ),
+        name: "cargo-pvm-contract",
+        check: () => hasCargoPvmContract(),
+        install: (onData) => runPiped(CARGO_PVM_CONTRACT_INSTALL, onData),
         manualHint:
-            "curl -fsSL https://raw.githubusercontent.com/paritytech/contract-dependency-manager/main/install.sh | bash",
+            "Install cargo-pvm-contract from https://github.com/paritytech/cargo-pvm-contract/tree/charles/cdm-integration",
     },
     {
         name: "IPFS",
