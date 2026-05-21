@@ -43,17 +43,9 @@ import { getConnection } from "../connection.js";
 import { getChainConfig, type Env } from "../../config.js";
 import { captureWarning, withSpan, errorMessage } from "../../telemetry.js";
 import { getBulletinAllowanceSigner, isInvalidPaymentError } from "../allowances/bulletin.js";
+import { BULLETIN_WS_HEARTBEAT_MS } from "../bulletinWs.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { DeployLogEvent } from "./progress.js";
-
-/**
- * Heartbeat we force on the Bulletin WebSocket for the metadata upload.
- * `polkadot-api`'s default is 40 s, which is shorter than the time a single
- * `TransactionStorage.store` submission can take (finalization wait + chain
- * round-trips), so the transport tears down mid-tx as `WS halt (3)`.
- * Matches what `bulletin-deploy` does for its own clients. See CLAUDE.md.
- */
-const BULLETIN_WS_HEARTBEAT_MS = 300_000;
 
 const MAX_REGISTRY_RETRIES = 3;
 const REGISTRY_RETRY_DELAY_MS = 6_000;

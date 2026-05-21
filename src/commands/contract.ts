@@ -27,6 +27,7 @@ import { runCliCommand } from "../cli-runtime.js";
 import { getChainConfig } from "../config.js";
 import { getBulletinAllowanceSigner } from "../utils/allowances/bulletin.js";
 import { ensureSmartContractAllowance } from "../utils/allowances/smartContracts.js";
+import { BULLETIN_WS_HEARTBEAT_MS } from "../utils/bulletinWs.js";
 import type { SignerMode } from "../utils/deploy/signerMode.js";
 import { onProcessShutdown } from "../utils/process-guard.js";
 import { resolveSigner, type ResolvedSigner, type SignerOptions } from "../utils/signer.js";
@@ -149,7 +150,9 @@ async function createContractChainClient(
 ): Promise<ContractChainClient> {
     const raw = {
         assetHub: createClient(getWsProvider([target.assethubUrl])),
-        bulletin: createClient(getWsProvider(target.bulletinUrls)),
+        bulletin: createClient(
+            getWsProvider(target.bulletinUrls, { heartbeatTimeout: BULLETIN_WS_HEARTBEAT_MS }),
+        ),
     };
     let destroyed = false;
     const destroy = () => {
