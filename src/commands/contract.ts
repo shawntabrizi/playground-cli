@@ -14,15 +14,57 @@
 // limitations under the License.
 
 import { spawn } from "node:child_process";
+import { resolve } from "node:path";
+import { REGISTRY_ADDRESS, resolveFeatures, type PipelineChainClient } from "@dotdm/contracts";
+import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
+import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
 import { Command } from "commander";
+import { createClient, type HexString, type SS58String } from "polkadot-api";
+import { getWsProvider } from "polkadot-api/ws";
 import { runCliCommand } from "../cli-runtime.js";
+import { getChainConfig } from "../config.js";
+import { getBulletinAllowanceSigner } from "../utils/allowances/bulletin.js";
+import { onProcessShutdown } from "../utils/process-guard.js";
+import { resolveSigner, type ResolvedSigner } from "../utils/signer.js";
+import { runContractDeployWithUI } from "./contractDeployUi.js";
 
 type CdmSubcommand = "deploy" | "install";
 
-export function cdmPassthroughArgs(argv: string[], subcommand: CdmSubcommand): string[] {
+interface ContractDeployOpts {
+    assethubUrl?: string;
+    bulletinUrl?: string;
+    registryAddress?: string;
+    suri?: string;
+    features?: string;
+}
+
+interface ContractInstallOpts {
+    assethubUrl?: string;
+    name?: string;
+    ipfsGatewayUrl?: string;
+    registryAddress?: string;
+}
+
+interface ContractDeployTarget {
+    assethubUrl: string;
+    bulletinUrl: string;
+    bulletinUrls: string[];
+    registryAddress: HexString;
+}
+
+type ContractChainClient = PipelineChainClient & { destroy(): void };
+
+export function cdmPassthroughArgs(
+    argv: string[],
+    subcommand: CdmSubcommand,
+    aliases: string[] = [],
+): string[] {
     const contractIndex = argv.indexOf("contract");
     const startAt = contractIndex === -1 ? 0 : contractIndex + 1;
-    const subcommandIndex = argv.indexOf(subcommand, startAt);
+    const subcommandNames = new Set([subcommand, ...aliases]);
+    const subcommandIndex = argv.findIndex(
+        (arg, index) => index >= startAt && subcommandNames.has(arg),
+    );
     return subcommandIndex === -1 ? [] : argv.slice(subcommandIndex + 1);
 }
 
@@ -53,21 +95,150 @@ async function runCdmSubprocess(subcommand: CdmSubcommand, args: string[]): Prom
     });
 }
 
-function makeCdmSubcommand(subcommand: CdmSubcommand): Command {
-    return new Command(subcommand)
-        .description(`Run cdm ${subcommand}`)
-        .helpOption(false)
-        .allowUnknownOption(true)
-        .allowExcessArguments(true)
-        .argument("[args...]", `arguments passed to cdm ${subcommand}`)
-        .action(async () =>
+function assertHexAddress(value: string, label: string): HexString {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
+        throw new Error(`${label} must be a 20-byte hex address`);
+    }
+    return value as HexString;
+}
+
+export function resolveContractDeployTarget(opts: ContractDeployOpts): ContractDeployTarget {
+    const cfg = getChainConfig();
+    const bulletinUrl = opts.bulletinUrl ?? cfg.bulletinRpc;
+    return {
+        assethubUrl: opts.assethubUrl ?? cfg.assetHubRpc,
+        bulletinUrl,
+        bulletinUrls: opts.bulletinUrl
+            ? [opts.bulletinUrl]
+            : [bulletinUrl, ...cfg.bulletinRpcFallbacks],
+        registryAddress: assertHexAddress(
+            opts.registryAddress ?? REGISTRY_ADDRESS,
+            "Registry address",
+        ),
+    };
+}
+
+async function createContractChainClient(
+    target: ContractDeployTarget,
+): Promise<ContractChainClient> {
+    const raw = {
+        assetHub: createClient(getWsProvider([target.assethubUrl])),
+        bulletin: createClient(getWsProvider(target.bulletinUrls)),
+    };
+    let destroyed = false;
+    const destroy = () => {
+        if (destroyed) return;
+        destroyed = true;
+        raw.assetHub.destroy();
+        raw.bulletin.destroy();
+    };
+
+    try {
+        await Promise.all([raw.assetHub.getChainSpecData(), raw.bulletin.getChainSpecData()]);
+    } catch (err) {
+        destroy();
+        throw err;
+    }
+
+    return {
+        assetHub: raw.assetHub.getTypedApi(paseo_asset_hub),
+        bulletin: raw.bulletin.getTypedApi(paseo_bulletin),
+        raw,
+        descriptors: {
+            assetHub: paseo_asset_hub,
+            bulletin: paseo_bulletin,
+        },
+        destroy,
+    };
+}
+
+async function runContractDeploy(opts: ContractDeployOpts): Promise<void> {
+    const target = resolveContractDeployTarget(opts);
+    const cfg = getChainConfig();
+    const rootDir = resolve(process.cwd());
+    const features = resolveFeatures(opts.features, rootDir);
+
+    let signer: ResolvedSigner | null = null;
+    let client: ContractChainClient | null = null;
+    const cleanupOnce = (() => {
+        let ran = false;
+        return () => {
+            if (ran) return;
+            ran = true;
+            try {
+                signer?.destroy();
+            } catch {}
+            try {
+                client?.destroy();
+            } catch {}
+        };
+    })();
+    onProcessShutdown(cleanupOnce);
+
+    try {
+        signer = await resolveSigner({ suri: opts.suri });
+        client = await createContractChainClient(target);
+        const metadataSigner = await getBulletinAllowanceSigner({
+            env: cfg.env,
+            ownerAddress: signer.address,
+            publishSigner: signer,
+            bulletinApi: client.bulletin,
+        });
+
+        const result = await runContractDeployWithUI({
+            rootDir,
+            features,
+            client,
+            signer: signer.signer,
+            origin: signer.address as SS58String,
+            registryAddress: target.registryAddress,
+            metadataSigner,
+            assethubUrl: target.assethubUrl,
+            bulletinUrl: target.bulletinUrl,
+            ipfsGatewayUrl: cfg.bulletinGateway,
+            signerAddress: signer.address,
+        });
+        if (!result.success) process.exitCode = 1;
+    } finally {
+        cleanupOnce();
+    }
+}
+
+function makeDeployCommand(): Command {
+    return new Command("deploy")
+        .description("Build, deploy, and register CDM contracts with the dot signer")
+        .option("--assethub-url <url>", "Override the Asset Hub WebSocket URL")
+        .option("--bulletin-url <url>", "Override the Bulletin WebSocket URL")
+        .option("--registry-address <address>", "Registry contract address")
+        .option("--suri <suri>", "Secret URI for local signing; omit to use the logged-in signer")
+        .option("--features <features>", "Cargo feature flags to pass to the build")
+        .action(async (opts: ContractDeployOpts) =>
             runCliCommand("contract", { watchdog: true, hardExit: true }, () =>
-                runCdmSubprocess(subcommand, cdmPassthroughArgs(process.argv, subcommand)),
+                runContractDeploy(opts),
+            ),
+        );
+}
+
+function makeInstallCommand(): Command {
+    return new Command("install")
+        .alias("i")
+        .description("Install CDM contract libraries to ~/.cdm/")
+        .argument(
+            "[libraries...]",
+            'CDM libraries (e.g., "@polkadot/reputation" or "@polkadot/reputation:3"). Omit to install all from cdm.json.',
+        )
+        .option("--assethub-url <url>", "WebSocket URL for Asset Hub chain")
+        .option("-n, --name <name>", "Chain preset name (polkadot, paseo, preview-net, local)")
+        .option("--ipfs-gateway-url <url>", "IPFS gateway URL for fetching metadata")
+        .option("--registry-address <address>", "Registry contract address")
+        .action(async (_libraries: string[], _opts: ContractInstallOpts) =>
+            runCliCommand("contract", { watchdog: true, hardExit: true }, () =>
+                runCdmSubprocess("install", cdmPassthroughArgs(process.argv, "install", ["i"])),
             ),
         );
 }
 
 export const contractCommand = new Command("contract")
     .description("Run CDM contract workflows")
-    .addCommand(makeCdmSubcommand("deploy"))
-    .addCommand(makeCdmSubcommand("install"));
+    .addCommand(makeDeployCommand())
+    .addCommand(makeInstallCommand());

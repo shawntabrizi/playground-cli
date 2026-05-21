@@ -78,12 +78,12 @@ For fully non-interactive (CI) runs, combine `--signer`, `--domain`, `--buildDir
 
 ### `dot contract`
 
-Thin passthrough to CDM for contract-specific workflows:
+CDM-backed workflows for contracts:
 
-- `dot contract deploy [...args]` runs `cdm deploy [...args]`.
-- `dot contract install [...args]` runs `cdm install [...args]`.
-
-All args and flags after the subcommand are forwarded unchanged, including `-h` / `--help`.
+- `dot contract deploy` builds, deploys, and registers CDM contracts with dot's logged-in signer by default. Pass `--suri //Alice` for local/dev signing.
+- `dot contract deploy --features <features>` forwards Cargo feature flags into CDM's build pipeline.
+- `dot contract deploy --registry-address <address>` targets a specific CDM registry.
+- `dot contract install [libraries...]` runs `cdm install [libraries...]`; CDM still owns dependency installation and post-install hooks.
 
 ### `dot mod`
 

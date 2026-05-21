@@ -45,6 +45,8 @@ export const GLYPH = {
     separator: "·",
     rule: "─",
     cursorBlock: "█",
+    progressEmpty: "░",
+    cached: "~",
     spinner: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const,
     bars: ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const,
 } as const;
