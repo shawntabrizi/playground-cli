@@ -80,6 +80,7 @@ import {
     buildMetadata,
     normalizeDomain,
     readGitBranch,
+    readModdedFrom,
     readReadme,
     README_CAP_BYTES,
 } from "./playground.js";
@@ -264,18 +265,98 @@ describe("readGitBranch", () => {
     });
 });
 
+describe("readModdedFrom", () => {
+    it("returns null when dot.json is missing", () => {
+        const dir = makeTmpDir();
+        try {
+            expect(readModdedFrom(dir)).toBeNull();
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("returns the moddedFrom value when set", () => {
+        const dir = makeTmpDir();
+        try {
+            writeFileSync(join(dir, "dot.json"), JSON.stringify({ moddedFrom: "original.dot" }));
+            expect(readModdedFrom(dir)).toBe("original.dot");
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("returns null when the field is absent, blank, or non-string", () => {
+        const dir = makeTmpDir();
+        try {
+            writeFileSync(join(dir, "dot.json"), JSON.stringify({ name: "x" }));
+            expect(readModdedFrom(dir)).toBeNull();
+            writeFileSync(join(dir, "dot.json"), JSON.stringify({ moddedFrom: "   " }));
+            expect(readModdedFrom(dir)).toBeNull();
+            writeFileSync(join(dir, "dot.json"), JSON.stringify({ moddedFrom: 42 }));
+            expect(readModdedFrom(dir)).toBeNull();
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("returns null when dot.json is unparseable", () => {
+        const dir = makeTmpDir();
+        try {
+            writeFileSync(join(dir, "dot.json"), "{ not json");
+            expect(readModdedFrom(dir)).toBeNull();
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("rejects malformed domains so they can't reach published metadata", () => {
+        const dir = makeTmpDir();
+        try {
+            const cases = [
+                "<script>alert(1)</script>",
+                "<img onerror=fetch(0)>.dot",
+                "foo bar.dot",
+                "foo/bar.dot",
+                "../etc.dot",
+            ];
+            for (const moddedFrom of cases) {
+                writeFileSync(join(dir, "dot.json"), JSON.stringify({ moddedFrom }));
+                expect(readModdedFrom(dir), `expected null for ${moddedFrom}`).toBeNull();
+            }
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("canonicalizes to <label>.dot when the suffix is missing", () => {
+        const dir = makeTmpDir();
+        try {
+            writeFileSync(join(dir, "dot.json"), JSON.stringify({ moddedFrom: "original" }));
+            expect(readModdedFrom(dir)).toBe("original.dot");
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
+
 describe("buildMetadata", () => {
     it("includes repository when repositoryUrl is non-null", () => {
         const meta = buildMetadata({
             repositoryUrl: "https://github.com/x/y",
             branch: null,
             readme: null,
+            moddedFrom: null,
         });
         expect(meta).toEqual({ repository: "https://github.com/x/y" });
     });
 
     it("omits repository entirely when repositoryUrl is null", () => {
-        const meta = buildMetadata({ repositoryUrl: null, branch: null, readme: null });
+        const meta = buildMetadata({
+            repositoryUrl: null,
+            branch: null,
+            readme: null,
+            moddedFrom: null,
+        });
         expect(meta.repository).toBeUndefined();
     });
 
@@ -284,12 +365,18 @@ describe("buildMetadata", () => {
             repositoryUrl: "https://github.com/x/y",
             branch: "develop",
             readme: null,
+            moddedFrom: null,
         });
         expect(meta).toEqual({ repository: "https://github.com/x/y", branch: "develop" });
     });
 
     it("omits branch when repositoryUrl is null (branch alone is meaningless)", () => {
-        const meta = buildMetadata({ repositoryUrl: null, branch: "develop", readme: null });
+        const meta = buildMetadata({
+            repositoryUrl: null,
+            branch: "develop",
+            readme: null,
+            moddedFrom: null,
+        });
         expect(meta.branch).toBeUndefined();
     });
 
@@ -298,8 +385,29 @@ describe("buildMetadata", () => {
             repositoryUrl: null,
             branch: null,
             readme: { kind: "ok", content: "hello", size: 5 },
+            moddedFrom: null,
         });
         expect(meta).toEqual({ readme: "hello" });
+    });
+
+    it("includes moddedFrom when present (independent of repositoryUrl)", () => {
+        const meta = buildMetadata({
+            repositoryUrl: null,
+            branch: null,
+            readme: null,
+            moddedFrom: "original.dot",
+        });
+        expect(meta).toEqual({ moddedFrom: "original.dot" });
+    });
+
+    it("omits moddedFrom when null or empty", () => {
+        const meta = buildMetadata({
+            repositoryUrl: "https://github.com/x/y",
+            branch: null,
+            readme: null,
+            moddedFrom: null,
+        });
+        expect(meta.moddedFrom).toBeUndefined();
     });
 });
 

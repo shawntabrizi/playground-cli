@@ -169,6 +169,7 @@ export function buildMetadata(input: {
     repositoryUrl: string | null;
     branch: string | null;
     readme: ReadmeStatus | null;
+    moddedFrom: string | null;
 }): Record<string, string> {
     const meta: Record<string, string> = {};
     if (input.repositoryUrl) meta.repository = input.repositoryUrl;
@@ -177,7 +178,39 @@ export function buildMetadata(input: {
     // bloat the JSON.
     if (input.repositoryUrl && input.branch) meta.branch = input.branch;
     if (input.readme && input.readme.kind === "ok") meta.readme = input.readme.content;
+    if (input.moddedFrom) meta.moddedFrom = input.moddedFrom;
     return meta;
+}
+
+/**
+ * Returns the canonical `<label>.dot` form, or `null` for any unusable value
+ * (missing file, parse fail, non-string, or a value that doesn't pass
+ * `normalizeDomain`). `dot.json` is user-editable, so we shape-validate before
+ * publishing the field on-chain — the frontend still escapes on render, but
+ * we don't propagate garbage into shared metadata.
+ */
+export function readModdedFrom(cwd: string): string | null {
+    const path = join(cwd, "dot.json");
+    let raw: string;
+    try {
+        raw = readFileSync(path, "utf8");
+    } catch {
+        return null;
+    }
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return null;
+    }
+    if (!parsed || typeof parsed !== "object") return null;
+    const value = (parsed as Record<string, unknown>).moddedFrom;
+    if (typeof value !== "string") return null;
+    try {
+        return normalizeDomain(value).fullDomain;
+    } catch {
+        return null;
+    }
 }
 
 export async function publishToPlayground(
@@ -192,10 +225,12 @@ export async function publishToPlayground(
     // GitHub API call per `dot mod` invocation — see
     // `src/commands/mod/SetupScreen.tsx`.
     const branch = options.cwd && options.repositoryUrl ? readGitBranch(options.cwd) : null;
+    const moddedFrom = options.cwd ? readModdedFrom(options.cwd) : null;
     const metadata = buildMetadata({
         repositoryUrl: options.repositoryUrl,
         branch,
         readme,
+        moddedFrom,
     });
 
     const metadataBytes = new Uint8Array(Buffer.from(JSON.stringify(metadata), "utf8"));

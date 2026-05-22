@@ -111,7 +111,7 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                 await createOptionalGitBaseline(targetDir, log, sourceLogFile);
 
                 stripPostinstall(targetDir);
-                writeDotJson(targetDir, meta.name ?? domain.replace(/\.dot$/, ""), meta);
+                writeDotJson(targetDir, meta.name ?? domain.replace(/\.dot$/, ""), meta, domain);
                 ignoreModLogs(targetDir);
             },
         },
@@ -202,7 +202,7 @@ function ignoreModLogs(dir: string) {
     }
 }
 
-function writeDotJson(dir: string, name: string, meta: AppMetadata) {
+function writeDotJson(dir: string, name: string, meta: AppMetadata, sourceDomain: string) {
     const dotJsonPath = resolve(dir, "dot.json");
     let dotJson: Record<string, unknown> = {};
     if (existsSync(dotJsonPath)) {
@@ -212,6 +212,7 @@ function writeDotJson(dir: string, name: string, meta: AppMetadata) {
     }
     dotJson.domain = dir;
     dotJson.name = name;
+    dotJson.moddedFrom = sourceDomain;
     if (!dotJson.description && meta.description) dotJson.description = meta.description;
     if (!dotJson.tag && meta.tag) dotJson.tag = meta.tag;
     writeFileSync(dotJsonPath, JSON.stringify(dotJson, null, 2) + "\n");

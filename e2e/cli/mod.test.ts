@@ -93,6 +93,7 @@ describe("dot mod — clone", () => {
 			const dotJson = JSON.parse(readFileSync(dotJsonPath, "utf-8")) as {
 				domain?: string;
 				name?: string;
+				moddedFrom?: string;
 			};
 			// `domain` is set to `targetDir` in writeDotJson() — and
 			// `targetDir` flows from defaultRepoName(), which returns a
@@ -102,6 +103,7 @@ describe("dot mod — clone", () => {
 			// documented in src/commands/mod/SetupScreen.tsx.)
 			expect(dotJson.domain).toBe(created[0]);
 			expect(dotJson.name).toBeDefined();
+			expect(dotJson.moddedFrom).toBe(TEST_DOMAIN);
 
 			// ── Step 2 side effect: ignoreModLogs() ────────────────────────
 			const gitignore = readFileSync(
