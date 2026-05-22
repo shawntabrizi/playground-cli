@@ -162,12 +162,21 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
     // ── Playground publish ───────────────────────────────────────────────
     let metadataCid: string | undefined;
     if (setup.publishSigner) {
-        const wrappedPublishSigner = wrapResolvedSigner(
-            setup.publishSigner,
-            "Publish to Playground registry",
-            counter,
-            (event) => options.onEvent({ kind: "signing", event }),
-        );
+        // Only emit sign-request / sign-complete events for signers that
+        // need user interaction (real phone sessions). When dev-mode
+        // synthesises an in-process Alice signer there's no human in the
+        // loop — wrapping with the signing proxy would flash a "check
+        // your phone" UI callout between the synchronous request and
+        // completion, contradicting the 0-approvals summary.
+        const isInteractiveSigner = setup.publishSigner.source === "session";
+        const wrappedPublishSigner = isInteractiveSigner
+            ? wrapResolvedSigner(
+                  setup.publishSigner,
+                  "Publish to Playground registry",
+                  counter,
+                  (event) => options.onEvent({ kind: "signing", event }),
+              )
+            : setup.publishSigner;
 
         const pub = await withDeployPhase(
             "playground",
@@ -178,6 +187,7 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
                 publishToPlayground({
                     domain: fullDomain,
                     publishSigner: wrappedPublishSigner,
+                    claimedOwnerH160: setup.claimedOwnerH160,
                     repositoryUrl: options.repositoryUrl ?? null,
                     cwd: options.projectDir,
                     onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),

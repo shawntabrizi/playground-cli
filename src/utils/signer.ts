@@ -25,7 +25,7 @@ import { ss58Encode } from "@parity/product-sdk-address";
 import { createDevSigner, getDevPublicKey, type DevAccountName } from "@parity/product-sdk-tx";
 import { seedToAccount } from "@parity/product-sdk-keys";
 import type { PolkadotSigner } from "polkadot-api";
-import { getSessionSigner, type SessionHandle } from "./auth.js";
+import { getSessionSigner, type SessionHandle, type SessionAddresses } from "./auth.js";
 
 export type SignerSource = "dev" | "session";
 
@@ -35,6 +35,13 @@ export interface ResolvedSigner {
     source: SignerSource;
     /** Present for QR/mobile sessions; absent for local dev/SURI signers. */
     userSession?: SessionHandle["userSession"];
+    /**
+     * The session's root / product / H160 triple. Present for QR/mobile
+     * sessions (forwarded from `SessionHandle`); absent for local dev/SURI
+     * signers. Consumed by `resolveSignerSetup` to pick the `claimedOwnerH160`
+     * for dev-mode playground publish.
+     */
+    addresses?: SessionAddresses;
     /** Tear down session adapter. Call in finally block. No-op for dev signers. */
     destroy(): void;
 }

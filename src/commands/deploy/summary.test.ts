@@ -31,7 +31,12 @@ describe("buildSummaryView", () => {
         expect(view.rows.find((r) => r.label === "Publish")?.value).toBe("DotNS only");
     });
 
-    it("dev mode with playground has exactly one approval", () => {
+    it("any single-entry approvals list renders one approval line (pure transform check)", () => {
+        // This test exists to lock buildSummaryView's pass-through behaviour
+        // for a one-element approvals list. The real-world dev+playground
+        // path no longer produces a playground approval (Alice signs in-
+        // process — see the next test), but the transform itself must
+        // still render whatever it's given.
         const view = buildSummaryView({
             mode: "dev",
             domain: "my-app.dot",
@@ -42,6 +47,46 @@ describe("buildSummaryView", () => {
         });
         expect(view.totalApprovals).toBe(1);
         expect(view.approvalLines[0]).toMatch(/Publish to Playground registry/);
+    });
+
+    it("dev mode with playground reports zero approvals when no claimed owner is set (pure-dev throwaway)", () => {
+        // The actual runtime shape of resolveSignerSetup for dev mode:
+        // approvals is empty because Alice signs the registry publish in
+        // process. No "check your phone" callout should fire. This test
+        // pins that behaviour at the summary-layer to catch a regression
+        // where someone adds the playground approval back unconditionally.
+        const view = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: true,
+            approvals: [],
+        });
+        expect(view.totalApprovals).toBe(0);
+        expect(view.approvalLines).toEqual([]);
+        // Without claimedOwnerH160, no "App owner" row is added.
+        expect(view.rows.find((r) => r.label === "App owner")).toBeUndefined();
+    });
+
+    it("dev mode with playground surfaces the claimed owner row when a session H160 is set", () => {
+        // Headline scenario: user did `dot init`, chose dev signer mode.
+        // The summary must tell them which H160 will be recorded as the
+        // app owner so they can trust that MyApps will resolve their app
+        // — without this row, the user sees "0 phone taps" and a blank
+        // owner with no way to verify their identity will land on chain.
+        const view = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            publishToPlayground: true,
+            approvals: [],
+            claimedOwnerH160: "0xbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef",
+        });
+        expect(view.totalApprovals).toBe(0);
+        const ownerRow = view.rows.find((r) => r.label === "App owner");
+        expect(ownerRow?.value).toContain("0xbeefbeef");
     });
 
     it("phone mode with playground has four approvals numbered 1-4", () => {

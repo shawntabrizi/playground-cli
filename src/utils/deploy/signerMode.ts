@@ -20,19 +20,61 @@
  * rewriting callers.
  *
  * Today (testnet):
- *   - Dev mode: without a resolved local signer, bulletin-deploy uses its
- *     built-in default mnemonic for storage AND DotNS. With `--suri`, DotNS
- *     uses that local signer so CI can register/update names without mobile.
- *     Playground publish uses the resolved signer so myApps ownership lands
- *     on the account that ran the deploy.
+ *   - Dev mode: storage + DotNS go through bulletin-deploy's built-in
+ *     mnemonic (or `--suri`). Playground publish is ALSO signed by the dev
+ *     account — Alice's H160 is recorded as `publisher`, but the contract
+ *     accepts an optional `owner` parameter so we can record the user's
+ *     H160 as the `owner` (the H160 MyApps queries with). When a phone
+ *     session is present we pass `claimedOwnerH160 = session.productH160`
+ *     so the user still sees the app in MyApps without ever tapping the
+ *     phone. With no session, `claimedOwnerH160 = null` and the contract
+ *     falls back to caller (dev account owns the app).
  *   - Phone mode: bulletin-deploy uses the user's phone signer for DotNS
  *     (3 taps). Storage always uses the bulletin-deploy pool mnemonic.
  *     Playground publish uses the user's phone signer (1 more tap).
+ *     `claimedOwnerH160 = null` — the contract defaults to caller, which
+ *     is the user's H160 anyway.
  */
 
-import type { DeployOptions } from "bulletin-deploy";
+import { DEFAULT_MNEMONIC, type DeployOptions } from "bulletin-deploy";
+import { ss58Encode } from "@parity/product-sdk-address";
+import { seedToAccount } from "@parity/product-sdk-keys";
 import type { ResolvedSigner } from "../signer.js";
 import type { DeployPlan } from "./availability.js";
+
+/**
+ * The dev account used for dev-mode publish: `bulletin-deploy`'s
+ * `DEFAULT_MNEMONIC` bare-root (the same identity bulletin-deploy uses
+ * internally for storage + DotNS when no explicit signer is provided).
+ * All three on-chain phases — storage, DotNS, registry publish — sign as
+ * the same account, so `is_authorized_to_republish` accepts dev iteration
+ * uniformly and the DotNS name owner equals the registry publisher for
+ * dev-mode apps.
+ *
+ * Derived once at module load to avoid re-running BIP-39 + sr25519 on
+ * every `resolveSignerSetup` call.
+ *
+ * `DEV_PUBLISH_ADDRESS` is exported so callers (e.g. the availability
+ * preflight) can pass it as the expected DotNS owner whenever dev mode
+ * will fall back to bulletin-deploy's default mnemonic.
+ *
+ * IMPORTANT: do NOT swap to `createDevSigner("Alice")` from
+ * `@parity/product-sdk-tx`. That helper uses `//Alice` derivation
+ * (`5Grwva...`), which is a DIFFERENT account from bulletin-deploy's
+ * bare-mnemonic root (`5DfhGyQd...`). The `signerModeAlice.test.ts`
+ * snapshot test guards against this regression.
+ */
+const DEV_PUBLISH_ACCOUNT = seedToAccount(DEFAULT_MNEMONIC, "");
+export const DEV_PUBLISH_ADDRESS = ss58Encode(DEV_PUBLISH_ACCOUNT.publicKey);
+
+function createAliceSignerForDevPublish(): ResolvedSigner {
+    return {
+        signer: DEV_PUBLISH_ACCOUNT.signer,
+        address: DEV_PUBLISH_ADDRESS,
+        source: "dev",
+        destroy() {},
+    };
+}
 
 export type SignerMode = "dev" | "phone";
 
@@ -46,12 +88,26 @@ export interface DeploySignerSetup {
     bulletinDeployAuthOptions: Pick<DeployOptions, "signer" | "signerAddress" | "mnemonic">;
 
     /**
-     * Signer used to call `registry.publish()` for the playground step. This
-     * is always the user's phone signer (when available) because the contract
-     * records `env::caller()` as the owner — that's what drives the myApps
-     * view. `null` means we cannot publish (dev mode without a phone session).
+     * Signer used to call `registry.publish()` for the playground step.
+     *
+     * - Phone mode: the user's session signer — caller becomes owner.
+     * - Dev mode: the dev signer (Alice or `--suri`) — caller becomes
+     *   publisher, and `claimedOwnerH160` (when set) becomes owner.
+     *
+     * `null` means we cannot publish (no signer at all — only valid when
+     * `publishToPlayground === false`).
      */
     publishSigner: ResolvedSigner | null;
+
+    /**
+     * The H160 to pass as the `owner` argument of `registry.publish(...)`.
+     * Non-null only in dev mode WITH an active phone session — the dev
+     * account signs the tx but the user's H160 is recorded as owner so the
+     * app shows in their MyApps view. `null` ⇒ contract defaults to
+     * `env::caller()` (the signer's H160), which is correct for phone mode
+     * and for pure dev mode (no session).
+     */
+    claimedOwnerH160: `0x${string}` | null;
 
     /**
      * Count of phone approvals the user should expect under this setup,
@@ -141,19 +197,39 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
         };
     }
 
-    // Playground publish always uses the user's signer so ownership ties to
-    // their address. In `--signer dev --suri ...` that user is the local SURI
-    // account; in phone mode it is the mobile session account.
+    // Pick the publish signer and the optional claimed-owner H160.
     //
-    // userSigner is guaranteed non-null here: shouldResolveUserSigner() returns
-    // true whenever publishToPlayground is true, so resolveSigner() in the
-    // preflight has already either resolved a signer or thrown before we reach
-    // this point. The null guard that previously lived here was unreachable.
+    // Phone mode: publish signer is the session — the contract records the
+    // caller as owner, no need to claim. One phone approval.
+    //
+    // Dev mode: we ALWAYS sign with a dev key, never with the session.
+    //   - With `--suri`: that SURI dev signer (its address becomes owner).
+    //   - With a session (user did `dot init`): construct Alice and pass
+    //     the session's product H160 as `claimedOwnerH160` — the contract
+    //     records the user as owner so MyApps resolves their app.
+    //   - With neither: construct Alice and leave claimedOwnerH160 null
+    //     (Alice owns the entry — pure-dev throwaway).
+    // No phone approval is ever added in dev mode.
     let publishSigner: ResolvedSigner | null = null;
+    let claimedOwnerH160: `0x${string}` | null = null;
     if (opts.publishToPlayground) {
-        publishSigner = opts.userSigner!;
-        approvals.push({ phase: "playground", label: "Publish to Playground registry" });
+        if (opts.mode === "phone") {
+            publishSigner = opts.userSigner!;
+            approvals.push({ phase: "playground", label: "Publish to Playground registry" });
+        } else if (opts.userSigner?.source === "dev") {
+            // --suri path. The SURI account IS the user.
+            publishSigner = opts.userSigner;
+        } else {
+            // Dev mode with either a session (extract H160 for owner claim)
+            // or nothing (Alice owns). Construct Alice fresh either way —
+            // bulletin-deploy uses the same default mnemonic so all three
+            // tx phases sign as the same on-chain identity.
+            publishSigner = createAliceSignerForDevPublish();
+            if (opts.userSigner?.source === "session") {
+                claimedOwnerH160 = opts.userSigner.addresses?.productH160 ?? null;
+            }
+        }
     }
 
-    return { bulletinDeployAuthOptions, publishSigner, approvals };
+    return { bulletinDeployAuthOptions, publishSigner, claimedOwnerH160, approvals };
 }

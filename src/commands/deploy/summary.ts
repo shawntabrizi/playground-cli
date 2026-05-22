@@ -34,12 +34,17 @@ export interface SummaryInputs {
      * SS58 of the account that will sign this deploy. Surfaced in the summary
      * so the user can verify it matches what `dot init` set up (the product
      * account derived from their mnemonic at `/product/{PLAYGROUND_PRODUCT_ID}/0`)
-     * before signing anything. `undefined` when no signer is resolved — e.g.
-     * pure dev mode without `--suri`, where bulletin-deploy uses its built-in
-     * `DEFAULT_MNEMONIC` and we can't show that without replicating its key
-     * derivation.
+     * before signing anything. `undefined` when no signer is resolved.
      */
     signerAddress?: string;
+    /**
+     * H160 that will be recorded as the app's `owner` in the registry — set
+     * only in dev mode + active session, where Alice (or another dev key)
+     * signs the publish but the contract's `owner` parameter carries the
+     * user's session H160. When present, the summary surfaces it so the
+     * user knows the app will still appear in their MyApps view.
+     */
+    claimedOwnerH160?: string | null;
 }
 
 export interface SummaryView {
@@ -72,6 +77,17 @@ export function buildSummaryView(input: SummaryInputs): SummaryView {
             label: "Moddable",
             value: input.moddable ? `yes — ${input.repositoryUrl}` : "no",
         });
+        if (input.claimedOwnerH160) {
+            // Dev mode + session: Alice signs the registry tx but the
+            // user's H160 is recorded as owner. Surfacing it here is
+            // what the spec promises: "Signing as Alice (dev). Your
+            // account will be recorded as the app owner so the app
+            // shows in MyApps."
+            rows.push({
+                label: "App owner",
+                value: `your account (${input.claimedOwnerH160})`,
+            });
+        }
     }
     return {
         headline: `Deploying ${input.domain}`,

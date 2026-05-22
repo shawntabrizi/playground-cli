@@ -30,6 +30,7 @@ import {
 } from "../../utils/ui/theme/index.js";
 import {
     resolveSignerSetup,
+    DEV_PUBLISH_ADDRESS,
     type SignerMode,
     type DeployApproval,
 } from "../../utils/deploy/signerMode.js";
@@ -265,7 +266,7 @@ export function DeployScreen({
                             ? userSigner?.address
                             : userSigner?.source === "dev"
                               ? userSigner.address
-                              : undefined
+                              : DEV_PUBLISH_ADDRESS
                     }
                     onAvailable={(result) => {
                         setDomain(result.fullDomain);
@@ -607,15 +608,18 @@ function ConfirmStage({
         moddable: inputs.moddable,
         repositoryUrl: inputs.repositoryUrl,
         approvals: "approvals" in setup ? setup.approvals : [],
-        // Phone mode always signs as the user's session account. Dev-with-SURI
-        // signs as the SURI-derived address. Pure dev mode falls back to
-        // bulletin-deploy's built-in DEFAULT_MNEMONIC, which we can't show
-        // without reaching into bulletin-deploy internals — leave `undefined`
-        // and the summary will just show "Dev signer" without an address.
+        // What we show in the "Signer" row reflects who actually submits
+        // the on-chain txs, which is mostly setup.publishSigner — that's
+        // either the user's session (phone mode), the user's SURI account
+        // (dev + --suri), or a synthesised Alice for dev + session / pure
+        // dev. For non-playground deploys we fall back to userSigner.
         signerAddress:
-            inputs.mode === "phone" || userSigner?.source === "dev"
-                ? userSigner?.address
-                : undefined,
+            "publishSigner" in setup && setup.publishSigner
+                ? setup.publishSigner.address
+                : inputs.mode === "phone" || userSigner?.source === "dev"
+                  ? userSigner?.address
+                  : undefined,
+        claimedOwnerH160: "claimedOwnerH160" in setup ? setup.claimedOwnerH160 : undefined,
     });
 
     useInput((_input, key) => {

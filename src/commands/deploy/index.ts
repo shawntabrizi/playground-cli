@@ -18,7 +18,7 @@ import { resolve } from "node:path";
 import { Command, Option } from "commander";
 import { render } from "ink";
 import { renderSummaryText } from "./summary.js";
-import { errorMessage, withSpan } from "../../telemetry.js";
+import { captureWarning, errorMessage, withSpan } from "../../telemetry.js";
 import { resolveSigner, SignerNotAvailableError, type ResolvedSigner } from "../../utils/signer.js";
 import { getConnection, destroyConnection } from "../../utils/connection.js";
 import { checkMapping } from "../../utils/account/mapping.js";
@@ -26,6 +26,7 @@ import { onProcessShutdown } from "../../utils/process-guard.js";
 import { runCliCommand } from "../../cli-runtime.js";
 import {
     resolveSignerSetup,
+    DEV_PUBLISH_ADDRESS,
     type SignerMode,
     type DeployApproval,
 } from "../../utils/deploy/signerMode.js";
@@ -199,10 +200,32 @@ async function preflight(opts: {
         signer = await resolveSigner({ suri: opts.suri });
     } catch (err) {
         if (err instanceof SignerNotAvailableError) {
-            // Pure dev mode can still run without a signer, but playground
-            // publish needs the logged-in account so registry ownership lands
-            // on the user instead of a shared dev key.
-            if (opts.mode === "dev" && !opts.publishToPlayground) return null;
+            // Dev mode can always proceed without a session — the publish
+            // is signed by a dev account either way. Without a session the
+            // registry records the dev account as both publisher and owner;
+            // with one, the session's H160 is claimed as owner so the app
+            // shows in MyApps. Returning null here is the "no session, no
+            // SURI" signal; downstream resolveSignerSetup constructs Alice
+            // for the actual publish.
+            if (opts.mode === "dev") {
+                if (opts.publishToPlayground) {
+                    // Catch the "forgot dot init" footgun: a user who
+                    // expected their account to be the owner just had
+                    // their app published under Alice's name. Warn loudly
+                    // so it isn't silently surprising; the deploy still
+                    // proceeds because pure-dev mode IS a supported flow
+                    // (e.g. quick smoke tests, CI without a session).
+                    process.stderr.write(
+                        "warning: --signer dev --playground with no session and no --suri — " +
+                            "publishing under the dev (Alice) account. Run `dot init` first " +
+                            "if you want the app to appear in your MyApps view.\n",
+                    );
+                    captureWarning("dev mode playground publish with no user identity", {
+                        attempted: "pure-dev-publish",
+                    });
+                }
+                return null;
+            }
             throw err;
         }
         throw err;
@@ -274,15 +297,16 @@ async function runHeadless(ctx: {
     // `ownerSs58Address` MUST match whoever will actually sign the DotNS
     // `register()` extrinsic — otherwise the preflight reports "taken" on a
     // re-deploy. Phone mode signs with the session account; dev-with-SURI signs
-    // with that local account. Pure dev mode still falls back to bulletin-deploy's
-    // built-in DEFAULT_MNEMONIC, so we omit the address there.
+    // with that local account; dev mode without `--suri` (with or without a
+    // session) falls back to bulletin-deploy's DEFAULT_MNEMONIC bare-root,
+    // which is `DEV_PUBLISH_ADDRESS`.
     process.stdout.write(`\nChecking availability of ${domain.replace(/\.dot$/, "") + ".dot"}…\n`);
     const dotnsOwnerSs58Address =
         mode === "phone"
             ? ctx.userSigner?.address
             : ctx.userSigner?.source === "dev"
               ? ctx.userSigner.address
-              : undefined;
+              : DEV_PUBLISH_ADDRESS;
     const availability = await withSpan(
         "cli.deploy.availability",
         "check domain availability",
@@ -335,13 +359,18 @@ async function runHeadless(ctx: {
         moddable,
         repositoryUrl,
         approvals: setup.approvals,
-        // See the matching note in DeployScreen.tsx: phone mode and dev-with-SURI
-        // sign as the resolved user signer; pure dev mode (no --suri) falls back
-        // to bulletin-deploy's DEFAULT_MNEMONIC, which we don't surface here.
+        // Mirror the TUI logic in DeployScreen.tsx: prefer the resolved
+        // publish signer's address — that's the on-chain identity that
+        // will sign the registry publish, whether it's the user's
+        // session, their `--suri` account, or the synthesised Alice for
+        // dev+session/pure-dev. Fall back to the legacy user-signer
+        // address only when no publish step is configured.
         signerAddress:
-            mode === "phone" || ctx.userSigner?.source === "dev"
+            setup.publishSigner?.address ??
+            (mode === "phone" || ctx.userSigner?.source === "dev"
                 ? ctx.userSigner?.address
-                : undefined,
+                : undefined),
+        claimedOwnerH160: setup.claimedOwnerH160,
     });
     process.stdout.write("\n" + renderSummaryText(view) + "\n");
 

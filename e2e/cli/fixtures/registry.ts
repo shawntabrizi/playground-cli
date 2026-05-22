@@ -75,6 +75,39 @@ export async function getApp(domain: string): Promise<AppEntry | null> {
 }
 
 /**
+ * Query the on-chain `owner` H160 for a published domain. Used by tests
+ * that need to assert the registry recorded the right owner — distinct
+ * from "who signed the tx", which matters for the dev-mode claimed-owner
+ * flow (Alice signs, user's H160 is owner).
+ *
+ * Returns `null` if the domain isn't published, otherwise the lowercase
+ * 0x-prefixed 20-byte address. The contract returns the zero address for
+ * missing entries; we normalise that to `null` so callers don't have to
+ * special-case it.
+ */
+export async function getOwnerH160(domain: string): Promise<string | null> {
+	const registry = await getRegistry();
+	const res = await registry.getOwner.query(domain);
+	if (!res.success) return null;
+	const owner = String(res.value).toLowerCase();
+	const zero = "0x" + "0".repeat(40);
+	return owner === zero ? null : owner;
+}
+
+/**
+ * Get the count of apps owned by an H160. Mirrors what playground-app's
+ * MyApps view uses (`registry.getOwnerAppCount(account.h160Address)`).
+ */
+export async function getOwnerAppCount(owner: string): Promise<number> {
+	const registry = await getRegistry();
+	const res = await registry.getOwnerAppCount.query(owner as `0x${string}`);
+	if (!res.success) {
+		throw new Error(`getOwnerAppCount query failed: ${JSON.stringify(res.value)}`);
+	}
+	return Number(res.value);
+}
+
+/**
  * Get the total number of apps in the registry.
  */
 export async function getAppCount(): Promise<number> {

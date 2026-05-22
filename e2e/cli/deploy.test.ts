@@ -30,7 +30,7 @@ import { dot } from "./helpers/dot.js";
 import { setupModdableFixture } from "./helpers/moddable-setup.js";
 import { SIGNER, BOB, E2E_DOMAINS } from "./fixtures/accounts.js";
 import { fixturePath } from "./fixtures/templates.js";
-import { getApp } from "./fixtures/registry.js";
+import { getApp, getOwnerAppCount, getOwnerH160 } from "./fixtures/registry.js";
 
 /** Pull the metadata CID out of the headless deploy summary. The CLI
  *  prints `  Metadata CID    bafy...` once per successful deploy
@@ -133,6 +133,12 @@ describe("dot deploy — preflight and validation", () => {
 describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", () => {
 	test("frontend-only deploy completes end-to-end", { timeout: 450_000 }, async () => {
 		const domain = E2E_DOMAINS.storage;
+		// Snapshot the on-chain state BEFORE the deploy so we can tell
+		// fresh-publish from re-publish at assert time. The contract
+		// preserves the per-owner index on re-publish (owner is immutable
+		// after first publish), so the expected delta depends on this.
+		const beforeCount = await getOwnerAppCount(SIGNER.h160);
+		const wasAlreadyPublished = (await getApp(`${domain}.dot`)) !== null;
 		const result = await dot([
 			"deploy",
 			"--signer", "dev",
@@ -164,6 +170,56 @@ describe("dot deploy --playground — full pipeline (requires Paseo + IPFS)", ()
 		// it published. A divergence here means the CLI is reporting one CID
 		// to the user while writing a different one to the chain.
 		expect(entry!.metadataUri).toContain(cliCid!);
+
+		// Ownership assertion — the `owner` recorded by `publish(...)` must
+		// match the signing account when no claimed-owner is passed (dev +
+		// --suri path). This is the headline-coverage stand-in for the
+		// dev+session+claimed-owner flow, which can't be e2e-tested without
+		// session mocking. The contract change MUST preserve "caller becomes
+		// owner when owner=None" — regression here would silently break
+		// existing dev-mode deploys.
+		//
+		// Both `getOwnerH160` (fixtures/registry.ts) and `deriveH160`
+		// (via SIGNER.h160 in fixtures/accounts.ts) emit lowercase, so
+		// no normalisation is needed at the comparison site.
+		const ownerH160 = await getOwnerH160(`${domain}.dot`);
+		expect(ownerH160).toBe(SIGNER.h160);
+
+		// MyApps query path: the per-owner index must include this domain
+		// after publish. Contract preserves the per-owner slot on
+		// re-publish (owner is immutable after first publish), so the
+		// expected count delta depends on whether this deploy wrote a
+		// fresh entry:
+		//   - Fresh-publish: count incremented by exactly 1.
+		//   - Re-publish: count is flat.
+		// Asserting a strict equality (not >=) is the regression catch —
+		// "publish doesn't write the per-owner index" used to slip through
+		// the older `>= max(beforeCount, 1)` shape any time a domain was
+		// pre-existing in the registry.
+		const afterCount = await getOwnerAppCount(SIGNER.h160);
+		if (wasAlreadyPublished) {
+			expect(afterCount).toBe(beforeCount);
+		} else {
+			expect(afterCount).toBe(beforeCount + 1);
+		}
+	});
+
+	// The dev-mode + active-session flow (Alice signs the publish tx but the
+	// session's H160 is passed as the `owner` arg via Option<Address>) is the
+	// headline behaviour of the fully-dev-deploy change. We can't e2e-test
+	// it here because spinning up a real Polkadot-app SSO session against
+	// Paseo would require running the mobile app or replicating its session-
+	// pairing handshake against the live SSO endpoint. The unit-level coverage
+	// lives in run.test.ts ("dev mode with playground: ZERO planned approvals
+	// AND user H160 is claimed as owner") which asserts the publishToPlayground
+	// call is dispatched with the right `claimedOwnerH160`, and in
+	// playground.test.ts which asserts the registry.publish.tx receives the
+	// right Option<Address> tuple. Skip-gated contract tests in playground-app
+	// (tests/contract/registry.test.ts "publish with owner=Some(...)") will
+	// close the on-chain end of this once the local revive-dev-node wiring
+	// lands. See docs/superpowers/specs/2026-05-20-fully-dev-deploy-design.md.
+	test.skip("dev + session: Alice signs but session H160 ends up as registry owner", () => {
+		expect.fail("requires SSO session mocking infrastructure — see comment above");
 	});
 
 	test("re-deploy same domain succeeds for same owner", { timeout: 900_000 }, async () => {

@@ -54,8 +54,22 @@ const REGISTRY_RETRY_DELAY_MS = 6_000;
 export interface PublishToPlaygroundOptions {
     /** The DotNS label (with or without `.dot`). */
     domain: string;
-    /** Signer that will be recorded as the app owner in the registry. */
+    /**
+     * Signer that submits the `registry.publish(...)` tx. In phone mode
+     * this is the user's session signer (caller becomes owner). In dev
+     * mode this is a dev signer (Alice / `--suri`), and `claimedOwnerH160`
+     * carries the H160 to record as owner.
+     */
     publishSigner: ResolvedSigner;
+    /**
+     * Optional H160 to record as the app owner via the contract's `owner`
+     * parameter. Used by dev mode + active session so the app shows in the
+     * user's MyApps view even though the tx is signed by Alice. `null` or
+     * omitted ⇒ contract defaults to caller (`publishSigner.address`
+     * translated to H160), which is correct for phone mode and pure-dev
+     * throwaway.
+     */
+    claimedOwnerH160?: `0x${string}` | null;
     /** Repository URL to record in metadata. `null` = omit the field entirely. */
     repositoryUrl: string | null;
     /** Project root. Used to look for a `README.md` to inline into metadata. */
@@ -266,14 +280,26 @@ export async function publishToPlayground(
         "publish playground registry entry",
         { "cli.deploy.domain": fullDomain },
         async () => {
+            // Encode the Option<Address> owner parameter. None ⇒ contract
+            // defaults to env::caller(). Some(h160) ⇒ recorded as the app
+            // owner regardless of who signed the tx.
+            const owner = options.claimedOwnerH160
+                ? { isSome: true as const, value: options.claimedOwnerH160 }
+                : {
+                      isSome: false as const,
+                      value: "0x0000000000000000000000000000000000000000" as const,
+                  };
+
             let lastError: unknown;
             for (let attempt = 1; attempt <= MAX_REGISTRY_RETRIES; attempt++) {
                 try {
                     const visibility = options.isPrivate ? 0 : 1;
-                    const result = await registry.publish.tx(fullDomain, metadataCid, visibility, {
-                        isSome: false,
-                        value: "0x0000000000000000000000000000000000000000",
-                    });
+                    const result = await registry.publish.tx(
+                        fullDomain,
+                        metadataCid,
+                        visibility,
+                        owner,
+                    );
                     if (result && result.ok === false) {
                         throw new Error("Registry publish transaction reverted");
                     }

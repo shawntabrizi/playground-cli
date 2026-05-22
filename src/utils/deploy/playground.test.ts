@@ -380,6 +380,20 @@ describe("publishToPlayground", () => {
         }
     });
 
+    it("passes claimedOwnerH160 through as the registry.publish owner argument", async () => {
+        await publishToPlayground({
+            domain: "claimed-app",
+            publishSigner: fakeSigner,
+            repositoryUrl: null,
+            cwd: "/definitely/not/a/repo",
+            claimedOwnerH160: "0x1234567890abcdef1234567890abcdef12345678",
+        });
+        expect(publishTx).toHaveBeenCalledWith("claimed-app.dot", "bafymeta", 1, {
+            isSome: true,
+            value: "0x1234567890abcdef1234567890abcdef12345678",
+        });
+    });
+
     it("passes visibility=0 when isPrivate is true", async () => {
         await publishToPlayground({
             domain: "secret",

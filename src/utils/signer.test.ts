@@ -182,4 +182,30 @@ describe("resolveSigner", () => {
 
         expect(destroyFn).toHaveBeenCalledTimes(1);
     });
+
+    it("forwards the session's addresses triple into ResolvedSigner", async () => {
+        // The dev-mode claimed-owner flow reads
+        // `userSigner.addresses?.productH160` to decide what to pass as
+        // the registry contract's `owner` parameter. ResolvedSigner is
+        // built via spread `{ ...session, source: "session" }`, so this
+        // forwarding is implicit — easy to break with a refactor. Pin
+        // it explicitly. Without this assertion a regression that
+        // copies fields by name (and forgets `addresses`) would silently
+        // drop claimed-owner from every dev-mode publish.
+        mockGetSessionSigner.mockResolvedValue({
+            address: "5Session",
+            signer: {},
+            destroy: () => {},
+            addresses: {
+                rootAddress: "5Root",
+                productAddress: "5Session",
+                productH160: "0xabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd",
+            },
+        });
+
+        const result = await resolveSigner();
+
+        expect(result.addresses?.productH160).toBe("0xabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd");
+        expect(result.addresses?.rootAddress).toBe("5Root");
+    });
 });

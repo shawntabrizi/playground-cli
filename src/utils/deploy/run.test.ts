@@ -89,6 +89,15 @@ const fakeUserSigner: ResolvedSigner = {
     },
     address: "5Fake",
     source: "session",
+    // `addresses` is forwarded from SessionHandle in real code. The
+    // claimed-owner flow reads `addresses.productH160` — without it,
+    // dev-mode publish would silently fall through to "no claimed
+    // owner" and Alice ends up as the registered owner.
+    addresses: {
+        rootAddress: "5Root",
+        productAddress: "5Fake",
+        productH160: "0xbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef",
+    },
     destroy: vi.fn(),
 };
 
@@ -131,7 +140,7 @@ describe("runDeploy", () => {
         expect(arg.domainName).toBe("my-app");
     });
 
-    it("dev mode with playground: 1 planned approval, calls publishToPlayground", async () => {
+    it("dev mode with playground: ZERO planned approvals AND user H160 is claimed as owner", async () => {
         const { events, push } = collectEvents();
         const outcome = await runDeploy({
             projectDir: "/tmp/proj",
@@ -143,15 +152,25 @@ describe("runDeploy", () => {
             onEvent: push,
         });
 
-        expect(outcome.approvalsRequested).toEqual([
-            { phase: "playground", label: "Publish to Playground registry" },
-        ]);
+        // The dev-mode publish runs against a constructed Alice signer
+        // (resolveSignerSetup synthesises it). Zero phone approvals are
+        // promised to the user. publishToPlayground is still invoked.
+        expect(outcome.approvalsRequested).toEqual([]);
         expect(outcome.metadataCid).toBe("bafymeta");
         expect(publishToPlaygroundMock).toHaveBeenCalledTimes(1);
 
+        // The headline contract: the user's session H160 is passed as
+        // claimedOwnerH160 so MyApps still resolves the app even though
+        // Alice signed the publish tx. Without this assertion the test
+        // would pass even if the user's H160 silently never reached the
+        // chain.
+        const calls = publishToPlaygroundMock.mock.calls as unknown[][];
+        const publishCall = calls[0]?.[0] as { claimedOwnerH160?: string } | undefined;
+        expect(publishCall?.claimedOwnerH160).toBe("0xbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef");
+
         const plan = events.find((e) => e.kind === "plan");
         expect(plan?.kind).toBe("plan");
-        if (plan?.kind === "plan") expect(plan.approvals).toHaveLength(1);
+        if (plan?.kind === "plan") expect(plan.approvals).toHaveLength(0);
     });
 
     it("phone mode with playground: 4 planned approvals, DotNS uses phone signer", async () => {
