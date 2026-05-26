@@ -46,6 +46,8 @@
 import { createClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { getChainConfig } from "../config.js";
+import { getReadOnlyRegistryContract } from "./registry.js";
+import { getConnection } from "./connection.js";
 
 // Cold-start WS connects to paseo-people-next-system-rpc on a slow conference
 // network can take a few seconds before metadata + the first query are ready.
@@ -135,5 +137,53 @@ export async function lookupUsername(rootAccountSs58: string): Promise<UsernameL
         // Fire-and-forget. The CLI's process-guard catches benign
         // post-destroy artifacts from polkadot-api's chainHead unfollow race.
         client.destroy();
+    }
+}
+
+/**
+ * Look up the user's playground-registry username (the handle they set in
+ * the playground-app's profile, NOT the People-parachain identity above).
+ *
+ * Keyed on the H160 of the **product account**, because that's the
+ * `caller()` the on-chain `set_username` records. For phone-mode users
+ * that's `SessionAddresses.productH160`; for dev / `--suri` flows it's
+ * the H160 derived from the local signer. Returns `null` for "no
+ * username set" so callers can fall back to the People-parachain name or
+ * the H160. Re-uses the shared `getConnection()` client so the lookup
+ * piggybacks on whatever the calling command already opened, and a
+ * connection close is the calling code's job.
+ *
+ * BACKWARD COMPATIBILITY: the CLI resolves the registry contract via
+ * `@w3s/playground-registry` (see `contractManifest.ts`). The
+ * `get_username` method only exists on v13+; on the still-deployed
+ * @w3s v7 (and any production until the v13 cutover ships) the SDK throws
+ * `Cannot read properties of undefined (reading 'query')`. We catch and
+ * return null so `IdentityLines` quietly degrades to the People-parachain
+ * name. After the @w3s v13 deploy + `dot contract install` the call
+ * starts returning real values automatically — no CLI release needed.
+ *
+ * Errors are swallowed (logged via the catch) and reported as `null` —
+ * this is a display-time enhancement, never a hard failure path.
+ */
+export async function lookupRegistryUsername(productH160: `0x${string}`): Promise<string | null> {
+    try {
+        const client = await getConnection();
+        const registry = await getReadOnlyRegistryContract(client.raw.assetHub);
+        // The .query property is undefined on older registries → optional chain.
+        const getUsername = (
+            registry as unknown as {
+                getUsername?: {
+                    query?: (h160: `0x${string}`) => Promise<{ success: boolean; value: unknown }>;
+                };
+            }
+        ).getUsername;
+        if (!getUsername?.query) return null;
+        const res = await getUsername.query(productH160);
+        if (!res.success) return null;
+        const value = res.value;
+        if (typeof value !== "string" || value === "") return null;
+        return value;
+    } catch {
+        return null;
     }
 }

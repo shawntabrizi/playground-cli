@@ -16,7 +16,13 @@
 import { useEffect, useState } from "react";
 import { Row, Section } from "../../utils/ui/theme/index.js";
 import type { SessionAddresses } from "../../utils/auth.js";
-import { formatUsernameLine, lookupUsername, type UsernameLookup } from "../../utils/username.js";
+import {
+    formatUsernameLine,
+    lookupUsername,
+    lookupRegistryUsername,
+    type UsernameLookup,
+} from "../../utils/username.js";
+import { PLAYGROUND_PRODUCT_ID } from "../../config.js";
 
 /**
  * Three-line identity block shown after a successful login:
@@ -44,19 +50,36 @@ import { formatUsernameLine, lookupUsername, type UsernameLookup } from "../../u
  * identities fall through to the strings from `formatUsernameLine`.
  */
 export function IdentityLines({ addresses }: { addresses: SessionAddresses }) {
-    const [username, setUsername] = useState<UsernameLookup>({ kind: "loading" });
+    const [walletUsername, setWalletUsername] = useState<UsernameLookup>({ kind: "loading" });
+    // null means "lookup completed, no registry username set"; undefined means
+    // "still loading". Display rule: prefer registry > People > fall back to
+    // the H160 — same precedence the playground-app uses in `displayNameForAccount`.
+    const [registryUsername, setRegistryUsername] = useState<string | null | undefined>(undefined);
 
     useEffect(() => {
         let cancelled = false;
         lookupUsername(addresses.rootAddress).then((result) => {
-            if (!cancelled) setUsername(result);
+            if (!cancelled) setWalletUsername(result);
+        });
+        lookupRegistryUsername(addresses.productH160 as `0x${string}`).then((result) => {
+            if (!cancelled) setRegistryUsername(result);
         });
         return () => {
             cancelled = true;
         };
-    }, [addresses.rootAddress]);
+    }, [addresses.rootAddress, addresses.productH160]);
 
-    const usernameTone = username.kind === "found" ? "default" : "muted";
+    const usernameLine = registryUsername
+        ? registryUsername
+        : registryUsername === undefined
+          ? "(looking up...)"
+          : formatUsernameLine(walletUsername);
+    const usernameTone = registryUsername || walletUsername.kind === "found" ? "default" : "muted";
+    const usernameSource = registryUsername
+        ? "playground"
+        : walletUsername.kind === "found"
+          ? "polkadot"
+          : null;
 
     return (
         <Section>
@@ -64,15 +87,16 @@ export function IdentityLines({ addresses }: { addresses: SessionAddresses }) {
             <Row
                 mark="ok"
                 label="username"
-                value={formatUsernameLine(username)}
+                value={usernameSource ? `${usernameLine} (${usernameSource})` : usernameLine}
                 tone={usernameTone}
             />
             <Row
                 mark="ok"
-                label="product account"
-                value={`${addresses.productAddress} (${addresses.productH160})`}
+                label="account in use"
+                value={`${PLAYGROUND_PRODUCT_ID}/0 — ${addresses.productH160}`}
                 tone="muted"
             />
+            <Row mark="ok" label="product account" value={addresses.productAddress} tone="muted" />
         </Section>
     );
 }
