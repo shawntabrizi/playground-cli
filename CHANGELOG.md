@@ -1,5 +1,27 @@
 # playground-cli
 
+## 0.24.0
+
+### Minor Changes
+
+- 77b5241: `dot mod` now records the source app's domain in `dot.json`, and `dot deploy --playground` publishes it as a `moddedFrom` field in the on-chain metadata. The playground-app can use this to display "Modded from: <domain>" attribution on app detail pages. The value is shape-validated through the same `normalizeDomain` rules as the deploying domain, so a hand-edited `dot.json` can't sneak XSS payloads into shared metadata.
+
+### Patch Changes
+
+- 82afc4d: `dot init` now shows the user's registry username (the handle set on the
+  playground.dot profile) when one has been claimed, falling back to the
+  People-parachain identity name and then to the H160, same precedence as
+  the playground-app. Also surfaces an "account in use" row with the
+  derivation path + H160 so the user can verify the exact account that
+  signs on their behalf.
+
+  `dot deploy --playground` now matches the v11 registry contract's 7-arg
+  `publish()` signature (adds `modded_from`, `is_moddable`, `is_dev_signer`),
+  which unblocks publishes against the freshly deployed playground registry
+  on Paseo Asset Hub Next. `cdm.json` is refreshed to the v11 manifest; the
+  runtime keeps resolving the live contract address from the on-chain
+  meta-registry.
+
 ## 0.23.0
 
 ### Minor Changes
