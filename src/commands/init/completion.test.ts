@@ -33,6 +33,7 @@ describe("computeAllDone", () => {
                 loggedInAddress: null,
                 depsComplete: false,
                 accountComplete: false,
+                usernameComplete: false,
             }),
         ).toBe(false);
     });
@@ -45,6 +46,7 @@ describe("computeAllDone", () => {
                 loggedInAddress: null,
                 depsComplete: true,
                 accountComplete: false,
+                usernameComplete: false,
             }),
         ).toBe(true);
     });
@@ -57,6 +59,7 @@ describe("computeAllDone", () => {
                 loggedInAddress: null,
                 depsComplete: true,
                 accountComplete: false,
+                usernameComplete: false,
             }),
         ).toBe(false);
     });
@@ -69,6 +72,7 @@ describe("computeAllDone", () => {
                 loggedInAddress: null,
                 depsComplete: true,
                 accountComplete: false,
+                usernameComplete: false,
             }),
         ).toBe(true);
     });
@@ -81,11 +85,12 @@ describe("computeAllDone", () => {
                 loggedInAddress: "5Gxyz...",
                 depsComplete: true,
                 accountComplete: false,
+                usernameComplete: true,
             }),
         ).toBe(false);
     });
 
-    it("completes after QR login + account setup both finish", () => {
+    it("does NOT complete after account setup until the username prompt resolves", () => {
         expect(
             computeAllDone({
                 needsQr: true,
@@ -93,11 +98,25 @@ describe("computeAllDone", () => {
                 loggedInAddress: "5Gxyz...",
                 depsComplete: true,
                 accountComplete: true,
+                usernameComplete: false,
+            }),
+        ).toBe(false);
+    });
+
+    it("completes after QR login + account setup + username step all finish", () => {
+        expect(
+            computeAllDone({
+                needsQr: true,
+                authResolved: true,
+                loggedInAddress: "5Gxyz...",
+                depsComplete: true,
+                accountComplete: true,
+                usernameComplete: true,
             }),
         ).toBe(true);
     });
 
-    it("completes with existing session after account setup finishes", () => {
+    it("completes with existing session after both account + username steps finish", () => {
         expect(
             computeAllDone({
                 needsQr: false,
@@ -105,6 +124,7 @@ describe("computeAllDone", () => {
                 loggedInAddress: "5Gxyz...",
                 depsComplete: true,
                 accountComplete: true,
+                usernameComplete: true,
             }),
         ).toBe(true);
     });
@@ -117,6 +137,7 @@ describe("computeAllDone", () => {
                 loggedInAddress: "5Gxyz...",
                 depsComplete: true,
                 accountComplete: false,
+                usernameComplete: true,
             }),
         ).toBe(false);
     });
