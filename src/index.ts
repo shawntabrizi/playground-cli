@@ -25,6 +25,7 @@ import { initCommand } from "./commands/init/index.js";
 import { modCommand } from "./commands/mod/index.js";
 import { buildCommand } from "./commands/build.js";
 import { contractCommand } from "./commands/contract.js";
+import { decentralizeCommand } from "./commands/decentralize/index.js";
 import { logoutCommand } from "./commands/logout/index.js";
 import { updateCommand } from "./commands/update.js";
 import { captureWarning, closeTelemetry, flushTelemetry, initTelemetry } from "./telemetry.js";
@@ -129,6 +130,7 @@ program.addCommand(modCommand);
 program.addCommand(buildCommand);
 program.addCommand(contractCommand);
 program.addCommand(await createDeployCommand());
+program.addCommand(decentralizeCommand);
 program.addCommand(logoutCommand);
 program.addCommand(updateCommand);
 

@@ -54,7 +54,7 @@ describe("dev-mode publish signer identity", () => {
     it("signerMode.ts publishes as bulletin-deploy's DEFAULT_MNEMONIC bare-root account", () => {
         // The headline guarantee: signerMode's synthesised dev signer
         // address matches what bulletin-deploy uses for storage + DotNS.
-        // If a future change swaps `createAliceSignerForDevPublish` to
+        // If a future change swaps `createDevPublishSigner` to
         // `createDevSigner("Alice")` (= `//Alice` = `5Grwva…`), this
         // assertion fails. The previous-version of this test only
         // compared two `bulletin-deploy` constants against each other —
@@ -66,7 +66,7 @@ describe("dev-mode publish signer identity", () => {
         // Upstream-equivalence pin. If `bulletin-deploy` swaps its
         // default mnemonic for any reason, this test surfaces the
         // change before we ship a broken dev flow. `seedToAccount(_, "")`
-        // is the exact derivation `createAliceSignerForDevPublish` uses,
+        // is the exact derivation `createDevPublishSigner` uses,
         // so verifying it here ALSO covers the SDK side of the
         // equivalence (a future product-sdk-keys release that changes
         // "no derivation" semantics would fail this).

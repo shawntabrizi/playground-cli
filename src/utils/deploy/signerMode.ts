@@ -67,7 +67,17 @@ import type { DeployPlan } from "./availability.js";
 const DEV_PUBLISH_ACCOUNT = seedToAccount(DEFAULT_MNEMONIC, "");
 export const DEV_PUBLISH_ADDRESS = ss58Encode(DEV_PUBLISH_ACCOUNT.publicKey);
 
-function createAliceSignerForDevPublish(): ResolvedSigner {
+/**
+ * Construct a `ResolvedSigner` for bulletin-deploy's `DEFAULT_MNEMONIC`
+ * bare-root account. Used by deploy's dev-mode publish flow, and by
+ * `dot decentralize`'s interactive dev signer option — both keep
+ * storage / DotNS / registry signing coherent under one identity.
+ *
+ * Despite the historical "Alice" label in the test snapshot, this is NOT
+ * Substrate's `//Alice` (`5Grwva...`). It is bulletin-deploy's bare-root
+ * (`5DfhGyQd...`). See `signerModeAlice.test.ts` for the pin.
+ */
+export function createDevPublishSigner(): ResolvedSigner {
     return {
         signer: DEV_PUBLISH_ACCOUNT.signer,
         address: DEV_PUBLISH_ADDRESS,
@@ -224,7 +234,7 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
             // or nothing (Alice owns). Construct Alice fresh either way —
             // bulletin-deploy uses the same default mnemonic so all three
             // tx phases sign as the same on-chain identity.
-            publishSigner = createAliceSignerForDevPublish();
+            publishSigner = createDevPublishSigner();
             if (opts.userSigner?.source === "session") {
                 claimedOwnerH160 = opts.userSigner.addresses?.productH160 ?? null;
             }
