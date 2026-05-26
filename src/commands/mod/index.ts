@@ -22,9 +22,20 @@ import { getConnection, destroyConnection } from "../../utils/connection.js";
 import { getReadOnlyRegistryContract } from "../../utils/registry.js";
 import { AppBrowser, type AppEntry } from "./AppBrowser.js";
 import { SetupScreen } from "./SetupScreen.js";
+import { QuestPicker } from "./QuestPicker.js";
 import { defaultRepoName } from "../../utils/git/repoName.js";
 import { runCliCommand } from "../../cli-runtime.js";
 import { assertPublicGitHubRepo, ModdablePreflightError } from "../../utils/deploy/moddable.js";
+import { parseGitHubRepoUrl, type GitHubRepoRef } from "../../utils/mod/source.js";
+import { fetchBulletinJson, getBulletinGateway } from "../../utils/bulletinGateway.js";
+
+interface FetchedAppMetadata {
+    name?: string;
+    description?: string;
+    repository?: string;
+    branch?: string;
+    tag?: string;
+}
 
 export const modCommand = new Command("mod")
     .description("Mod a playground app — clone the source as a fresh project to customise")
@@ -99,6 +110,39 @@ async function runModCommand(rawDomain: string | undefined): Promise<void> {
             }
         }
 
+        // QuestPicker is a read-only display of `quests.json` from the track
+        // repo's main. It runs BEFORE the existing setup flow without
+        // changing any of it — when the user presses "Start tutorial" we just
+        // continue into the normal clone-main path; when there's no
+        // `quests.json` the picker auto-skips silently. The picker needs a
+        // GitHub ref, so we lift the metadata fetch up here for the
+        // direct-domain path (the interactive picker already pre-fetched).
+        let repoRef: GitHubRepoRef | null = null;
+        if (metadata?.repository) {
+            repoRef = parseGitHubRepoUrl(metadata.repository);
+        } else {
+            try {
+                const fetched = await withSpan(
+                    "cli.mod.fetch-metadata",
+                    "fetch app metadata for quest probe",
+                    () => fetchAppMetadata(registry, domain),
+                );
+                repoRef = fetched.repository ? parseGitHubRepoUrl(fetched.repository) : null;
+            } catch {
+                // Fall through with `repoRef = null` — picker is skipped and
+                // the existing SetupScreen step will surface the same error.
+            }
+        }
+        if (repoRef) {
+            const continued = await withSpan("cli.mod.quest-picker", "browse quests", () =>
+                pickQuest(repoRef),
+            );
+            if (!continued) {
+                process.exitCode = 0;
+                return;
+            }
+        }
+
         const targetDir = await withSpan("cli.mod.resolve-target", "resolve target directory", () =>
             resolveTargetDir({ domain }),
         );
@@ -148,6 +192,36 @@ async function resolveTargetDir(args: { domain: string }): Promise<string | null
         return null;
     }
     return fallback;
+}
+
+async function fetchAppMetadata(registry: any, domain: string): Promise<FetchedAppMetadata> {
+    const metaRes = await registry.getMetadataUri.query(domain);
+    if (!metaRes.success) {
+        throw new Error(
+            `Registry lookup for "${domain}" failed at dry-run (chain rejected the call)`,
+        );
+    }
+    const cid = metaRes.value.isSome ? metaRes.value.value : null;
+    if (!cid) throw new Error(`App "${domain}" not found in registry`);
+    return await fetchBulletinJson<FetchedAppMetadata>(cid, getBulletinGateway());
+}
+
+function pickQuest(repoRef: GitHubRepoRef): Promise<boolean> {
+    return new Promise((resolve) => {
+        const app = render(
+            React.createElement(QuestPicker, {
+                repoRef,
+                onDone: () => {
+                    app.unmount();
+                    resolve(true);
+                },
+                onCancel: () => {
+                    app.unmount();
+                    resolve(false);
+                },
+            }),
+        );
+    });
 }
 
 function browseAndPick(registry: any): Promise<AppEntry | null> {

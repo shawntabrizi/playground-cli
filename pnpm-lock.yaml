@@ -56,6 +56,9 @@ importers:
       '@parity/product-sdk-utils':
         specifier: ^0.1.1
         version: 0.1.1
+      '@polkadot-api/json-rpc-provider':
+        specifier: ^0.2.0
+        version: 0.2.0
       '@polkadot-api/sdk-ink':
         specifier: ^0.7.0
         version: 0.7.0(@polkadot-api/ink-contracts@0.6.3)(polkadot-api@2.1.6(esbuild@0.27.7)(rxjs@7.8.2))(rxjs@7.8.2)(typescript@5.9.3)
