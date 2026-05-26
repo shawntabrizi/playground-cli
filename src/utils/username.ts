@@ -46,8 +46,9 @@
 import { createClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { getChainConfig } from "../config.js";
-import { getReadOnlyRegistryContract } from "./registry.js";
+import { getReadOnlyRegistryContract, getRegistryContract } from "./registry.js";
 import { getConnection } from "./connection.js";
+import type { ResolvedSigner } from "./signer.js";
 
 // Cold-start WS connects to paseo-people-next-system-rpc on a slow conference
 // network can take a few seconds before metadata + the first query are ready.
@@ -185,5 +186,158 @@ export async function lookupRegistryUsername(productH160: `0x${string}`): Promis
         return value;
     } catch {
         return null;
+    }
+}
+
+// ── Username write path ──────────────────────────────────────────────────────
+
+/**
+ * Validation bounds mirrored from the contract's `validate_username`
+ * (`playground-app/contracts/registry/lib.rs::USERNAME_MIN_LEN/MAX_LEN`).
+ * Kept as exports so the prompt can render "3–30 characters" copy without
+ * hardcoding numbers in two places.
+ */
+export const USERNAME_MIN_LEN = 3;
+export const USERNAME_MAX_LEN = 30;
+
+export type UsernameValidationError =
+    | "UsernameTooShort"
+    | "UsernameTooLong"
+    | "UsernameInvalidChar"
+    | "UsernameInvalidEdge"
+    | "UsernameDoubleDash";
+
+const VALIDATION_COPY: Record<UsernameValidationError, string> = {
+    UsernameTooShort: `Use at least ${USERNAME_MIN_LEN} characters.`,
+    UsernameTooLong: `Keep it under ${USERNAME_MAX_LEN + 1} characters.`,
+    UsernameInvalidChar: "Only lowercase letters, digits, and hyphens.",
+    UsernameInvalidEdge: "Cannot start or end with a hyphen.",
+    UsernameDoubleDash: "No two hyphens in a row.",
+};
+
+/**
+ * Client-side mirror of the contract's `validate_username`. Returns the same
+ * tag the chain would revert with, or `null` on success. Lowercases first so
+ * a typed `Alice` validates the same way the contract sees it. Mirrors
+ * `playground-app/src/utils/username.ts::validateUsernameClient` byte-for-byte
+ * so the CLI and web UI reject the same strings.
+ */
+export function validateUsernameClient(raw: string): UsernameValidationError | null {
+    const name = raw.toLowerCase();
+    if (name.length < USERNAME_MIN_LEN) return "UsernameTooShort";
+    if (name.length > USERNAME_MAX_LEN) return "UsernameTooLong";
+    if (name.startsWith("-") || name.endsWith("-")) return "UsernameInvalidEdge";
+    let prevDash = false;
+    for (let i = 0; i < name.length; i++) {
+        const ch = name.charCodeAt(i);
+        const ok =
+            (ch >= 97 && ch <= 122) /* a-z */ ||
+            (ch >= 48 && ch <= 57) /* 0-9 */ ||
+            ch === 45; /* '-' */
+        if (!ok) return "UsernameInvalidChar";
+        const isDash = ch === 45;
+        if (isDash && prevDash) return "UsernameDoubleDash";
+        prevDash = isDash;
+    }
+    return null;
+}
+
+/** Map a validation tag to user-facing copy for inline rendering. */
+export function describeUsernameValidationError(err: UsernameValidationError): string {
+    return VALIDATION_COPY[err];
+}
+
+/**
+ * Pinned gas + storage limits for `setUsername`. The SDK estimator undershoots
+ * for first-time storage inserts and the tx lands `Revive.OutOfGas`; the
+ * playground-app went through the same dance (see
+ * `playground-app/src/AccountPanel.tsx::runTx` for setUsername — same values).
+ * If the contract's storage shape changes, re-derive via
+ * `scripts/smoke-test-usernames.ts` in playground-app rather than guessing.
+ */
+const SET_USERNAME_GAS_LIMIT = { ref_time: 1_500_000_000_000n, proof_size: 2_000_000n };
+const SET_USERNAME_STORAGE_DEPOSIT_LIMIT = 1_000_000_000_000n;
+
+/**
+ * Best-block dry-run for the `isUsernameAvailable(name, prospective_caller)`
+ * predicate. Returns `true` when the lowercased name is unclaimed OR already
+ * held by `prospectiveCaller` (the contract's self-no-op rule), `false`
+ * otherwise, and `null` if the lookup itself failed (older contract, RPC
+ * blip). Callers should treat `null` as "skip the precheck and let the tx
+ * decide" — same graceful-degradation contract as `lookupRegistryUsername`.
+ */
+export async function isRegistryUsernameAvailable(
+    name: string,
+    prospectiveCaller: `0x${string}`,
+): Promise<boolean | null> {
+    try {
+        const client = await getConnection();
+        const registry = await getReadOnlyRegistryContract(client.raw.assetHub);
+        const fn = (
+            registry as unknown as {
+                isUsernameAvailable?: {
+                    query?: (
+                        name: string,
+                        caller: `0x${string}`,
+                    ) => Promise<{ success: boolean; value: unknown }>;
+                };
+            }
+        ).isUsernameAvailable;
+        if (!fn?.query) return null;
+        const res = await fn.query(name, prospectiveCaller);
+        if (!res.success) return null;
+        return typeof res.value === "boolean" ? res.value : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Submit `setUsername(name)` from the user's product account. Returns on the
+ * first successful dispatch — caller refreshes the displayed username from a
+ * best-block read afterwards (same pattern as playground-app, which doesn't
+ * wait for finalization).
+ *
+ * Defence-in-depth: even though UI callers pre-validate, we re-run
+ * `validateUsernameClient` here so no caller (now or future) can ever push an
+ * invalid name onto the chain. The contract enforces the same rules — but
+ * burning a tx just to learn we typed `--` is wasteful gas + a confusing UX,
+ * so we fail fast locally with a readable message instead.
+ *
+ * Throws on validation failure, signer rejection, or chain revert. Callers
+ * are responsible for mapping rejected-by-user to a quiet skip vs. a real
+ * failure.
+ */
+export async function setRegistryUsername(signer: ResolvedSigner, name: string): Promise<void> {
+    const validationError = validateUsernameClient(name);
+    if (validationError) {
+        throw new Error(
+            `Invalid username "${name}": ${describeUsernameValidationError(validationError)}`,
+        );
+    }
+    const client = await getConnection();
+    const registry = await getRegistryContract(client.raw.assetHub, signer);
+    const setUsername = (
+        registry as unknown as {
+            setUsername?: {
+                tx?: (
+                    name: string,
+                    opts?: {
+                        gasLimit?: { ref_time: bigint; proof_size: bigint };
+                        storageDepositLimit?: bigint;
+                    },
+                ) => Promise<{ ok?: boolean }>;
+            };
+        }
+    ).setUsername;
+    if (!setUsername?.tx) {
+        throw new Error("setUsername is not available on this registry deploy");
+    }
+    const res = await setUsername.tx(name, {
+        gasLimit: SET_USERNAME_GAS_LIMIT,
+        storageDepositLimit: SET_USERNAME_STORAGE_DEPOSIT_LIMIT,
+    });
+    if (res && res.ok === false) {
+        throw new Error("setUsername transaction reverted");
     }
 }

@@ -20,6 +20,7 @@ import { captureWarning, withSpan, errorMessage } from "../../telemetry.js";
 import { runCliCommand } from "../../cli-runtime.js";
 import { InitScreen } from "./InitScreen.js";
 import { connect, type LoginHandle, type SessionAddresses } from "../../utils/auth.js";
+import { destroyConnection } from "../../utils/connection.js";
 
 export const initCommand = new Command("init")
     .description("Install prerequisites and login via mobile QR")
@@ -61,7 +62,18 @@ export const initCommand = new Command("init")
                     onDone: () => app.unmount(),
                 }),
             );
-            await withSpan("cli.init.setup", "run init setup", () => app.waitUntilExit());
+            try {
+                await withSpan("cli.init.setup", "run init setup", () => app.waitUntilExit());
+            } finally {
+                // The init flow opens the shared Paseo client lazily via
+                // `getConnection()` for the registry username lookup
+                // (`lookupRegistryUsername` in `UsernamePrompt`) and any
+                // subsequent `setUsername` tx. AccountSetup uses the same
+                // singleton. Init runs with `hardExit: false`, so the event
+                // loop has to drain naturally — leaving the WS open means
+                // `dot init` hangs after "setup complete".
+                destroyConnection();
+            }
 
             console.log();
         }),

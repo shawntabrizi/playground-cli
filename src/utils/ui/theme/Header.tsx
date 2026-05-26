@@ -26,6 +26,13 @@ export interface HeaderProps {
     subtitle?: string;
     /** Short network label — "paseo" on testnet. */
     network?: string;
+    /**
+     * The user's playground-registry username, when one is known. Rendered as
+     * a final left-side breadcrumb piece after `network`. The caller is
+     * responsible for reading from the registry contract; the header just
+     * paints whatever string is passed and elides the slot when omitted.
+     */
+    username?: string;
     /** Right-aligned metadata; most commonly the CLI version. */
     right?: string;
     /**
@@ -44,7 +51,7 @@ export interface HeaderProps {
  * a hairline rule, and — as a side effect — sets the user's terminal tab
  * title so they can see progress without refocusing the terminal.
  */
-export function Header({ cmd, subtitle, network, right, tabTitle }: HeaderProps) {
+export function Header({ cmd, subtitle, network, username, right, tabTitle }: HeaderProps) {
     const { stdout } = useStdout();
 
     useEffect(() => {
@@ -52,7 +59,7 @@ export function Header({ cmd, subtitle, network, right, tabTitle }: HeaderProps)
         setWindowTitle(title);
     }, [cmd, subtitle, tabTitle]);
 
-    const pieces = [cmd, subtitle, network].filter((p): p is string => Boolean(p));
+    const pieces = [cmd, subtitle, network, username].filter((p): p is string => Boolean(p));
     const cols = stdout?.columns ?? 80;
     const width = Math.max(10, Math.min(cols - LAYOUT.leftMargin * 2, LAYOUT.ruleWidthMax));
 
@@ -67,7 +74,17 @@ export function Header({ cmd, subtitle, network, right, tabTitle }: HeaderProps)
                     {pieces.map((piece, i) => (
                         <React.Fragment key={i}>
                             {i > 0 && <Text dimColor>{"  ·  "}</Text>}
-                            <Text bold={i === 0} dimColor={i > 0}>
+                            {/*
+                             * wrap="truncate-end" so that an unexpectedly long
+                             * breadcrumb (e.g. a 30-char registry username on
+                             * a narrow terminal) clips with `…` instead of
+                             * wrapping each piece into garbage like
+                             * `dot ini` / `t`. The username is the realistic
+                             * worst-case piece — `validateUsernameClient`
+                             * caps it at 30 chars on the input path, but we
+                             * still defend the header.
+                             */}
+                            <Text bold={i === 0} dimColor={i > 0} wrap="truncate-end">
                                 {piece}
                             </Text>
                         </React.Fragment>
