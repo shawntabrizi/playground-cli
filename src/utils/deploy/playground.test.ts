@@ -326,10 +326,18 @@ describe("publishToPlayground", () => {
                 expect.objectContaining({ __kind: "store" }),
                 bulletinStorageSigner,
             );
-            expect(publishTx).toHaveBeenCalledWith("my-app.dot", "bafymeta", 1, {
-                isSome: false,
-                value: "0x0000000000000000000000000000000000000000",
-            });
+            expect(publishTx).toHaveBeenCalledWith(
+                "my-app.dot",
+                "bafymeta",
+                1,
+                {
+                    isSome: false,
+                    value: "0x0000000000000000000000000000000000000000",
+                },
+                "",
+                false,
+                false,
+            );
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -388,10 +396,18 @@ describe("publishToPlayground", () => {
             cwd: "/definitely/not/a/repo",
             claimedOwnerH160: "0x1234567890abcdef1234567890abcdef12345678",
         });
-        expect(publishTx).toHaveBeenCalledWith("claimed-app.dot", "bafymeta", 1, {
-            isSome: true,
-            value: "0x1234567890abcdef1234567890abcdef12345678",
-        });
+        expect(publishTx).toHaveBeenCalledWith(
+            "claimed-app.dot",
+            "bafymeta",
+            1,
+            {
+                isSome: true,
+                value: "0x1234567890abcdef1234567890abcdef12345678",
+            },
+            "",
+            false,
+            false,
+        );
     });
 
     it("passes visibility=0 when isPrivate is true", async () => {
@@ -402,10 +418,41 @@ describe("publishToPlayground", () => {
             cwd: "/definitely/not/a/repo",
             isPrivate: true,
         });
-        expect(publishTx).toHaveBeenCalledWith("secret.dot", "bafymeta", 0, {
-            isSome: false,
-            value: "0x0000000000000000000000000000000000000000",
+        expect(publishTx).toHaveBeenCalledWith(
+            "secret.dot",
+            "bafymeta",
+            0,
+            {
+                isSome: false,
+                value: "0x0000000000000000000000000000000000000000",
+            },
+            "",
+            false,
+            false,
+        );
+    });
+
+    it("forwards isModdable and isDevSigner to registry.publish", async () => {
+        await publishToPlayground({
+            domain: "modded-by-dev",
+            publishSigner: fakeSigner,
+            repositoryUrl: "https://github.com/foo/bar",
+            cwd: "/definitely/not/a/repo",
+            isModdable: true,
+            isDevSigner: true,
         });
+        expect(publishTx).toHaveBeenCalledWith(
+            "modded-by-dev.dot",
+            "bafymeta",
+            1,
+            {
+                isSome: false,
+                value: "0x0000000000000000000000000000000000000000",
+            },
+            "",
+            true,
+            true,
+        );
     });
 
     it("retries up to 3 times on registry publish failure", async () => {

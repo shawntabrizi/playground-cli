@@ -193,6 +193,8 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
                     onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
                     env: options.env,
                     isPrivate: options.playgroundPrivate,
+                    isModdable: options.moddable ?? false,
+                    isDevSigner: setup.publishSigner.source === "dev",
                 }),
         );
         metadataCid = pub.metadataCid;

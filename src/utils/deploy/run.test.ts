@@ -173,6 +173,46 @@ describe("runDeploy", () => {
         if (plan?.kind === "plan") expect(plan.approvals).toHaveLength(0);
     });
 
+    it("threads isModdable + isDevSigner into publishToPlayground", async () => {
+        // Phone-mode publish: isDevSigner=false, isModdable=true.
+        const { push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            domain: "phone-mod",
+            mode: "phone",
+            publishToPlayground: true,
+            moddable: true,
+            repositoryUrl: "https://github.com/foo/bar",
+            userSigner: fakeUserSigner,
+            onEvent: push,
+        });
+        const phoneCall = (publishToPlaygroundMock.mock.calls as unknown[][])[0]?.[0] as
+            | { isModdable?: boolean; isDevSigner?: boolean }
+            | undefined;
+        expect(phoneCall?.isModdable).toBe(true);
+        expect(phoneCall?.isDevSigner).toBe(false);
+
+        publishToPlaygroundMock.mockClear();
+
+        // Dev-mode publish (no session): isDevSigner=true, isModdable=false.
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            domain: "dev-throwaway",
+            mode: "dev",
+            publishToPlayground: true,
+            moddable: false,
+            userSigner: null,
+            onEvent: push,
+        });
+        const devCall = (publishToPlaygroundMock.mock.calls as unknown[][])[0]?.[0] as
+            | { isModdable?: boolean; isDevSigner?: boolean }
+            | undefined;
+        expect(devCall?.isModdable).toBe(false);
+        expect(devCall?.isDevSigner).toBe(true);
+    });
+
     it("phone mode with playground: 4 planned approvals, DotNS uses phone signer", async () => {
         const { events, push } = collectEvents();
         const outcome = await runDeploy({

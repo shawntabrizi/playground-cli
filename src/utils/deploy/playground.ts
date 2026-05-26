@@ -83,6 +83,27 @@ export interface PublishToPlaygroundOptions {
      * to its owner in the playground. Defaults to public (visibility=1).
      */
     isPrivate?: boolean;
+    /**
+     * Whether the published source is moddable (a public GitHub origin is
+     * recorded in metadata and listed in the `dot mod` picker). The contract
+     * records this bit so the playground-app filter doesn't need to fetch
+     * each metadata JSON to know.
+     */
+    isModdable?: boolean;
+    /**
+     * Domain (`<label>.dot`) the user `dot mod`'d this app from, or `""` if
+     * this is a first-party publish. Recorded on-chain so the playground-app
+     * can render a "modded from" badge. Capture is not yet built in the CLI;
+     * for now this is always `""`.
+     */
+    moddedFrom?: string;
+    /**
+     * True when the publish is signed by the dev signer (Alice / `--suri`)
+     * rather than the user's session. The contract surfaces this bit on each
+     * `AppInfo` so the playground-app can distinguish phone-published apps
+     * from dev-published throwaways.
+     */
+    isDevSigner?: boolean;
 }
 
 export interface PublishToPlaygroundResult {
@@ -294,11 +315,17 @@ export async function publishToPlayground(
             for (let attempt = 1; attempt <= MAX_REGISTRY_RETRIES; attempt++) {
                 try {
                     const visibility = options.isPrivate ? 0 : 1;
+                    const moddedFrom = options.moddedFrom ?? "";
+                    const isModdable = options.isModdable ?? false;
+                    const isDevSigner = options.isDevSigner ?? false;
                     const result = await registry.publish.tx(
                         fullDomain,
                         metadataCid,
                         visibility,
                         owner,
+                        moddedFrom,
+                        isModdable,
+                        isDevSigner,
                     );
                     if (result && result.ok === false) {
                         throw new Error("Registry publish transaction reverted");

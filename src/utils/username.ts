@@ -155,14 +155,14 @@ export async function lookupUsername(rootAccountSs58: string): Promise<UsernameL
  *
  * BACKWARD COMPATIBILITY: the CLI resolves the registry contract via
  * `@w3s/playground-registry` (see `contractManifest.ts`). The
- * `get_username` method only exists on v13+; on the still-deployed
- * @w3s v7 (and any production until the v13 cutover ships) the SDK throws
- * `Cannot read properties of undefined (reading 'query')`. We catch and
- * return null so `IdentityLines` quietly degrades to the People-parachain
- * name. After the @w3s v13 deploy + `dot contract install` the call
- * starts returning real values automatically — no CLI release needed.
+ * `getUsername` method only exists on v8+; against the older v7 the SDK
+ * throws `Cannot read properties of undefined (reading 'query')`. We
+ * catch and return null so `IdentityLines` quietly degrades to the
+ * People-parachain name. Once a target chain has the v8 contract live
+ * the call starts returning real values automatically, no CLI release
+ * needed.
  *
- * Errors are swallowed (logged via the catch) and reported as `null` —
+ * Errors are swallowed (logged via the catch) and reported as `null`:
  * this is a display-time enhancement, never a hard failure path.
  */
 export async function lookupRegistryUsername(productH160: `0x${string}`): Promise<string | null> {
