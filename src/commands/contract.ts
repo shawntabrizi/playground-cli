@@ -483,7 +483,7 @@ async function runContractInstall(libraries: string[], opts: ContractInstallOpts
 
 function makeDeployCommand(): Command {
     return new Command("deploy")
-        .description("Build, deploy, and register CDM contracts with the dot signer")
+        .description("Build, deploy, and register CDM contracts with the logged-in signer")
         .addOption(new Option("--signer <mode>", "Signer mode").choices(["dev", "phone"]))
         .option("--assethub-url <url>", "Override the Asset Hub WebSocket URL")
         .option("--bulletin-url <url>", "Override the Bulletin WebSocket URL")

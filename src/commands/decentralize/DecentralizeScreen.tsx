@@ -144,7 +144,7 @@ export function DecentralizeScreen({
     return (
         <Box flexDirection="column">
             <Header
-                cmd="dot decentralize"
+                cmd="playground decentralize"
                 subtitle={fullDomain ?? siteUrl ?? undefined}
                 network={getNetworkLabel(env)}
                 right={VERSION_LABEL}
@@ -179,7 +179,7 @@ export function DecentralizeScreen({
                             setStage({
                                 kind: "error",
                                 message:
-                                    'No session found — run "dot init" to log in, then re-run, or pick the dev signer.',
+                                    'No session found — run "playground init" to log in, then re-run, or pick the dev signer.',
                             });
                             return;
                         }
@@ -308,7 +308,7 @@ function signerOptions(sessionSigner: ResolvedSigner | null): SelectOption<Signe
             label: "your phone signer",
             hint: sessionSigner
                 ? "signed with your logged-in account"
-                : "requires `dot init` first",
+                : "requires `playground init` first",
         },
     ];
 }
@@ -627,8 +627,8 @@ function DoneStage({
             {outcome.signerSource === "dev" && (
                 <Callout tone="warning" title="owned by a development account">
                     <Text>
-                        To deploy to a domain owned by you, run `dot init` and re-run `dot
-                        decentralize` with the mobile signer.
+                        To deploy to a domain owned by you, run `playground init` and re-run
+                        `playground decentralize` with the mobile signer.
                     </Text>
                 </Callout>
             )}

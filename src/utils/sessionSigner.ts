@@ -65,7 +65,7 @@ export interface ProductAccountRef {
 }
 
 export const INCOMPLETE_SESSION_MESSAGE =
-    'Stored login session is missing the root account public key. Run "dot logout" and then "dot init" to pair again.';
+    'Stored login session is missing the root account public key. Run "playground logout" and then "playground init" to pair again.';
 
 export function sessionRootPublicKey(session: UserSession): Uint8Array {
     const rootAccountId = (session as { rootAccountId?: Uint8Array }).rootAccountId;

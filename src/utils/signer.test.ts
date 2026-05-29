@@ -153,7 +153,7 @@ describe("resolveSigner", () => {
         mockGetSessionSigner.mockResolvedValue(null);
 
         await expect(resolveSigner()).rejects.toThrow(SignerNotAvailableError);
-        await expect(resolveSigner()).rejects.toThrow(/dot init/);
+        await expect(resolveSigner()).rejects.toThrow(/playground init/);
     });
 
     it("prefers SURI over session even when session exists", async () => {

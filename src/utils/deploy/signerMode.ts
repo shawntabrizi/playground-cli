@@ -190,7 +190,7 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
     if (opts.mode === "phone") {
         if (!opts.userSigner) {
             throw new Error(
-                'Phone signer requested but no session found. Run "dot init" to log in, or pass --signer dev.',
+                'Phone signer requested but no session found. Run "playground init" to log in, or pass --signer dev.',
             );
         }
         bulletinDeployAuthOptions = {

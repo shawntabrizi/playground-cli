@@ -121,7 +121,7 @@ onProcessShutdown(() => closeTelemetry(2000));
 onProcessShutdown(clearWindowTitle);
 
 const program = new Command()
-    .name("dot")
+    .name("playground")
     .description("CLI for Polkadot Playground")
     .version(pkg.version);
 

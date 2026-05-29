@@ -158,7 +158,7 @@ function ContractInstallScreen({
     return (
         <Box flexDirection="column">
             <Header
-                cmd="dot contract install"
+                cmd="playground contract install"
                 subtitle="cdm contracts"
                 network={getNetworkLabel()}
                 right={VERSION_LABEL}

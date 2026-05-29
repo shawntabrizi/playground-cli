@@ -184,7 +184,7 @@ export function DeployScreen({
     return (
         <Box flexDirection="column">
             <Header
-                cmd="dot deploy"
+                cmd="playground deploy"
                 subtitle={headerSubtitle}
                 network={getNetworkLabel()}
                 right={VERSION_LABEL}
@@ -298,7 +298,7 @@ export function DeployScreen({
 
             {stage.kind === "prompt-moddable" && (
                 <Select<boolean>
-                    label="make this app moddable? (anyone in the playground can dot mod it)"
+                    label="make this app moddable? (anyone in the playground can playground mod it)"
                     options={[
                         {
                             value: false,
@@ -360,14 +360,14 @@ export function DeployScreen({
                         onFinish={(outcome, chunkTimings) => {
                             setStage({ kind: "done", outcome });
                             // Surface completion on the terminal tab so users can glance over.
-                            setWindowTitle(`dot deploy · ${resolved.domain} · ✓`);
+                            setWindowTitle(`playground deploy · ${resolved.domain} · ✓`);
                             onDone(outcome);
                             // chunkTimings is threaded via ref below — consumed by FinalResult.
                             finalChunkTimingsRef.current = chunkTimings;
                         }}
                         onError={(message) => {
                             setStage({ kind: "error", message });
-                            setWindowTitle(`dot deploy · ${resolved.domain} · ✕`);
+                            setWindowTitle(`playground deploy · ${resolved.domain} · ✕`);
                             onDone(null);
                         }}
                     />
@@ -753,7 +753,7 @@ function RunningStage({
 
     useEffect(() => {
         // Announce the command + target in the terminal tab on mount.
-        setWindowTitle(`dot deploy · ${inputs.domain} · building`);
+        setWindowTitle(`playground deploy · ${inputs.domain} · building`);
 
         let cancelled = false;
 
@@ -787,11 +787,11 @@ function RunningStage({
             setRunningState((s) => runningReducer(s, event));
             if (event.kind === "phase-start") {
                 if (event.phase === "build") {
-                    setWindowTitle(`dot deploy · ${inputs.domain} · building`);
+                    setWindowTitle(`playground deploy · ${inputs.domain} · building`);
                 } else if (event.phase === "storage-and-dotns") {
-                    setWindowTitle(`dot deploy · ${inputs.domain} · uploading`);
+                    setWindowTitle(`playground deploy · ${inputs.domain} · uploading`);
                 } else if (event.phase === "playground") {
-                    setWindowTitle(`dot deploy · ${inputs.domain} · publishing`);
+                    setWindowTitle(`playground deploy · ${inputs.domain} · publishing`);
                 }
             } else if (event.kind === "build-log") {
                 queueFrontendLog(event.line);

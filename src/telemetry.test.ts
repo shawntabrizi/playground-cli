@@ -45,9 +45,9 @@ describe("telemetry disabled mode", () => {
 describe("expected CLI errors", () => {
     it("classifies known user-facing failures as expected", async () => {
         const { isExpectedCliError } = await import("./telemetry.js");
-        expect(isExpectedCliError('Account is not mapped in Revive. Run "dot init" first.')).toBe(
-            true,
-        );
+        expect(
+            isExpectedCliError('Account is not mapped in Revive. Run "playground init" first.'),
+        ).toBe(true);
         expect(isExpectedCliError("Bulletin storage allowance is exhausted")).toBe(true);
         expect(
             isExpectedCliError(

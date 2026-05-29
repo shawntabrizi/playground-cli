@@ -66,19 +66,19 @@ jobs:
                   TAG="${{ steps.tag.outputs.tag }}"
                   # Pin to the just-released version; install.sh resolves "latest"
                   # by default which can lag behind a just-published release.
-                  # install.sh runs `dot init` at the end; init requires an
-                  # interactive QR scan and will exit non-zero in headless CI —
+                  # install.sh runs `playground init` at the end; init requires
+                  # an interactive QR scan and will exit non-zero in headless CI —
                   # that is expected. The binary is installed before init runs,
                   # so we tolerate the init failure and verify the binary below.
                   curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/install.sh" \
                       | VERSION="$TAG" bash || true
                   # Hard-fail here if the binary was not installed — that IS a
                   # real regression in the install script's download/chmod path.
-                  ls -la "$HOME/.polkadot/bin/dot"
+                  ls -la "$HOME/.polkadot/bin/playground"
 
             - name: Compute installed-binary path
               shell: bash
-              run: echo "DOT_E2E_BINARY=$HOME/.polkadot/bin/dot" >> "$GITHUB_ENV"
+              run: echo "DOT_E2E_BINARY=$HOME/.polkadot/bin/playground" >> "$GITHUB_ENV"
 
             - name: Smoke test the installed binary
               uses: nick-fields/retry@v3

@@ -116,7 +116,7 @@ export function formatBanner(currentVersion: string, latestVersion: string): str
     // visual treatment would quickly become noise.
     return (
         `\n  ${ANSI_YELLOW}${GLYPH.warn}${ANSI_RESET}  Update available: ${current} → ${latest}\n` +
-        `     Run ${ANSI_BOLD}dot update${ANSI_RESET} to upgrade.\n`
+        `     Run ${ANSI_BOLD}playground update${ANSI_RESET} to upgrade.\n`
     );
 }
 

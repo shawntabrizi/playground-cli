@@ -153,7 +153,7 @@ function ContractDeployScreen({
     return (
         <Box flexDirection="column">
             <Header
-                cmd="dot contract deploy"
+                cmd="playground contract deploy"
                 subtitle="cdm contracts"
                 network={getNetworkLabel()}
                 right={VERSION_LABEL}
