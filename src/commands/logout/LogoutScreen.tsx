@@ -61,7 +61,7 @@ export function LogoutScreen({
     return (
         <Box flexDirection="column">
             <Header
-                cmd="dot logout"
+                cmd="playground logout"
                 subtitle="polkadot playground"
                 network={getNetworkLabel()}
                 right={VERSION_LABEL}

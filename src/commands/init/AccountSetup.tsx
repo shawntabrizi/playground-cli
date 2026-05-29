@@ -131,7 +131,7 @@ export function AccountSetup({
                     prev.map((s) => ({
                         ...s,
                         status: "failed",
-                        error: "no session — run dot init to log in",
+                        error: "no session — run playground init to log in",
                     })),
                 );
                 finish(false);
@@ -219,7 +219,7 @@ export function AccountSetup({
                         accountSetupOk = false;
                         update(0, {
                             status: "failed",
-                            error: `denied: ${denied}. Re-run \`dot init\` and approve on your phone.`,
+                            error: `denied: ${denied}. Re-run \`playground init\` and approve on your phone.`,
                             valueTone: "danger",
                         });
                     } else {

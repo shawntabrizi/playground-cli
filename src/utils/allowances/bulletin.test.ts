@@ -293,7 +293,7 @@ describe("Bulletin allowance authorization", () => {
                 bulletinApi: {} as any,
                 requiredBytes: 50,
             }),
-        ).rejects.toThrow(/Re-run `dot init` and approve on your phone/);
+        ).rejects.toThrow(/Re-run `playground init` and approve on your phone/);
         expect(requestResourceAllocation).toHaveBeenCalledWith({
             callingProductId: "playground.dot",
             resources: [{ tag: "BulletInAllowance", value: undefined }],

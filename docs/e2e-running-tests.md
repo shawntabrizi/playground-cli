@@ -178,7 +178,7 @@ a stable release is cut. Tag: `e2e-ci-release`.
 **e2e-post-release.yml** (`release: published`, stable only — `prerelease != true`,
 or `workflow_dispatch`):
 Runs `install.sh` using the pinned tag (`VERSION=<tag> curl … | bash`), verifies
-the binary lands at `~/.polkadot/bin/dot`, then runs `published.test.ts` against
+the binary lands at `~/.polkadot/bin/playground`, then runs `published.test.ts` against
 the installed binary. Catches `install.sh` regressions that the SEA-download path
 doesn't exercise. Tag: `e2e-ci-post-release`.
 

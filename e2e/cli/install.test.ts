@@ -38,13 +38,13 @@ describe("dot install", () => {
 	test("dot update reports a meaningful outcome", async () => {
 		const result = await dot(["update"]);
 		expect(result.exitCode).toBe(0);
-		// Without this, a regression where `dot update` silently no-ops is
+		// Without this, a regression where `playground update` silently no-ops is
 		// invisible. Match either exact wording from src/commands/update.ts:
 		//   "already on latest (vX.Y.Z)"  — when current === latest tag
-		//   "Updated dot to vX.Y.Z"        — when an update happened
+		//   "Updated playground to vX.Y.Z" — when an update happened
 		// Both branches print "Checking for updates..." first, so anchor on
 		// the outcome line.
-		expect(result.stdout).toMatch(/already on latest \(v|Updated dot to v/);
+		expect(result.stdout).toMatch(/already on latest \(v|Updated playground to v/);
 		// Verify the binary still works after the update reported success.
 		const version = await dot(["--version"]);
 		expect(version.exitCode).toBe(0);

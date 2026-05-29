@@ -41,7 +41,7 @@ async function lookupSession(): Promise<LookupResult> {
 }
 
 export const logoutCommand = new Command("logout")
-    .description("Sign out of the account paired via `dot init`")
+    .description("Sign out of the account paired via `playground init`")
     .action(async () =>
         runCliCommand("logout", { hardExit: true }, async () => {
             console.log();

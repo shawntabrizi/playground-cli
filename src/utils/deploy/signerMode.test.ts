@@ -109,7 +109,7 @@ describe("resolveSignerSetup — phone mode", () => {
                 userSigner: null,
                 publishToPlayground: false,
             }),
-        ).toThrow(/dot init|--signer dev/);
+        ).toThrow(/playground init|--signer dev/);
     });
 
     it("no plan + no publish → 3 DotNS approvals in exact order, auth options wired to user signer", () => {

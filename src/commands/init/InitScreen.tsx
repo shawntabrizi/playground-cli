@@ -86,7 +86,7 @@ export function InitScreen({
     return (
         <Box flexDirection="column">
             <Header
-                cmd="dot init"
+                cmd="playground init"
                 network={getNetworkLabel()}
                 username={username ?? undefined}
                 right={VERSION_LABEL}

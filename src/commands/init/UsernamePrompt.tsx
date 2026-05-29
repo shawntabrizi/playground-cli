@@ -215,7 +215,7 @@ function SubmitUsername({
                 if (!cancelled)
                     setPhase({
                         kind: "input",
-                        externalError: "Lost session — re-run dot init.",
+                        externalError: "Lost session — re-run playground init.",
                         checking: false,
                     });
                 return;

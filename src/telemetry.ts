@@ -107,7 +107,7 @@ export function sanitizeSentryTransaction<T extends Record<string, unknown>>(eve
 }
 
 export function isExpectedCliError(message: string): boolean {
-    return /badregistrylookup|signer.*not available|run "dot init"|account is not mapped|storage allowance is exhausted|invalid domain|already owned|reserved|insufficient balance|no github origin configured|must use a public github repository|private or does not exist|github api returned|download failed/i.test(
+    return /badregistrylookup|signer.*not available|run "playground init"|account is not mapped|storage allowance is exhausted|invalid domain|already owned|reserved|insufficient balance|no github origin configured|must use a public github repository|private or does not exist|github api returned|download failed/i.test(
         message,
     );
 }
@@ -260,7 +260,12 @@ export async function withCommandTelemetry<T>(
     command: CliCommandName,
     fn: () => Promise<T> | T,
 ): Promise<T> {
-    return withRootSpan(`cli.${command}`, `dot ${command}`, getCliRootAttributes(command), fn);
+    return withRootSpan(
+        `cli.${command}`,
+        `playground ${command}`,
+        getCliRootAttributes(command),
+        fn,
+    );
 }
 
 export async function withSpan<T>(op: string, name: string, fn: () => Promise<T> | T): Promise<T>;

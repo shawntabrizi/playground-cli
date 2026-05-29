@@ -114,7 +114,9 @@ describe("init / deploy / playground-app account equivalence", () => {
                 productId: PLAYGROUND_PRODUCT_ID,
                 derivationIndex: 0,
             }),
-        ).toThrow('Stored login session is missing the root account public key. Run "dot logout"');
+        ).toThrow(
+            'Stored login session is missing the root account public key. Run "playground logout"',
+        );
     });
 
     test("PLAYGROUND_PRODUCT_ID matches the playground-app's default dotNsId", () => {

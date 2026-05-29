@@ -3,12 +3,18 @@ set -e
 
 INSTALL_DIR="$HOME/.polkadot"
 REPO="paritytech/playground-cli"
-BIN="dot"
+# The command users invoke, plus a short alias. Both resolve to the same binary.
+CMD="playground"
+ALIAS="pg"
+# Release artifacts are still published as `dot-<os>-<arch>` — keep the asset
+# prefix in sync with .github/workflows/release.yml. The downloaded file is
+# saved locally under $CMD, so the old `dot` command name is gone.
+ASSET_PREFIX="dot"
 
 # 1) Detect platform
 OS=$(uname -s); case "$OS" in Linux) OS=linux;; Darwin) OS=darwin;; *) echo "Unsupported OS: $OS"; exit 1;; esac
 ARCH=$(uname -m); case "$ARCH" in x86_64|amd64) ARCH=x64;; arm64|aarch64) ARCH=arm64;; *) echo "Unsupported arch: $ARCH"; exit 1;; esac
-ASSET="$BIN-$OS-$ARCH"
+ASSET="$ASSET_PREFIX-$OS-$ARCH"
 
 # 2) Resolve release tag
 #
@@ -33,21 +39,27 @@ fi
 
 # 3) Install binary
 spin() { while true; do for c in '|' '/' '-' '\'; do printf "\r%s %s" "$1" "$c"; sleep 0.1; done; done; }
-spin "Installing dot ($OS/$ARCH) $TAG" &
+spin "Installing $CMD ($OS/$ARCH) $TAG" &
 SPIN_PID=$!
 trap "kill $SPIN_PID 2>/dev/null" EXIT
 
 mkdir -p "$INSTALL_DIR/bin" "$HOME/.local/bin"
-curl -fsSL "https://github.com/$REPO/releases/download/$TAG/$ASSET" -o "$INSTALL_DIR/bin/$BIN"
-chmod +x "$INSTALL_DIR/bin/$BIN"
+curl -fsSL "https://github.com/$REPO/releases/download/$TAG/$ASSET" -o "$INSTALL_DIR/bin/$CMD"
+chmod +x "$INSTALL_DIR/bin/$CMD"
 if [ "$OS" = "darwin" ]; then
-  codesign --sign - --force "$INSTALL_DIR/bin/$BIN" 2>/dev/null || true
-  xattr -c "$INSTALL_DIR/bin/$BIN" 2>/dev/null || true
+  codesign --sign - --force "$INSTALL_DIR/bin/$CMD" 2>/dev/null || true
+  xattr -c "$INSTALL_DIR/bin/$CMD" 2>/dev/null || true
 fi
-ln -sf "$INSTALL_DIR/bin/$BIN" "$HOME/.local/bin/$BIN"
+# Expose both the full command and its short alias from both bin dirs on PATH.
+ln -sf "$INSTALL_DIR/bin/$CMD" "$INSTALL_DIR/bin/$ALIAS"
+ln -sf "$INSTALL_DIR/bin/$CMD" "$HOME/.local/bin/$CMD"
+ln -sf "$INSTALL_DIR/bin/$CMD" "$HOME/.local/bin/$ALIAS"
+# Remove the legacy `dot` binary/symlink from earlier installs so it stops
+# resolving on PATH — the command is now `playground` (or `pg`).
+rm -f "$INSTALL_DIR/bin/dot" "$HOME/.local/bin/dot"
 
 kill $SPIN_PID 2>/dev/null; wait $SPIN_PID 2>/dev/null || true; trap - EXIT
-printf "\rInstalled dot (%s/%s) %s   \n" "$OS" "$ARCH" "$TAG"
+printf "\rInstalled %s (%s/%s) %s   \n" "$CMD" "$OS" "$ARCH" "$TAG"
 
 # 4) Add to PATH
 append_once() {
@@ -69,12 +81,22 @@ fi
 export PATH="$INSTALL_DIR/bin:$HOME/.local/bin:$PATH"
 
 echo ""
-echo -e "dot is ready! Setting up dependencies…"
+echo -e "$CMD is ready! Setting up dependencies…"
 echo ""
-if ! "$INSTALL_DIR/bin/$BIN" init --yes; then
+if ! "$INSTALL_DIR/bin/$CMD" init --yes; then
   INIT_EXIT=$?
-  echo -e "\n\033[33mDependency setup failed. Run \033[1mdot init\033[0;33m when ready.\033[0m" >&2
+  echo -e "\n\033[33mDependency setup failed. Run \033[1m$CMD init\033[0;33m (or \033[1m$ALIAS init\033[0;33m) when ready.\033[0m" >&2
   exit "$INIT_EXIT"
 fi
+
+# Final "what to run next" prompt, styled to match the yellow rounded-border
+# Callout the TUI uses for phone-signing notifications (see
+# src/utils/ui/theme/Callout.tsx). Mirrored in bash so it shows the moment the
+# curl install finishes.
+Y='\033[33m'; B='\033[1m'; R='\033[0m'
 echo ""
-echo -e "Run \033[1mdot init\033[0m to log in with the Polkadot mobile app."
+echo -e "${Y}╭─ ${B}next step${R}${Y} ──────────────────────────────╮${R}"
+echo -e "${Y}│${R} Run ${B}$CMD init${R} or ${B}$ALIAS init${R} to log in ${Y}│${R}"
+echo -e "${Y}│${R} with the Polkadot mobile app.            ${Y}│${R}"
+echo -e "${Y}│${R} Both commands work the same.             ${Y}│${R}"
+echo -e "${Y}╰──────────────────────────────────────────╯${R}"

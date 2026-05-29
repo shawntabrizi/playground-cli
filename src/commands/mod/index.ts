@@ -132,7 +132,7 @@ async function runModCommand(rawDomain: string | undefined): Promise<void> {
             console.log("  Next steps:");
             console.log(`  1. cd ${targetDir}`);
             console.log("  2. edit with claude");
-            console.log("  3. dot deploy --playground");
+            console.log("  3. playground deploy --playground");
         }
         if (!ok) process.exitCode = 1;
     } finally {

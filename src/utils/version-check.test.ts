@@ -114,11 +114,11 @@ describe("shouldSkip", () => {
 });
 
 describe("formatBanner", () => {
-    it("includes both versions with v-prefixes and the dot update hint", () => {
+    it("includes both versions with v-prefixes and the playground update hint", () => {
         const out = formatBanner("0.16.14", "0.16.15");
         expect(out).toContain("v0.16.14");
         expect(out).toContain("v0.16.15");
-        expect(out).toContain("dot update");
+        expect(out).toContain("playground update");
     });
 });
 
@@ -164,7 +164,7 @@ describe("startVersionCheck", () => {
         expect(banner).not.toBeNull();
         expect(banner).toContain("v0.16.14");
         expect(banner).toContain("v0.17.0");
-        expect(banner).toContain("dot update");
+        expect(banner).toContain("playground update");
     });
 
     it("returns null when the network call fails", async () => {

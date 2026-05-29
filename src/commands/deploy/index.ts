@@ -79,7 +79,7 @@ export const deployCommand = new Command("deploy")
     )
     .option(
         "--moddable",
-        "Publish the source repo so others can `dot mod` it. Requires --playground and a public GitHub `origin`.",
+        "Publish the source repo so others can `playground mod` it. Requires --playground and a public GitHub `origin`.",
     )
     .option("--no-moddable", "Explicitly skip publishing source (the default).")
     .option("--suri <suri>", "Secret URI for the user signer (e.g. //Alice for dev)")
@@ -217,7 +217,7 @@ async function preflight(opts: {
                     // (e.g. quick smoke tests, CI without a session).
                     process.stderr.write(
                         "warning: --signer dev --playground with no session and no --suri — " +
-                            "publishing under the dev (Alice) account. Run `dot init` first " +
+                            "publishing under the dev (Alice) account. Run `playground init` first " +
                             "if you want the app to appear in your MyApps view.\n",
                     );
                     captureWarning("dev mode playground publish with no user identity", {
@@ -245,7 +245,7 @@ async function preflight(opts: {
     if (!mapped) {
         signer.destroy();
         throw new Error(
-            'Account is not mapped in Revive. Run "dot init" first to finish account setup.',
+            'Account is not mapped in Revive. Run "playground init" first to finish account setup.',
         );
     }
 

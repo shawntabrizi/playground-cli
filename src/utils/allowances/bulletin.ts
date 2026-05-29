@@ -99,7 +99,7 @@ async function requestBulletinAllowanceKey(
 ): Promise<Uint8Array> {
     if (!publishSigner.userSession) {
         throw new Error(
-            'No Bulletin allowance account cached. Run "dot init" to grant allowances.',
+            'No Bulletin allowance account cached. Run "playground init" to grant allowances.',
         );
     }
 
@@ -118,7 +118,7 @@ async function requestBulletinAllowanceKey(
     if (key) return key;
     const outcome = outcomes[0];
     throw new Error(
-        `Bulletin allowance allocation ${outcome?.tag ?? "returned no outcome"}. Re-run \`dot init\` and approve on your phone.`,
+        `Bulletin allowance allocation ${outcome?.tag ?? "returned no outcome"}. Re-run \`playground init\` and approve on your phone.`,
     );
 }
 
@@ -164,8 +164,8 @@ export async function getBulletinAllowanceSigner({
         const address = authorization.address;
         throw new Error(
             authorization.status.authorized
-                ? `Bulletin allowance for ${address} is live but does not have enough quota. Re-run \`dot init\` and approve on your phone.`
-                : `Bulletin allowance account ${address} is not authorized. Re-run \`dot init\` and approve on your phone.`,
+                ? `Bulletin allowance for ${address} is live but does not have enough quota. Re-run \`playground init\` and approve on your phone.`
+                : `Bulletin allowance account ${address} is not authorized. Re-run \`playground init\` and approve on your phone.`,
         );
     }
 

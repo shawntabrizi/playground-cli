@@ -55,7 +55,9 @@ export interface SignerOptions {
 
 export class SignerNotAvailableError extends Error {
     constructor() {
-        super('No signer available. Run "dot init" to log in, or pass --suri //Alice for dev.');
+        super(
+            'No signer available. Run "playground init" to log in, or pass --suri //Alice for dev.',
+        );
         this.name = "SignerNotAvailableError";
     }
 }

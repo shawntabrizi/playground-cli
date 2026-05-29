@@ -123,7 +123,7 @@ export function atomicInstall(dest: string, bytes: Buffer, mode = 0o755): void {
 }
 
 export const updateCommand = new Command("update")
-    .description("Update dot to the latest version")
+    .description("Update playground to the latest version")
     .action(async () =>
         runCliCommand("update", { hardExit: true }, async () => {
             const installDir = await withSpan(
@@ -171,7 +171,7 @@ export const updateCommand = new Command("update")
                 throw err;
             }
 
-            const dest = resolve(installDir, "dot");
+            const dest = resolve(installDir, "playground");
             try {
                 await withSpan(
                     "cli.update.install",
@@ -203,6 +203,6 @@ export const updateCommand = new Command("update")
             }
 
             console.log("done");
-            console.log(`Updated dot to ${tag}`);
+            console.log(`Updated playground to ${tag}`);
         }),
     );

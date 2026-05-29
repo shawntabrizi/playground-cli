@@ -91,7 +91,7 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                 const ref = parseGitHubRepoUrl(repoUrl);
                 if (!ref) {
                     throw new Error(
-                        `Only GitHub-hosted source is supported for dot mod today (got ${repoUrl}).`,
+                        `Only GitHub-hosted source is supported for playground mod today (got ${repoUrl}).`,
                     );
                 }
                 // `meta.branch` is written by `dot deploy --moddable` from
@@ -134,7 +134,7 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
     return (
         <Box flexDirection="column">
             <Header
-                cmd="dot mod"
+                cmd="playground mod"
                 subtitle={domain}
                 network={getNetworkLabel()}
                 right={VERSION_LABEL}

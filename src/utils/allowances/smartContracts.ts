@@ -40,7 +40,7 @@ export async function ensureSmartContractAllowance({
 
     if (!deploySigner.userSession) {
         throw new Error(
-            'No smart-contract gas allowance cached. Run "dot init" to grant allowances.',
+            'No smart-contract gas allowance cached. Run "playground init" to grant allowances.',
         );
     }
 
@@ -58,6 +58,6 @@ export async function ensureSmartContractAllowance({
 
     const outcome = outcomes[0]?.tag ?? "returned no outcome";
     throw new Error(
-        `Smart-contract gas allowance allocation ${outcome}. Re-run \`dot init\` and approve on your phone.`,
+        `Smart-contract gas allowance allocation ${outcome}. Re-run \`playground init\` and approve on your phone.`,
     );
 }
