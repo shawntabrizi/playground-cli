@@ -1,21 +1,21 @@
 {
   "targets": {
-    "929b5c63e2cb5202": {
+    "b7a87bf51613d89f": {
       "asset-hub": "wss://paseo-asset-hub-next-rpc.polkadot.io",
       "bulletin": "https://paseo-bulletin-next-ipfs.polkadot.io/ipfs",
-      "registry": "0xa7ae171c78f06c248a9b2556c793aa1df5c9173a"
+      "registry": "0xf62c2ece29cd8df2e10040ecfa5a894a5c5d9cb0"
     }
   },
   "dependencies": {
-    "929b5c63e2cb5202": {
+    "b7a87bf51613d89f": {
       "@w3s/playground-registry": "latest"
     }
   },
   "contracts": {
-    "929b5c63e2cb5202": {
+    "b7a87bf51613d89f": {
       "@w3s/playground-registry": {
-        "version": 11,
-        "address": "0x109BBf68F41B570Fd6d3b7bDE9b8e18779FDd8Db",
+        "version": 0,
+        "address": "0x1C12456f461aBd82C276436d3136F9Df4E8f3E08",
         "abi": [
           {
             "type": "constructor",
@@ -500,6 +500,49 @@
           },
           {
             "type": "function",
+            "name": "getLineageCount",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "",
+                "type": "uint32"
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
+            "name": "getLineage",
+            "inputs": [
+              {
+                "name": "start",
+                "type": "uint32"
+              },
+              {
+                "name": "count",
+                "type": "uint32"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "tuple[]",
+                "components": [
+                  {
+                    "name": "child",
+                    "type": "string"
+                  },
+                  {
+                    "name": "source",
+                    "type": "string"
+                  }
+                ]
+              }
+            ],
+            "stateMutability": "view"
+          },
+          {
+            "type": "function",
             "name": "getMetadataUri",
             "inputs": [
               {
@@ -795,6 +838,98 @@
           },
           {
             "type": "function",
+            "name": "importLineage",
+            "inputs": [
+              {
+                "name": "entries",
+                "type": "tuple[]",
+                "components": [
+                  {
+                    "name": "child",
+                    "type": "string"
+                  },
+                  {
+                    "name": "source",
+                    "type": "string"
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "importPoints",
+            "inputs": [
+              {
+                "name": "entries",
+                "type": "tuple[]",
+                "components": [
+                  {
+                    "name": "account",
+                    "type": "address"
+                  },
+                  {
+                    "name": "total",
+                    "type": "uint128"
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "importSocialCounts",
+            "inputs": [
+              {
+                "name": "entries",
+                "type": "tuple[]",
+                "components": [
+                  {
+                    "name": "domain",
+                    "type": "string"
+                  },
+                  {
+                    "name": "star_count",
+                    "type": "uint32"
+                  },
+                  {
+                    "name": "mod_count",
+                    "type": "uint32"
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
+            "name": "importUsernames",
+            "inputs": [
+              {
+                "name": "entries",
+                "type": "tuple[]",
+                "components": [
+                  {
+                    "name": "account",
+                    "type": "address"
+                  },
+                  {
+                    "name": "name",
+                    "type": "string"
+                  }
+                ]
+              }
+            ],
+            "outputs": [],
+            "stateMutability": "nonpayable"
+          },
+          {
+            "type": "function",
             "name": "setUsername",
             "inputs": [
               {
@@ -885,7 +1020,7 @@
             "stateMutability": "view"
           }
         ],
-        "metadataCid": "bafk2bzaceatxst44simdeefvybqtrytkbsxhpktn7cjfhpuei6soggmped4oi"
+        "metadataCid": "bafk2bzaceduyvqkzgyfafjcy77v3t3ypvkruwvt6zq3uaw37zvzelalfpkfty"
       }
     }
   }
