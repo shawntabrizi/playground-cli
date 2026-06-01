@@ -85,18 +85,20 @@ echo -e "$CMD is ready! Setting up dependencies…"
 echo ""
 if ! "$INSTALL_DIR/bin/$CMD" init --yes; then
   INIT_EXIT=$?
-  echo -e "\n\033[33mDependency setup failed. Run \033[1m$CMD init\033[0;33m (or \033[1m$ALIAS init\033[0;33m) when ready.\033[0m" >&2
+  echo -e "\n\033[33mDependency setup failed. Run \033[1m$CMD init\033[0;33m when ready.\033[0m" >&2
   exit "$INIT_EXIT"
 fi
 
 # Final "what to run next" prompt, styled to match the yellow rounded-border
 # Callout the TUI uses for phone-signing notifications (see
 # src/utils/ui/theme/Callout.tsx). Mirrored in bash so it shows the moment the
-# curl install finishes.
-Y='\033[33m'; B='\033[1m'; R='\033[0m'
+# curl install finishes. Like npm/gh/cargo, we surface a single canonical
+# command and note the alias once, dimmed — not two commands billed as equals.
+Y='\033[33m'; B='\033[1m'; D='\033[2m'; R='\033[0m'
 echo ""
-echo -e "${Y}╭─ ${B}next step${R}${Y} ──────────────────────────────╮${R}"
-echo -e "${Y}│${R} Run ${B}$CMD init${R} or ${B}$ALIAS init${R} to log in ${Y}│${R}"
-echo -e "${Y}│${R} with the Polkadot mobile app.            ${Y}│${R}"
-echo -e "${Y}│${R} Both commands work the same.             ${Y}│${R}"
-echo -e "${Y}╰──────────────────────────────────────────╯${R}"
+echo -e "${Y}╭─ ${B}Next step${R}${Y} ────────────────────────────╮${R}"
+echo -e "${Y}│${R} Log in with the Polkadot mobile app:   ${Y}│${R}"
+echo -e "${Y}│${R}                                        ${Y}│${R}"
+echo -e "${Y}│${R}   ${B}$CMD init${R}                      ${Y}│${R}"
+echo -e "${Y}╰────────────────────────────────────────╯${R}"
+echo -e "${D}  Tip: ${ALIAS} is a short alias for ${CMD}.${R}"
