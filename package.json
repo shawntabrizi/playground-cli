@@ -70,6 +70,9 @@
             "@novasamatech/scale": "0.7.9",
             "@novasamatech/statement-store": "0.7.9",
             "@novasamatech/storage-adapter": "0.7.9"
+        },
+        "patchedDependencies": {
+            "@parity/product-sdk-terminal": "patches/@parity__product-sdk-terminal.patch"
         }
     }
 }

@@ -13,6 +13,11 @@ overrides:
   '@novasamatech/statement-store': 0.7.9
   '@novasamatech/storage-adapter': 0.7.9
 
+patchedDependencies:
+  '@parity/product-sdk-terminal':
+    hash: 881abfac101745190526378af2ef8b2bffee3a6b8743272b706f434568e806d3
+    path: patches/@parity__product-sdk-terminal.patch
+
 importers:
 
   .:
@@ -49,7 +54,7 @@ importers:
         version: 0.1.1
       '@parity/product-sdk-terminal':
         specifier: ^0.3.0
-        version: 0.3.0(esbuild@0.27.7)(rxjs@7.8.2)
+        version: 0.3.0(patch_hash=881abfac101745190526378af2ef8b2bffee3a6b8743272b706f434568e806d3)(esbuild@0.27.7)(rxjs@7.8.2)
       '@parity/product-sdk-tx':
         specifier: ^0.2.4
         version: 0.2.7(@novasamatech/host-api-wrapper@0.8.4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@novasamatech/host-api@0.7.9)(esbuild@0.27.7)(rxjs@7.8.2)
@@ -6854,7 +6859,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@parity/product-sdk-terminal@0.3.0(esbuild@0.27.7)(rxjs@7.8.2)':
+  '@parity/product-sdk-terminal@0.3.0(patch_hash=881abfac101745190526378af2ef8b2bffee3a6b8743272b706f434568e806d3)(esbuild@0.27.7)(rxjs@7.8.2)':
     dependencies:
       '@noble/ciphers': 2.2.0
       '@noble/curves': 2.2.0

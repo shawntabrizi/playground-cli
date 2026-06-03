@@ -38,7 +38,12 @@ import {
     type UserSession,
 } from "@parity/product-sdk-terminal";
 import type { PolkadotSigner } from "polkadot-api";
-import { DAPP_ID, PLAYGROUND_PRODUCT_ID, getChainConfig } from "../config.js";
+import {
+    DAPP_ID,
+    PLAYGROUND_PRODUCT_ID,
+    TERMINAL_METADATA_URL,
+    getChainConfig,
+} from "../config.js";
 import {
     createPlaygroundSessionSigner,
     derivePlaygroundProductPublicKey,
@@ -76,6 +81,11 @@ function createAdapter(): TerminalAdapter {
     return createTerminalAdapter({
         appId: DAPP_ID,
         endpoints: getChainConfig().peopleEndpoints,
+        // `metadataUrl` exists via our patch on product-sdk-terminal (see
+        // patches/): it forwards into the V1 pairing QR's metadata field,
+        // which the phone fetches to render the Sign-In screen. Required
+        // while the @novasamatech 0.7.9 mobile-compat pin is active.
+        metadataUrl: TERMINAL_METADATA_URL,
     });
 }
 
