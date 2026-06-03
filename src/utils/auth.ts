@@ -38,12 +38,7 @@ import {
     type UserSession,
 } from "@parity/product-sdk-terminal";
 import type { PolkadotSigner } from "polkadot-api";
-import {
-    DAPP_ID,
-    PLAYGROUND_PRODUCT_ID,
-    TERMINAL_METADATA_URL,
-    getChainConfig,
-} from "../config.js";
+import { DAPP_ID, PLAYGROUND_PRODUCT_ID, getChainConfig } from "../config.js";
 import {
     createPlaygroundSessionSigner,
     derivePlaygroundProductPublicKey,
@@ -80,9 +75,33 @@ export interface SessionAddresses {
 function createAdapter(): TerminalAdapter {
     return createTerminalAdapter({
         appId: DAPP_ID,
-        metadataUrl: TERMINAL_METADATA_URL,
         endpoints: getChainConfig().peopleEndpoints,
     });
+}
+
+export const STALE_SESSION_MESSAGE =
+    'Stored login session is from an older app version and can no longer be read. Run "playground logout" and then "playground init" to pair again.';
+
+/**
+ * `waitForSessions` with stale-session translation. novasama 0.8 changed the
+ * SSO wire/storage format incompatibly vs 0.7: a session persisted by an older
+ * CLI may fail to decode. Surface that as an actionable message instead of a
+ * raw SCALE/decode error.
+ */
+async function loadSessions(adapter: TerminalAdapter, timeoutMs?: number): Promise<UserSession[]> {
+    try {
+        return await waitForSessions(adapter, timeoutMs);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Transport-level failures (statement store unreachable) re-throw
+        // verbatim; only decode/shape failures get the stale-session hint.
+        if (/decode|scale|unexpected|invalid|parse/i.test(msg)) {
+            throw new Error(STALE_SESSION_MESSAGE, {
+                cause: err instanceof Error ? err : undefined,
+            });
+        }
+        throw err;
+    }
 }
 
 function createPlaygroundSigner(session: UserSession): PolkadotSigner {
@@ -167,7 +186,7 @@ export interface LoginHandle {
 export async function connect(): Promise<ConnectResult> {
     const adapter = createAdapter();
 
-    const sessions = await waitForSessions(adapter);
+    const sessions = await loadSessions(adapter);
     if (sessions.length > 0) {
         const addresses = deriveSessionAddresses(sessions[0]);
         // `address` is kept for back-compat with callers that only need the
@@ -263,7 +282,7 @@ export async function waitForLogin(
             },
         );
         if (authenticated) {
-            const sessions = await waitForSessions(adapter, 3000);
+            const sessions = await loadSessions(adapter, 3000);
             if (sessions.length > 0) {
                 const addresses = deriveSessionAddresses(sessions[0]);
                 address = addresses.productAddress;
@@ -307,6 +326,15 @@ export interface SessionHandle {
     addresses: SessionAddresses;
     signer: PolkadotSigner;
     userSession: UserSession;
+    /**
+     * The live terminal adapter that owns the session. RFC-0010 host calls
+     * (`requestResourceAllocation`, `ensureSlotAccountSigner`, ...) from
+     * `@parity/product-sdk-terminal/host` take `(session, adapter)` — the
+     * adapter carries the appId + storage dir for the SDK's allowance cache.
+     * Owned by this handle: do NOT call `adapter.destroy()` directly, go
+     * through `destroy()`.
+     */
+    adapter: TerminalAdapter;
     destroy(): void;
 }
 
@@ -323,7 +351,7 @@ export interface SessionHandle {
 export async function getSessionSigner(): Promise<SessionHandle | null> {
     const adapter = createAdapter();
 
-    const sessions = await waitForSessions(adapter, 3000);
+    const sessions = await loadSessions(adapter, 3000);
     if (sessions.length === 0) {
         // SDK destroy() is async and fire-and-forget is fine here because we
         // have nothing else to await — pending statement-subscription
@@ -363,6 +391,7 @@ export async function getSessionSigner(): Promise<SessionHandle | null> {
         addresses,
         signer,
         userSession: session,
+        adapter,
         destroy,
     };
 }
@@ -394,7 +423,7 @@ export interface LogoutHandle {
  */
 export async function findSession(): Promise<LogoutHandle | null> {
     const adapter = createAdapter();
-    const sessions = await waitForSessions(adapter, 3000);
+    const sessions = await loadSessions(adapter, 3000);
     if (sessions.length === 0) {
         // Awaiting the async destroy() lets the SDK drain its pending
         // statement-subscription unsubscribes before we return null. Wrapped
