@@ -307,7 +307,7 @@ export function DeployScreen({
                         },
                         { value: true, label: "yes", hint: "publishes your source repo URL" },
                     ]}
-                    initialIndex={0}
+                    initialIndex={1}
                     onSelect={(yes) => {
                         setModdable(yes);
                         if (yes) {
