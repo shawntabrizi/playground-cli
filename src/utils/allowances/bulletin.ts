@@ -14,29 +14,31 @@
 // limitations under the License.
 
 import type { PolkadotSigner } from "polkadot-api";
-import { checkAuthorization, type BulletinApi } from "@parity/product-sdk-bulletin";
-import { PLAYGROUND_PRODUCT_ID, type Env } from "../../config.js";
-import type { ResolvedSigner } from "../signer.js";
+import { ss58Encode } from "@parity/product-sdk-address";
+import {
+    checkAuthorization,
+    type AuthorizationStatus,
+    type CloudStorageApi,
+} from "@parity/product-sdk-cloud-storage";
 import {
     createSlotAccountSigner,
-    getSlotAccountAddress,
-    readSlotAccountKey,
-    storeSlotAccountKeysFromOutcomes,
-} from "./slotKeys.js";
-import { requestResourceAllocation, type AllocationOutcome } from "./host.js";
+    ensureSlotAccountSigner,
+    requestResourceAllocation,
+    type AllocatableResource,
+} from "@parity/product-sdk-terminal/host";
+import type { ResolvedSigner } from "../signer.js";
+
+const BULLETIN_RESOURCE: AllocatableResource = { tag: "BulletInAllowance", value: undefined };
+
+const INIT_HINT = 'Run "playground init" to grant allowances.';
 
 export interface BulletinAllowanceSignerOptions {
-    env: Env;
-    ownerAddress: string;
     publishSigner: ResolvedSigner;
-    bulletinApi?: BulletinApi;
+    bulletinApi?: CloudStorageApi;
     requiredBytes?: number;
 }
 
-function hasUsableAuthorization(
-    status: Awaited<ReturnType<typeof checkAuthorization>>,
-    requiredBytes = 0,
-): boolean {
+function hasUsableAuthorization(status: AuthorizationStatus, requiredBytes = 0): boolean {
     return (
         status.authorized &&
         status.remainingTransactions > 0 &&
@@ -45,86 +47,54 @@ function hasUsableAuthorization(
 }
 
 export interface BulletinSlotAuthorization {
-    slotAccountKey: Uint8Array;
     address: string;
-    status: Awaited<ReturnType<typeof checkAuthorization>>;
+    status: AuthorizationStatus;
     usable: boolean;
 }
 
-export async function hasUsableBulletinSlotAuthorization(
-    bulletinApi: BulletinApi,
-    slotAccountKey: Uint8Array,
-    requiredBytes = 0,
-): Promise<boolean> {
-    const authorization = await getBulletinSlotAuthorization(
-        bulletinApi,
-        slotAccountKey,
-        requiredBytes,
-    );
-    return authorization.usable;
-}
-
+/** On-chain authorization status of a slot signer's account. */
 export async function getBulletinSlotAuthorization(
-    bulletinApi: BulletinApi,
-    slotAccountKey: Uint8Array,
+    bulletinApi: CloudStorageApi,
+    slotSigner: PolkadotSigner,
     requiredBytes = 0,
 ): Promise<BulletinSlotAuthorization> {
-    const address = getSlotAccountAddress(slotAccountKey);
+    const address = ss58Encode(slotSigner.publicKey);
     const status = await checkAuthorization(bulletinApi, address);
-    return {
-        slotAccountKey,
-        address,
-        status,
-        usable: hasUsableAuthorization(status, requiredBytes),
-    };
+    return { address, status, usable: hasUsableAuthorization(status, requiredBytes) };
 }
 
-function allocatedBulletinKey(outcomes: AllocationOutcome[]): Uint8Array | null {
-    for (const outcome of outcomes) {
-        if (outcome.tag !== "Allocated") continue;
-        const value = outcome.value as
-            | { tag?: string; value?: { slotAccountKey?: Uint8Array } }
-            | undefined;
-        if (value?.tag !== "BulletInAllowance") continue;
-        return value.value?.slotAccountKey instanceof Uint8Array
-            ? value.value.slotAccountKey
-            : null;
+/**
+ * Authorization status of the CACHED Bulletin slot key, without going over
+ * the wire to the phone. Returns null when no slot key is cached yet —
+ * callers treat that as "needs a grant". Used by `playground init` to decide
+ * whether to skip the approval dialog.
+ */
+export async function cachedBulletinSlotAuthorization(
+    adapter: NonNullable<ResolvedSigner["adapter"]>,
+    bulletinApi: CloudStorageApi,
+    requiredBytes = 0,
+): Promise<BulletinSlotAuthorization | null> {
+    const slotSigner = await createSlotAccountSigner(adapter, BULLETIN_RESOURCE);
+    if (!slotSigner) return null;
+    return getBulletinSlotAuthorization(bulletinApi, slotSigner, requiredBytes);
+}
+
+function requireSession(publishSigner: ResolvedSigner) {
+    const { userSession, adapter } = publishSigner;
+    if (!userSession || !adapter) {
+        throw new Error(`No Bulletin allowance account available. ${INIT_HINT}`);
     }
-    return null;
+    return { userSession, adapter };
 }
 
-async function requestBulletinAllowanceKey(
-    { env, ownerAddress, publishSigner }: BulletinAllowanceSignerOptions,
-    onExisting: "Ignore" | "Increase",
-): Promise<Uint8Array> {
-    if (!publishSigner.userSession) {
-        throw new Error(
-            'No Bulletin allowance account cached. Run "playground init" to grant allowances.',
-        );
-    }
-
-    const outcomes = await requestResourceAllocation(
-        publishSigner.userSession,
-        PLAYGROUND_PRODUCT_ID,
-        [{ tag: "BulletInAllowance", value: undefined }],
-        onExisting,
-    );
-    await storeSlotAccountKeysFromOutcomes(env, ownerAddress, outcomes);
-
-    const key = allocatedBulletinKey(outcomes);
-    const cached = await readSlotAccountKey(env, ownerAddress, "BulletInAllowance");
-    if (cached) return cached;
-
-    if (key) return key;
-    const outcome = outcomes[0];
-    throw new Error(
-        `Bulletin allowance allocation ${outcome?.tag ?? "returned no outcome"}. Re-run \`playground init\` and approve on your phone.`,
-    );
-}
-
+/**
+ * Resolve the signer used for Bulletin `TransactionStorage.store` calls
+ * (metadata uploads). Slot allocation, key caching and signer construction
+ * are all the SDK's (`@parity/product-sdk-terminal/host`); this function owns
+ * the QUOTA check: verify the slot's on-chain authorization and, when the
+ * allowance is exhausted, make a single `Increase` retry on the phone.
+ */
 export async function getBulletinAllowanceSigner({
-    env,
-    ownerAddress,
     publishSigner,
     bulletinApi,
     requiredBytes,
@@ -133,43 +103,33 @@ export async function getBulletinAllowanceSigner({
     // supplied a local key and owns making sure it has Bulletin allowance.
     if (publishSigner.source === "dev") return publishSigner.signer;
 
-    let key = await readSlotAccountKey(env, ownerAddress, "BulletInAllowance");
-    if (!key) {
-        key = await requestBulletinAllowanceKey(
-            { env, ownerAddress, publishSigner, bulletinApi, requiredBytes },
-            "Ignore",
-        );
-    }
+    const { userSession, adapter } = requireSession(publishSigner);
 
-    if (!bulletinApi) return createSlotAccountSigner(key);
+    // Cache hit → local sr25519 signer; miss → one phone approval.
+    let slotSigner = await ensureSlotAccountSigner(userSession, adapter, BULLETIN_RESOURCE);
+    if (!bulletinApi) return slotSigner;
 
-    let authorization = await getBulletinSlotAuthorization(bulletinApi, key, requiredBytes);
-    if (!authorization.usable && !authorization.status.authorized) {
-        key = await requestBulletinAllowanceKey(
-            { env, ownerAddress, publishSigner, bulletinApi, requiredBytes },
-            "Ignore",
-        );
-        authorization = await getBulletinSlotAuthorization(bulletinApi, key, requiredBytes);
-    }
+    let authorization = await getBulletinSlotAuthorization(bulletinApi, slotSigner, requiredBytes);
 
     if (!authorization.usable && authorization.status.authorized) {
-        key = await requestBulletinAllowanceKey(
-            { env, ownerAddress, publishSigner, bulletinApi, requiredBytes },
-            "Increase",
-        );
-        authorization = await getBulletinSlotAuthorization(bulletinApi, key, requiredBytes);
+        // Slot exists on-chain but quota is exhausted: ask for one more slot.
+        await requestResourceAllocation(userSession, adapter, [BULLETIN_RESOURCE], {
+            onExisting: "Increase",
+        });
+        slotSigner = await ensureSlotAccountSigner(userSession, adapter, BULLETIN_RESOURCE);
+        authorization = await getBulletinSlotAuthorization(bulletinApi, slotSigner, requiredBytes);
     }
 
     if (!authorization.usable) {
-        const address = authorization.address;
+        const { address, status } = authorization;
         throw new Error(
-            authorization.status.authorized
+            status.authorized
                 ? `Bulletin allowance for ${address} is live but does not have enough quota. Re-run \`playground init\` and approve on your phone.`
-                : `Bulletin allowance account ${address} is not authorized. Re-run \`playground init\` and approve on your phone.`,
+                : `Bulletin allowance account ${address} is not authorized on-chain yet. Re-run \`playground init\` and approve on your phone.`,
         );
     }
 
-    return createSlotAccountSigner(authorization.slotAccountKey);
+    return slotSigner;
 }
 
 export function isInvalidPaymentError(err: unknown): boolean {

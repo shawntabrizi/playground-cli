@@ -21,14 +21,22 @@ import { ContractManager, type CdmJson } from "@parity/product-sdk-contracts";
 import { ss58Encode } from "@parity/product-sdk-address";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { getDevPublicKey } from "@parity/product-sdk-tx";
+import type { PolkadotClient } from "polkadot-api";
 import type { ResolvedSigner } from "./signer.js";
 import {
     PLAYGROUND_REGISTRY_CONTRACT,
     suppressReviveTraceNoise,
-    withRequiredLiveContractAddresses,
+    withoutReviveTraceNoise,
 } from "./contractManifest.js";
 
-import cdmJson from "../../cdm.json";
+import cdmJsonRaw from "../../cdm.json";
+
+/**
+ * The `cdm.json` import is typed wide by TS (`"latest"` widens to `string`,
+ * hex addresses to `string`), which doesn't match the SDK's flat `CdmJson`
+ * shape. Assert through `unknown` once here so every call site is typed.
+ */
+const cdmJson = cdmJsonRaw as unknown as CdmJson;
 
 /**
  * Stable origin used for read-only registry queries (`dot mod` and friends).
@@ -38,16 +46,29 @@ import cdmJson from "../../cdm.json";
  */
 const READ_ONLY_QUERY_ORIGIN = ss58Encode(getDevPublicKey("Alice"));
 
-async function loadManifest(
-    rawClient: Parameters<typeof ContractManager.fromClient>[1],
+/**
+ * Build a ContractManager whose contract ADDRESSES are resolved live from the
+ * CDM meta-registry (`cdmJson.registry`) — never from the snapshot. ABIs still
+ * come from the snapshot. This is the same registry address and `"latest"`
+ * dependency the playground-app resolves, so both ends always talk to the same
+ * playground-registry contract even when either repo's snapshot is stale.
+ *
+ * `fromLiveClient`'s internal `getAddress` dry-runs hit the same Revive path
+ * that emits the known `ReviveApi_trace_call` incompatibility noise on Paseo
+ * Asset Hub, so the resolution is wrapped in `withoutReviveTraceNoise`.
+ */
+async function liveManager(
+    rawClient: PolkadotClient,
     origin: string,
-): Promise<CdmJson> {
+    signer?: ResolvedSigner,
+): Promise<ContractManager> {
     try {
-        return await withRequiredLiveContractAddresses(
-            cdmJson,
-            rawClient,
-            [PLAYGROUND_REGISTRY_CONTRACT],
-            { defaultOrigin: origin },
+        return await withoutReviveTraceNoise(() =>
+            ContractManager.fromLiveClient(cdmJson, rawClient, paseo_asset_hub, {
+                libraries: [PLAYGROUND_REGISTRY_CONTRACT],
+                defaultOrigin: origin,
+                ...(signer ? { defaultSigner: signer.signer } : {}),
+            }),
         );
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -63,15 +84,8 @@ async function loadManifest(
  * (e.g. `registry.publish.tx(...)`). Caller is responsible for providing a
  * funded + mapped user signer.
  */
-export async function getRegistryContract(
-    rawClient: Parameters<typeof ContractManager.fromClient>[1],
-    signer: ResolvedSigner,
-) {
-    const manifest = await loadManifest(rawClient, signer.address);
-    const manager = await ContractManager.fromClient(manifest, rawClient, paseo_asset_hub, {
-        defaultSigner: signer.signer,
-        defaultOrigin: signer.address,
-    });
+export async function getRegistryContract(rawClient: PolkadotClient, signer: ResolvedSigner) {
+    const manager = await liveManager(rawClient, signer.address, signer);
     return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));
 }
 
@@ -85,12 +99,7 @@ export async function getRegistryContract(
  * and `defaultOrigin` is Alice, so any submission would either crash or be
  * misattributed.
  */
-export async function getReadOnlyRegistryContract(
-    rawClient: Parameters<typeof ContractManager.fromClient>[1],
-) {
-    const manifest = await loadManifest(rawClient, READ_ONLY_QUERY_ORIGIN);
-    const manager = await ContractManager.fromClient(manifest, rawClient, paseo_asset_hub, {
-        defaultOrigin: READ_ONLY_QUERY_ORIGIN,
-    });
+export async function getReadOnlyRegistryContract(rawClient: PolkadotClient) {
+    const manager = await liveManager(rawClient, READ_ONLY_QUERY_ORIGIN);
     return suppressReviveTraceNoise(manager.getContract(PLAYGROUND_REGISTRY_CONTRACT));
 }

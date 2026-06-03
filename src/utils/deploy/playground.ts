@@ -37,7 +37,7 @@ import { join } from "node:path";
 import { createClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { paseo_bulletin as bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
-import { calculateCid } from "@parity/product-sdk-bulletin";
+import { calculateCid } from "@parity/product-sdk-cloud-storage";
 import { submitAndWatch, withRetry } from "@parity/product-sdk-tx";
 import { getRegistryContract } from "../registry.js";
 import { getConnection } from "../connection.js";
@@ -296,8 +296,6 @@ export async function publishToPlayground(
                 const cid = (await calculateCid(metadataBytes)).toString();
                 const storeTx = bulletinApi.tx.TransactionStorage.store({ data: metadataBytes });
                 let storageSigner = await getBulletinAllowanceSigner({
-                    env: options.env ?? getChainConfig().env,
-                    ownerAddress: options.publishSigner.address,
                     publishSigner: options.publishSigner,
                     bulletinApi,
                     requiredBytes: metadataBytes.length,
@@ -313,8 +311,6 @@ export async function publishToPlayground(
                         message: "Checking Bulletin storage allowance…",
                     });
                     storageSigner = await getBulletinAllowanceSigner({
-                        env: options.env ?? getChainConfig().env,
-                        ownerAddress: options.publishSigner.address,
                         publishSigner: options.publishSigner,
                         bulletinApi,
                         requiredBytes: metadataBytes.length,

@@ -24,7 +24,8 @@
  * as a direct dep just for this one-shot call would also pull in the full
  * SSO/sessions/identity-cache pipeline we don't need. So we mirror the small
  * piece we do need: the storage query + the byte mapping. Same precedent as
- * `src/utils/allowances/host.ts` (which mirrors host-papp's RFC-0010 call).
+ * the RFC-0010 host call, now upstreamed into
+ * `@parity/product-sdk-terminal/host`.
  *
  * NOTE on the storage key: `unsafeApi.query.Resources.Consumers.getValues`
  * expects the key in JS form — for `AccountId32`, that's an SS58 string. The

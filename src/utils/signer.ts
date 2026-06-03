@@ -35,6 +35,8 @@ export interface ResolvedSigner {
     source: SignerSource;
     /** Present for QR/mobile sessions; absent for local dev/SURI signers. */
     userSession?: SessionHandle["userSession"];
+    /** Live terminal adapter for SDK host calls. Present iff source === "session". */
+    adapter?: SessionHandle["adapter"];
     /**
      * The session's root / product / H160 triple. Present for QR/mobile
      * sessions (forwarded from `SessionHandle`); absent for local dev/SURI

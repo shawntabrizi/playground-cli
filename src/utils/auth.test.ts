@@ -27,6 +27,7 @@ import { join } from "node:path";
 import {
     clearLocalAppStorage,
     deriveSessionAddresses,
+    isStaleSessionDecodeError,
     waitForLogout,
     type LogoutHandle,
     type LogoutStatus,
@@ -465,5 +466,32 @@ describe("deriveSessionAddresses", () => {
         expect(() => deriveSessionAddresses(fakeSession(new Uint8Array()))).toThrow(
             INCOMPLETE_SESSION_MESSAGE,
         );
+    });
+});
+
+describe("isStaleSessionDecodeError", () => {
+    /**
+     * `loadSessions` shows STALE_SESSION_MESSAGE only for decode/shape
+     * failures (a session persisted by a pre-novasama-0.8 CLI). Transport
+     * failures must re-throw verbatim so connectivity problems aren't
+     * misreported as "log out and pair again".
+     */
+    it("classifies SCALE/decode failures as stale", () => {
+        expect(isStaleSessionDecodeError(new Error("SCALE: unexpected end of input"))).toBe(true);
+        expect(isStaleSessionDecodeError(new Error("failed to decode StoredUserSession"))).toBe(
+            true,
+        );
+        expect(isStaleSessionDecodeError(new Error("JSON Parse error: invalid byte"))).toBe(true);
+    });
+
+    it("lets transport-level failures through untouched", () => {
+        expect(isStaleSessionDecodeError(new Error("statement store unreachable"))).toBe(false);
+        expect(isStaleSessionDecodeError(new Error("WS halt (3)"))).toBe(false);
+        expect(isStaleSessionDecodeError(new Error("connection timed out"))).toBe(false);
+    });
+
+    it("handles non-Error throwables", () => {
+        expect(isStaleSessionDecodeError("scale codec mismatch")).toBe(true);
+        expect(isStaleSessionDecodeError(42)).toBe(false);
     });
 });

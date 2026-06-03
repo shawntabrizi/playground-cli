@@ -13,10 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { PLAYGROUND_PRODUCT_ID, type Env } from "../../config.js";
+import {
+    getCachedAllocation,
+    requestResourceAllocation,
+    type AllocatableResource,
+} from "@parity/product-sdk-terminal/host";
 import type { ResolvedSigner } from "../signer.js";
-import { requestResourceAllocation, summarizeOutcomes, type AllocatableResource } from "./host.js";
-import { hasAllowance, markAllowance } from "./marker.js";
 
 const SMART_CONTRACT_ALLOWANCE: AllocatableResource = {
     tag: "SmartContractAllowance",
@@ -24,40 +26,35 @@ const SMART_CONTRACT_ALLOWANCE: AllocatableResource = {
 };
 
 export interface SmartContractAllowanceOptions {
-    env: Env;
-    ownerAddress: string;
     deploySigner: ResolvedSigner;
 }
 
+/**
+ * Make sure the session has a PGAS smart-contract allowance for the default
+ * playground product account. The SDK cache entry doubles as the grant
+ * marker — it's only written after the wallet returns `Allocated`.
+ */
 export async function ensureSmartContractAllowance({
-    env,
-    ownerAddress,
     deploySigner,
 }: SmartContractAllowanceOptions): Promise<void> {
     if (deploySigner.source === "dev") return;
 
-    if (await hasAllowance(env, ownerAddress, "SmartContractAllowance")) return;
-
-    if (!deploySigner.userSession) {
+    const { userSession, adapter } = deploySigner;
+    if (!userSession || !adapter) {
         throw new Error(
-            'No smart-contract gas allowance cached. Run "playground init" to grant allowances.',
+            'No smart-contract gas allowance available. Run "playground init" to grant allowances.',
         );
     }
 
-    const outcomes = await requestResourceAllocation(
-        deploySigner.userSession,
-        PLAYGROUND_PRODUCT_ID,
-        [SMART_CONTRACT_ALLOWANCE],
-    );
-    const summary = summarizeOutcomes(outcomes, [SMART_CONTRACT_ALLOWANCE]);
+    if (await getCachedAllocation(adapter, SMART_CONTRACT_ALLOWANCE)) return;
 
-    if (summary.granted.some((resource) => resource.tag === "SmartContractAllowance")) {
-        await markAllowance(env, ownerAddress, "SmartContractAllowance", "host");
-        return;
-    }
+    const outcomes = await requestResourceAllocation(userSession, adapter, [
+        SMART_CONTRACT_ALLOWANCE,
+    ]);
+    const outcome = outcomes[0];
+    if (outcome?.tag === "Allocated") return;
 
-    const outcome = outcomes[0]?.tag ?? "returned no outcome";
     throw new Error(
-        `Smart-contract gas allowance allocation ${outcome}. Re-run \`playground init\` and approve on your phone.`,
+        `Smart-contract gas allowance allocation ${outcome?.tag ?? "returned no outcome"}. Re-run \`playground init\` and approve on your phone.`,
     );
 }

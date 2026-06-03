@@ -20,20 +20,13 @@ import { getConnection } from "../../utils/connection.js";
 import { getSessionSigner, type SessionHandle } from "../../utils/auth.js";
 import { topUpFromBulletinDev } from "../../utils/account/bulletinTopUp.js";
 import { checkMapping, ensureMapped } from "../../utils/account/mapping.js";
-import { DEFAULT_ENV, PLAYGROUND_PRODUCT_ID } from "../../config.js";
+import { getCachedAllocation, requestResourceAllocation } from "@parity/product-sdk-terminal/host";
 import {
     PLAYGROUND_RESOURCES,
-    requestResourceAllocation,
+    describeResource,
     summarizeOutcomes,
-    type AllocatableResource,
-} from "../../utils/allowances/host.js";
-import { hasAllowance, markAllowance } from "../../utils/allowances/marker.js";
-import { getBulletinSlotAuthorization } from "../../utils/allowances/bulletin.js";
-import {
-    hasSlotAccountKey,
-    readSlotAccountKey,
-    storeSlotAccountKeysFromOutcomes,
-} from "../../utils/allowances/slotKeys.js";
+} from "../../utils/allowances/resources.js";
+import { cachedBulletinSlotAuthorization } from "../../utils/allowances/bulletin.js";
 
 type Status = "pending" | "active" | "ok" | "failed" | "skipped";
 
@@ -65,20 +58,6 @@ interface PhonePrompt {
     step: number;
     total: number;
     label: string;
-}
-
-/** Human-readable name for a resource tag, used in failure messages. */
-function describeResource(r: AllocatableResource): string {
-    switch (r.tag) {
-        case "BulletInAllowance":
-            return "Bulletin storage";
-        case "StatementStoreAllowance":
-            return "Statement Store";
-        case "SmartContractAllowance":
-            return `smart-contract gas (idx ${r.value})`;
-        case "AutoSigning":
-            return "auto-signing";
-    }
 }
 
 export function AccountSetup({
@@ -138,47 +117,32 @@ export function AccountSetup({
                 return;
             }
 
-            const env = DEFAULT_ENV;
-
             // ── Step 0: Resource allowances ─────────────────────────────────
-            // The CLI acts as the Host for terminal sessions: request RFC-0010
-            // allocations from mobile, cache returned slot keys, then use the
-            // Bulletin slot key for metadata uploads.
+            // The CLI acts as the Host for terminal sessions: RFC-0010
+            // allocations are requested over the paired session and the SDK
+            // caches granted slot keys at
+            // ~/.polkadot-apps/<appId>_AllowanceKeys.json. A cache entry is
+            // only written after the wallet returns Allocated, so "cached"
+            // doubles as "granted". Bulletin additionally needs an on-chain
+            // authorization check (the slot key may exist but be unauthorized
+            // or out of quota).
             update(0, { status: "active", value: "checking…", valueTone: "muted" });
             let accountSetupOk = true;
             try {
-                const tags = PLAYGROUND_RESOURCES.map((r) => r.tag);
-                const marked = await Promise.all(tags.map((t) => hasAllowance(env, address, t)));
-                const slotKeys = await Promise.all([
-                    hasSlotAccountKey(env, address, "BulletInAllowance"),
-                    hasSlotAccountKey(env, address, "StatementStoreAllowance"),
-                ]);
-
-                const refreshBulletinAllowanceMarker = async (): Promise<boolean> => {
-                    const bulletinKey = await readSlotAccountKey(env, address, "BulletInAllowance");
-                    if (!bulletinKey) return false;
-                    try {
-                        const authorization = await getBulletinSlotAuthorization(
-                            client.bulletin,
-                            bulletinKey,
-                            1,
-                        );
-                        if (authorization.usable) {
-                            await markAllowance(env, address, "BulletInAllowance", "host");
-                        }
-                        return authorization.usable;
-                    } catch {
-                        return false;
-                    }
-                };
-
-                const bulletinReady = await refreshBulletinAllowanceMarker();
-
-                const resourcesReady = tags.every((tag, index) =>
-                    tag === "BulletInAllowance" ? bulletinReady : marked[index],
+                const { adapter, userSession } = session;
+                const cached = await Promise.all(
+                    PLAYGROUND_RESOURCES.map((r) => getCachedAllocation(adapter, r)),
                 );
-                const allMarked = resourcesReady && slotKeys.every(Boolean);
-                if (allMarked) {
+                const bulletinAuth = await cachedBulletinSlotAuthorization(
+                    adapter,
+                    client.bulletin,
+                    1,
+                ).catch(() => null);
+
+                const allReady =
+                    cached.every(Boolean) && bulletinAuth !== null && bulletinAuth.usable;
+
+                if (allReady) {
                     update(0, {
                         status: "ok",
                         value: "already granted",
@@ -196,21 +160,13 @@ export function AccountSetup({
                         label: "grant resource allowances",
                     });
                     const outcomes = await requestResourceAllocation(
-                        session.userSession,
-                        PLAYGROUND_PRODUCT_ID,
+                        userSession,
+                        adapter,
+                        PLAYGROUND_RESOURCES,
                     );
                     if (cancelled) return;
                     setPhonePrompt(null);
                     const summary = summarizeOutcomes(outcomes, PLAYGROUND_RESOURCES);
-
-                    await storeSlotAccountKeysFromOutcomes(env, address, outcomes);
-                    // RFC-0010 allocation outcomes are independent: keep any
-                    // successful keys even if a sibling resource was denied.
-                    for (const resource of summary.granted) {
-                        if (resource.tag === "BulletInAllowance") continue;
-                        await markAllowance(env, address, resource.tag, "host");
-                    }
-                    await refreshBulletinAllowanceMarker();
 
                     if (summary.rejected.length > 0 || summary.unavailable.length > 0) {
                         const denied = [...summary.rejected, ...summary.unavailable]

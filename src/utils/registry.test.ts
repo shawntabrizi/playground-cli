@@ -17,17 +17,14 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import type { ResolvedSigner } from "./signer.js";
 import cdmJson from "../../cdm.json";
 
-const { fromClientMock, getContractMock, withRequiredLiveContractAddressesMock } = vi.hoisted(
-    () => ({
-        fromClientMock: vi.fn(),
-        getContractMock: vi.fn(),
-        withRequiredLiveContractAddressesMock: vi.fn(),
-    }),
-);
+const { fromLiveClientMock, getContractMock } = vi.hoisted(() => ({
+    fromLiveClientMock: vi.fn(),
+    getContractMock: vi.fn(),
+}));
 
 vi.mock("@parity/product-sdk-contracts", () => ({
     ContractManager: {
-        fromClient: (...args: unknown[]) => fromClientMock(...args),
+        fromLiveClient: (...args: unknown[]) => fromLiveClientMock(...args),
     },
 }));
 
@@ -35,14 +32,24 @@ vi.mock("@parity/product-sdk-descriptors/paseo-asset-hub", () => ({
     paseo_asset_hub: { genesis: "0xasset" },
 }));
 
+vi.mock("@parity/product-sdk-address", () => ({
+    ss58Encode: () => "5AliceReadOnlyOrigin",
+}));
+
+vi.mock("@parity/product-sdk-tx", () => ({
+    getDevPublicKey: () => new Uint8Array(32),
+}));
+
 vi.mock("./contractManifest.js", () => ({
     PLAYGROUND_REGISTRY_CONTRACT: "@w3s/playground-registry",
     suppressReviveTraceNoise: (contract: unknown) => contract,
-    withRequiredLiveContractAddresses: (...args: unknown[]) =>
-        withRequiredLiveContractAddressesMock(...args),
+    // Pass-through wrapper so the live resolution runs unchanged in tests.
+    withoutReviveTraceNoise: (fn: () => unknown) => fn(),
 }));
 
-import { getRegistryContract } from "./registry.js";
+import { getRegistryContract, getReadOnlyRegistryContract } from "./registry.js";
+
+const READ_ONLY_ORIGIN = "5AliceReadOnlyOrigin";
 
 const fakeSigner: ResolvedSigner = {
     signer: {} as any,
@@ -52,47 +59,64 @@ const fakeSigner: ResolvedSigner = {
 };
 
 beforeEach(() => {
-    fromClientMock.mockReset();
+    fromLiveClientMock.mockReset();
     getContractMock.mockReset();
-    withRequiredLiveContractAddressesMock.mockReset();
     getContractMock.mockReturnValue({ publish: { tx: vi.fn() } });
-    fromClientMock.mockResolvedValue({ getContract: getContractMock });
+    fromLiveClientMock.mockResolvedValue({ getContract: getContractMock });
 });
 
 describe("getRegistryContract", () => {
-    it("builds the manager with a live-patched manifest", async () => {
-        const patchedManifest = { ...cdmJson, marker: "patched" };
-        withRequiredLiveContractAddressesMock.mockResolvedValue(patchedManifest);
+    it("resolves the registry live with the signer origin and signer", async () => {
         const rawClient = {} as any;
 
         await getRegistryContract(rawClient, fakeSigner);
 
-        expect(withRequiredLiveContractAddressesMock).toHaveBeenCalledWith(
+        expect(fromLiveClientMock).toHaveBeenCalledWith(
             cdmJson,
-            rawClient,
-            ["@w3s/playground-registry"],
-            { defaultOrigin: fakeSigner.address },
-        );
-        expect(fromClientMock).toHaveBeenCalledWith(
-            patchedManifest,
             rawClient,
             { genesis: "0xasset" },
             {
-                defaultSigner: fakeSigner.signer,
+                libraries: ["@w3s/playground-registry"],
                 defaultOrigin: fakeSigner.address,
+                defaultSigner: fakeSigner.signer,
             },
         );
         expect(getContractMock).toHaveBeenCalledWith("@w3s/playground-registry");
     });
 
     it("throws a clear error when live lookup fails", async () => {
-        withRequiredLiveContractAddressesMock.mockRejectedValue(new Error("registry unavailable"));
+        fromLiveClientMock.mockRejectedValue(new Error("registry unavailable"));
         const rawClient = {} as any;
 
         await expect(getRegistryContract(rawClient, fakeSigner)).rejects.toThrow(
             /MetaRegistryFailure/,
         );
+    });
+});
 
-        expect(fromClientMock).not.toHaveBeenCalled();
+describe("getReadOnlyRegistryContract", () => {
+    it("resolves the registry live with the read-only origin and no signer", async () => {
+        const rawClient = {} as any;
+
+        await getReadOnlyRegistryContract(rawClient);
+
+        expect(fromLiveClientMock).toHaveBeenCalledWith(
+            cdmJson,
+            rawClient,
+            { genesis: "0xasset" },
+            {
+                libraries: ["@w3s/playground-registry"],
+                defaultOrigin: READ_ONLY_ORIGIN,
+            },
+        );
+        const [, , , options] = fromLiveClientMock.mock.calls[0];
+        expect(options).not.toHaveProperty("defaultSigner");
+        expect(getContractMock).toHaveBeenCalledWith("@w3s/playground-registry");
+    });
+
+    it("throws a clear error when live lookup fails", async () => {
+        fromLiveClientMock.mockRejectedValue(new Error("registry unavailable"));
+
+        await expect(getReadOnlyRegistryContract({} as any)).rejects.toThrow(/MetaRegistryFailure/);
     });
 });

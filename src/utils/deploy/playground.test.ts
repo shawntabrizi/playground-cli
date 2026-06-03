@@ -28,7 +28,7 @@ const { captureWarningMock, withSpanMock, bulletinStorageSigner, getBulletinAllo
 
 // Mock the metadata upload path so we never actually touch the network.
 // The mock returns a fake CID that publish() treats as the metadata CID.
-vi.mock("@parity/product-sdk-bulletin", () => ({
+vi.mock("@parity/product-sdk-cloud-storage", () => ({
     calculateCid: vi.fn(async () => ({ toString: (): string => "bafymeta" })),
 }));
 vi.mock("@parity/product-sdk-tx", () => ({

@@ -267,14 +267,10 @@ async function runContractDeploy(opts: ContractDeployOpts): Promise<void> {
     try {
         signer = await resolveSigner(resolveContractSignerOptions(opts));
         await ensureSmartContractAllowance({
-            env: cfg.env,
-            ownerAddress: signer.address,
             deploySigner: signer,
         });
         client = await createContractChainClient(target);
         const metadataSigner = await getBulletinAllowanceSigner({
-            env: cfg.env,
-            ownerAddress: signer.address,
             publishSigner: signer,
             bulletinApi: client.bulletin,
         });
