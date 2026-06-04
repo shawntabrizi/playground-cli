@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.28.4
+
+### Patch Changes
+
+- af06348: Read-only registry queries (`playground mod` browse/metadata, registry username lookups) now dry-run with pallet-revive's keyless pallet account as origin instead of Alice's dev account, matching `@parity/product-sdk-contracts`' query fallback origin.
+
 ## 0.28.3
 
 ### Patch Changes
