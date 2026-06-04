@@ -1,5 +1,11 @@
 # playground-cli
 
+## 0.28.8
+
+### Patch Changes
+
+- a037e29: Title-case all bordered callout titles ("Moddable Setup Needed", "Check Your Phone", etc.) and show a "Keep Your Phone Ready" heads-up when a phone-signed deploy starts, so users have their mobile app ready before the first approval prompt.
+
 ## 0.28.7
 
 ### Patch Changes
