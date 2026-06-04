@@ -18,7 +18,20 @@ import type { CliCommandName } from "./telemetry-config.js";
 import { onProcessShutdown, scheduleHardExit, startMemoryWatchdog } from "./utils/process-guard.js";
 
 export interface RunCliCommandOptions {
-    /** Start the memory watchdog and stop it on exit. Defaults to false. */
+    /**
+     * Start the memory watchdog and stop it on exit. Defaults to true.
+     *
+     * ON for every command by default because the watchdog's worker thread
+     * is the ONLY guard that survives event-loop starvation: when a leaked
+     * polkadot-api subscription enters the microtask-flood state (see
+     * `process-guard.ts`), signal handlers, `hardExit` timers, and the
+     * final `process.exit()` in `src/index.ts` all stop firing — the
+     * process looks finished but sits invisible, growing tens of GB until
+     * the OS swaps itself to death. We shipped exactly that: `playground
+     * init` ran watchdog-less and three zombies reached 40+ GB each
+     * (June 2026). Cost is one worker + a 1 Hz `memoryUsage()` sample —
+     * don't opt commands out to save it.
+     */
     watchdog?: boolean;
     /** Schedule a hard-exit safety net after the action returns. Defaults to true. */
     hardExit?: boolean;
@@ -39,7 +52,7 @@ export async function runCliCommand(
     options: RunCliCommandOptions,
     action: () => Promise<unknown>,
 ): Promise<void> {
-    const watchdog = options.watchdog ?? false;
+    const watchdog = options.watchdog ?? true;
     const hardExit = options.hardExit ?? true;
 
     let stopWatchdog: (() => void) | undefined;

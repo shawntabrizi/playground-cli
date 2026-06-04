@@ -73,6 +73,16 @@ export const initCommand = new Command("init")
                 // loop has to drain naturally — leaving the WS open means
                 // `dot init` hangs after "setup complete".
                 destroyConnection();
+                // QR-path login handle: `connect()` transferred adapter
+                // ownership to us (it's the transport `waitForLogin` signs
+                // in over). Once the TUI has exited nothing uses it —
+                // AccountSetup / UsernamePrompt open their own handles via
+                // `getSessionSigner()` — so release it here, or its
+                // statement-store WebSocket keeps the event loop (and the
+                // process) alive indefinitely. Fire-and-forget + `.catch()`
+                // for the same post-destroy-artifact reasons as
+                // `SessionHandle.destroy()` (see auth.ts).
+                login?.adapter.destroy().catch(() => {});
             }
 
             console.log();

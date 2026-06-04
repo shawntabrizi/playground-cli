@@ -61,6 +61,24 @@ describe("runCliCommand", () => {
         expect(stopWatchdog).toHaveBeenCalledTimes(1);
     });
 
+    it("starts the memory watchdog BY DEFAULT when the option is omitted", async () => {
+        // Regression guard for the June 2026 zombie incident: `playground
+        // init` ran without the watchdog, a leaked subscription starved the
+        // event loop (so signal handlers, hardExit timers, and index.ts's
+        // final process.exit all stopped firing), and three invisible
+        // processes grew past 40 GB each. The worker-thread watchdog is the
+        // only guard that survives that state, so every command gets it
+        // unless it explicitly opts out.
+        await runCliCommand("init", { hardExit: false }, async () => {});
+        expect(startMemoryWatchdog).toHaveBeenCalledTimes(1);
+        expect(stopWatchdog).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not start the watchdog when explicitly opted out", async () => {
+        await runCliCommand("build", { watchdog: false, hardExit: false }, async () => {});
+        expect(startMemoryWatchdog).not.toHaveBeenCalled();
+    });
+
     it("propagates errors but still schedules hard exit with non-zero code", async () => {
         process.exitCode = 1;
         await expect(
