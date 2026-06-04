@@ -52,9 +52,12 @@ export interface StorageDeployOptions {
     /**
      * Auth options forwarded to bulletin-deploy. Usually produced by
      * `resolveSignerSetup()` merged with `resolveStorageSignerOptions()`.
-     * May be `{}` for the dev path. `storageSigner` (the BulletInAllowance
-     * slot key) takes precedence over `signer` for Bulletin storage routing
-     * inside bulletin-deploy — chunk txs are too large for phone signing.
+     * Never `{}`: dev mode pins an explicit `mnemonic` + dev `storageSigner`
+     * (empty options make bulletin-deploy 0.8.x resolve the persisted phone
+     * session — see signerMode.ts). `storageSigner` (the BulletInAllowance
+     * slot key in phone mode, the dev / `--suri` key otherwise) takes
+     * precedence over `signer` for Bulletin storage routing inside
+     * bulletin-deploy — chunk txs are too large for phone signing.
      */
     auth: Pick<
         DeployOptions,

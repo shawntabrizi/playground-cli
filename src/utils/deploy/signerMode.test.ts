@@ -26,8 +26,13 @@ vi.mock("../allowances/bulletin.js", () => ({
     getBulletinAllowanceSigner: getBulletinAllowanceSignerMock,
 }));
 
+import { DEFAULT_MNEMONIC } from "bulletin-deploy";
 import { ss58Encode } from "@parity/product-sdk-address";
-import { resolveSignerSetup, resolveStorageSignerOptions } from "./signerMode.js";
+import {
+    resolveSignerSetup,
+    resolveStorageSignerOptions,
+    DEV_PUBLISH_ADDRESS,
+} from "./signerMode.js";
 import type { ResolvedSigner } from "../signer.js";
 
 function fakeSigner(
@@ -53,15 +58,35 @@ function fakeSigner(
 }
 
 describe("resolveSignerSetup — dev mode", () => {
-    it("no publish, no funding → empty approvals, empty auth options, null publishSigner", () => {
+    it("no publish, no funding → empty approvals, explicit dev mnemonic, null publishSigner", () => {
         const result = resolveSignerSetup({
             mode: "dev",
             userSigner: null,
             publishToPlayground: false,
         });
         expect(result.approvals).toEqual([]);
-        expect(result.bulletinDeployAuthOptions).toEqual({});
+        expect(result.bulletinDeployAuthOptions).toEqual({ mnemonic: DEFAULT_MNEMONIC });
         expect(result.publishSigner).toBeNull();
+    });
+
+    it("pins the DEFAULT_MNEMONIC explicitly so bulletin-deploy can never pick up a persisted phone session", () => {
+        // Regression: bulletin-deploy 0.8.x resolves the persisted SSO session
+        // (~/.polkadot-apps/dot-cli_SsoSessions.json — written by `playground
+        // init`, shared namespace) whenever it is called with NO mnemonic, NO
+        // signer, and NO suri. Passing `{}` therefore turned dev mode into
+        // phone mode (DotNS taps on the phone) for every logged-in user.
+        // An explicit mnemonic short-circuits its chooseSignerInput before
+        // the session probe.
+        const result = resolveSignerSetup({
+            mode: "dev",
+            userSigner: fakeSigner("session", "5User"),
+            publishToPlayground: false,
+        });
+        expect(result.bulletinDeployAuthOptions.mnemonic).toBe(DEFAULT_MNEMONIC);
+        // No signer key: run.ts's maybeWrapAuthForSigning must not wrap dev
+        // deploys in the phone-approval event proxy.
+        expect(result.bulletinDeployAuthOptions.signer).toBeUndefined();
+        expect(result.bulletinDeployAuthOptions.signerAddress).toBeUndefined();
     });
 
     it("publishToPlayground with active session signs as Alice but claims session H160 as owner — zero phone taps", () => {
@@ -79,8 +104,9 @@ describe("resolveSignerSetup — dev mode", () => {
         // The user's H160 is claimed via the owner parameter so MyApps still
         // resolves their app even though Alice signed the tx.
         expect(result.claimedOwnerH160).toBe("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-        // Dev mode keeps bulletin-deploy on its built-in default mnemonic.
-        expect(result.bulletinDeployAuthOptions).toEqual({});
+        // Dev mode keeps bulletin-deploy on its built-in default mnemonic —
+        // passed EXPLICITLY so the persisted phone session is never resolved.
+        expect(result.bulletinDeployAuthOptions).toEqual({ mnemonic: DEFAULT_MNEMONIC });
     });
 
     it("publishToPlayground without any signer falls back to pure Alice ownership", () => {
@@ -111,6 +137,8 @@ describe("resolveSignerSetup — dev mode", () => {
         expect(result.claimedOwnerH160).toBeNull();
         expect(result.bulletinDeployAuthOptions.signer).toBe(user.signer);
         expect(result.bulletinDeployAuthOptions.signerAddress).toBe("5DevSuri");
+        // The injected signer wins inside bulletin-deploy; no mnemonic needed.
+        expect(result.bulletinDeployAuthOptions.mnemonic).toBeUndefined();
     });
 });
 
@@ -245,14 +273,33 @@ describe("resolveStorageSignerOptions", () => {
         });
     });
 
-    it("dev mode never touches the slot key — no phone prompt in dev mode", async () => {
+    it("dev mode pins storage to the dev publish account — never the user's slot key, no phone prompt", async () => {
+        // Regression: bulletin-deploy 0.8.x auto-reads the user's cached
+        // BulletInAllowance slot key whenever `storageSigner` is absent and
+        // signs chunk uploads with it — silently burning the user's small
+        // phone-granted quota on dev deploys. Pinning the dev bare-root
+        // (authorized on paseo-next-v2; pool fallback if it ever lapses)
+        // keeps dev deploys fully off the user's session resources.
         const user = sessionSignerWithHost();
-        await expect(resolveStorageSignerOptions("dev", user)).resolves.toEqual({});
+        const result = await resolveStorageSignerOptions("dev", user);
+        expect(result.storageSigner).toBeDefined();
+        expect(result.storageSignerAddress).toBe(DEV_PUBLISH_ADDRESS);
         expect(getBulletinAllowanceSignerMock).not.toHaveBeenCalled();
     });
 
-    it("phone mode with a --suri dev signer returns {} (local key, no size hazard)", async () => {
-        await expect(resolveStorageSignerOptions("phone", fakeSigner("dev"))).resolves.toEqual({});
+    it("dev mode with a --suri signer pins storage to that key (caller owns its allowance)", async () => {
+        const user = fakeSigner("dev", "5DevSuri");
+        const result = await resolveStorageSignerOptions("dev", user);
+        expect(result.storageSigner).toBe(user.signer);
+        expect(result.storageSignerAddress).toBe("5DevSuri");
+        expect(getBulletinAllowanceSignerMock).not.toHaveBeenCalled();
+    });
+
+    it("phone mode with a --suri dev signer pins storage to that key (local key, no size hazard, no slot hijack)", async () => {
+        const user = fakeSigner("dev", "5DevSuri");
+        const result = await resolveStorageSignerOptions("phone", user);
+        expect(result.storageSigner).toBe(user.signer);
+        expect(result.storageSignerAddress).toBe("5DevSuri");
         expect(getBulletinAllowanceSignerMock).not.toHaveBeenCalled();
     });
 

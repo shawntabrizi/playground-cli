@@ -21,7 +21,17 @@
  *
  * Today (testnet):
  *   - Dev mode: storage + DotNS go through bulletin-deploy's built-in
- *     mnemonic (or `--suri`). Playground publish is ALSO signed by the dev
+ *     mnemonic (or `--suri`) — passed EXPLICITLY, never via bulletin-deploy's
+ *     own fallback chain. Since 0.8.x, `deploy()` called with no mnemonic /
+ *     signer / suri resolves the persisted SSO session on disk
+ *     (`~/.polkadot-apps/dot-cli_SsoSessions.json`, the same namespace
+ *     `playground init` writes) and phone-signs DotNS — so an empty options
+ *     object silently turns dev mode into phone mode for any logged-in user.
+ *     Likewise, an absent `storageSigner` makes it auto-read the user's
+ *     cached BulletInAllowance slot key and burn their phone-granted quota
+ *     on chunk uploads. Dev mode therefore pins all three: `mnemonic` for
+ *     DotNS, `storageSigner` for chunks, and the dev publish signer below.
+ *     Playground publish is ALSO signed by the dev
  *     account — Alice's H160 is recorded as `publisher`, but the contract
  *     accepts an optional `owner` parameter so we can record the user's
  *     H160 as the `owner` (the H160 MyApps queries with). When a phone
@@ -94,7 +104,9 @@ export type SignerMode = "dev" | "phone";
 export interface DeploySignerSetup {
     /**
      * Options to pass to bulletin-deploy's `deploy()`. For dev mode this is
-     * empty (bulletin-deploy falls back to its env / DEFAULT_MNEMONIC); for
+     * an EXPLICIT `{ mnemonic: DEFAULT_MNEMONIC }` (or the `--suri` signer) —
+     * never `{}`, because bulletin-deploy 0.8.x answers empty options by
+     * resolving the persisted phone session from `playground init`. For
      * phone mode we inject the user's signer so DotNS registration is paid
      * for by — and recorded against — their account.
      */
@@ -205,11 +217,24 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
         approvals.push(...dotnsApprovals(opts.plan));
     }
 
-    if (opts.mode === "dev" && opts.userSigner?.source === "dev") {
-        bulletinDeployAuthOptions = {
-            signer: opts.userSigner.signer,
-            signerAddress: opts.userSigner.address,
-        };
+    if (opts.mode === "dev") {
+        if (opts.userSigner?.source === "dev") {
+            bulletinDeployAuthOptions = {
+                signer: opts.userSigner.signer,
+                signerAddress: opts.userSigner.address,
+            };
+        } else {
+            // Pass the default mnemonic EXPLICITLY. bulletin-deploy 0.8.x
+            // treats "no mnemonic, no signer, no suri" as "resolve a signer
+            // yourself", and its resolution finds the persisted phone session
+            // from `playground init` before any dev fallback — turning a dev
+            // deploy into 3-4 phone taps. An explicit mnemonic wins its
+            // chooseSignerInput outright, so the session file is never read.
+            // The derived identity is unchanged: DEFAULT_MNEMONIC's bare root
+            // (DEV_PUBLISH_ADDRESS) is exactly what the old empty-options
+            // path used for DotNS.
+            bulletinDeployAuthOptions = { mnemonic: DEFAULT_MNEMONIC };
+        }
     }
 
     // Pick the publish signer and the optional claimed-owner H160.
@@ -250,9 +275,12 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
 }
 
 /**
- * Resolve the signer for Bulletin STORAGE txs (the CAR chunk uploads) in
- * phone mode: the local BulletInAllowance slot key, threaded to
- * bulletin-deploy as `storageSigner` / `storageSignerAddress`.
+ * Resolve the signer for Bulletin STORAGE txs (the CAR chunk uploads),
+ * threaded to bulletin-deploy as `storageSigner` / `storageSignerAddress`.
+ * Every mode pins one explicitly: phone+session uses the local
+ * BulletInAllowance slot key, `--suri` uses the caller's key, and dev mode
+ * uses the dev bare-root — leaving it absent lets bulletin-deploy 0.8.x
+ * auto-read the user's cached slot key and burn their quota (see below).
  *
  * Why this exists: since bulletin-deploy 0.8.x, passing `signer` routes
  * Bulletin storage through that signer too — not just DotNS. Chunk txs carry
@@ -291,10 +319,17 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
  * extent does turn out to be enforced. Only a total resolution failure
  * (no slot key at all, grant declined) aborts the deploy.
  *
- * Dev mode returns `{}`: storage signs with bulletin-deploy's mnemonic or
- * the `--suri` key (both local, no size hazard) and must never prompt the
- * phone. A `--suri` signer under `--signer phone` also returns `{}` for the
- * same reason.
+ * Dev and `--suri` deploys pin `storageSigner` to their own local key
+ * instead of returning `{}`. bulletin-deploy 0.8.x auto-reads the user's
+ * cached BulletInAllowance slot key whenever `storageSigner` is absent and
+ * signs chunk uploads with it — silently burning the user's small
+ * phone-granted quota (~10 txs / 4 MiB per grant) on deploys that were
+ * supposed to run entirely on dev accounts. The dev bare-root carries its
+ * own Bulletin authorization on paseo-next-v2; if it ever lapses,
+ * bulletin-deploy's committed-signer wrapper falls back to the shared pool
+ * (the pre-0.8 dev storage path) without aborting. A `--suri` key is the
+ * caller's responsibility per the CI escape hatch contract — unauthorized
+ * keys land on the pool fallback the same way.
  */
 export async function resolveStorageSignerOptions(
     mode: SignerMode,
@@ -306,7 +341,20 @@ export async function resolveStorageSignerOptions(
     },
     onPrompt?: AllowancePrompt,
 ): Promise<Pick<DeployOptions, "storageSigner" | "storageSignerAddress">> {
-    if (mode !== "phone" || userSigner?.source !== "session") return {};
+    // A --suri key (either mode): the caller supplied a local key and owns
+    // its Bulletin allowance. Pin it so the slot-key auto-read never fires.
+    if (userSigner?.source === "dev") {
+        return { storageSigner: userSigner.signer, storageSignerAddress: userSigner.address };
+    }
+    // Dev mode without --suri: pin the dev bare-root — the same identity the
+    // explicit DEFAULT_MNEMONIC gives DotNS in resolveSignerSetup.
+    if (mode !== "phone") {
+        return {
+            storageSigner: DEV_PUBLISH_ACCOUNT.signer,
+            storageSignerAddress: DEV_PUBLISH_ADDRESS,
+        };
+    }
+    if (userSigner?.source !== "session") return {};
 
     const resolve = async (withQuota: boolean) => {
         const storageSigner = await getBulletinAllowanceSigner({

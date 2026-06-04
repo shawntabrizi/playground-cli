@@ -59,7 +59,9 @@ vi.mock("../allowances/slotSigner.js", () => ({
     readCachedBulletinSlotSigner: vi.fn(async () => null),
 }));
 
+import { DEFAULT_MNEMONIC } from "bulletin-deploy";
 import type { ResolvedSigner } from "../signer.js";
+import { DEV_PUBLISH_ADDRESS } from "../deploy/signerMode.js";
 import { describeDeployEvent, runDecentralize } from "./run.js";
 
 describe("describeDeployEvent", () => {
@@ -137,7 +139,7 @@ describe("runDecentralize — Bulletin storage signer", () => {
         expect(arg.auth.storageSignerAddress).not.toBe("5Fake");
     });
 
-    it("dev mode passes no storageSigner and never touches the slot key", async () => {
+    it("dev mode pins the dev mnemonic + dev storage signer and never touches the slot key", async () => {
         await runDecentralize({
             siteUrl: "https://example.com",
             label: "my-site",
@@ -148,9 +150,14 @@ describe("runDecentralize — Bulletin storage signer", () => {
         });
 
         const arg = runStorageDeployMock.mock.calls[0][0] as unknown as {
-            auth: { storageSigner?: unknown };
+            auth: { mnemonic?: string; signer?: unknown; storageSignerAddress?: string };
         };
-        expect(arg.auth.storageSigner).toBeUndefined();
+        // Explicit dev identity: an empty auth object would let bulletin-deploy
+        // 0.8.x resolve the persisted phone session (DotNS taps) and the
+        // user's cached slot key (quota burn). See signerMode.ts.
+        expect(arg.auth.mnemonic).toBe(DEFAULT_MNEMONIC);
+        expect(arg.auth.signer).toBeUndefined();
+        expect(arg.auth.storageSignerAddress).toBe(DEV_PUBLISH_ADDRESS);
         expect(ensureSlotAccountSignerMock).not.toHaveBeenCalled();
     });
 });

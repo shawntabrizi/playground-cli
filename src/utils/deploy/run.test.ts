@@ -98,7 +98,9 @@ vi.mock("./storageQuota.js", () => ({
 }));
 const quotaApi = { marker: "bulletin-api" } as any;
 
+import { DEFAULT_MNEMONIC } from "bulletin-deploy";
 import { runDeploy, type DeployEvent } from "./run.js";
+import { DEV_PUBLISH_ADDRESS } from "./signerMode.js";
 import type { ResolvedSigner } from "../signer.js";
 
 const fakeUserSigner: ResolvedSigner = {
@@ -165,10 +167,14 @@ describe("runDeploy", () => {
         const plan = events.find((e) => e.kind === "plan");
         expect(plan).toEqual({ kind: "plan", approvals: [] });
 
-        // bulletin-deploy auth must be empty in dev mode.
+        // bulletin-deploy auth must pin the dev identity explicitly: an
+        // empty object makes 0.8.x resolve the persisted phone session for
+        // DotNS and the user's cached slot key for storage (see signerMode.ts).
         expect(runStorageDeploy).toHaveBeenCalledTimes(1);
         const arg = runStorageDeploy.mock.calls[0][0];
-        expect(arg.auth).toEqual({});
+        expect(arg.auth.mnemonic).toBe(DEFAULT_MNEMONIC);
+        expect(arg.auth.signer).toBeUndefined();
+        expect(arg.auth.storageSignerAddress).toBe(DEV_PUBLISH_ADDRESS);
         expect(arg.domainName).toBe("my-app");
 
         // Dev mode never opens a Bulletin client for quota checks — no slot

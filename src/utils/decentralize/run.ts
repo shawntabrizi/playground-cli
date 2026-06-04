@@ -33,6 +33,7 @@ import { publishToPlayground } from "../deploy/playground.js";
 import type { DeployLogEvent } from "../deploy/progress.js";
 import {
     type DeployApproval,
+    DEV_PUBLISH_ADDRESS,
     resolveSignerSetup,
     resolveStorageSignerOptions,
     type SignerMode,
@@ -135,12 +136,15 @@ export async function runDecentralize(
         publishToPlayground: wantPlayground,
     });
 
-    // Pick the signer used for the DotNS register tx. bulletin-deploy
-    // accepts `{ signer, signerAddress }` or `{}` (falls back to its
-    // DEFAULT_MNEMONIC). Either way we surface a single visible address
-    // for the outcome.
+    // Pick the signer used for the DotNS register tx. bulletin-deploy gets
+    // `{ signer, signerAddress }` (phone / `--suri`) or `{ mnemonic }` (dev —
+    // always explicit, never `{}`: empty options make 0.8.x resolve the
+    // persisted phone session). Either way we surface a single visible
+    // address for the outcome; the dev mnemonic's bare root is
+    // `DEV_PUBLISH_ADDRESS`.
     const storageSignerAddress =
         setup.bulletinDeployAuthOptions.signerAddress ??
+        (setup.bulletinDeployAuthOptions.mnemonic ? DEV_PUBLISH_ADDRESS : null) ??
         setup.publishSigner?.address ??
         // Defensive fallback: should never hit because dev mode synthesises
         // a signer for the publish phase even when one isn't strictly
@@ -199,7 +203,7 @@ export async function runDecentralize(
             domainName: label,
             // Wrap the DotNS auth signer so each phone tap surfaces a
             // "check your phone" lifecycle event. No-op in dev mode (auth
-            // has no signer — bulletin-deploy uses its default mnemonic).
+            // carries a mnemonic, not a signer — signed in-process).
             auth: {
                 ...wrapAuthForSigning(
                     setup.bulletinDeployAuthOptions,
@@ -284,7 +288,7 @@ export async function runDecentralize(
  * Wrap the bulletin-deploy DotNS auth signer so each `signTx` call surfaces a
  * "check your phone" lifecycle event labelled by the matching DotNS approval.
  * Mirrors deploy's `maybeWrapAuthForSigning`. Returns `auth` unchanged when
- * there's no signer (dev mode → bulletin-deploy uses its default mnemonic,
+ * there's no signer (dev mode → explicit dev mnemonic signed in-process,
  * no human tap).
  */
 function wrapAuthForSigning(
