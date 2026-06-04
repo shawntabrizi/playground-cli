@@ -29,10 +29,10 @@ import { assertPublicGitHubRepo, ModdablePreflightError } from "../../utils/depl
 export const modCommand = new Command("mod")
     .description("Mod a playground app — clone the source as a fresh project to customise")
     .argument("[domain]", "App domain (interactive picker if omitted)")
-    // --suri is retained as a no-op for backcompat. `dot mod` is fully read-only
-    // on the chain side now (browse + metadata lookups go through
-    // getReadOnlyRegistryContract with an Alice-derived dry-run origin), so
-    // there's no signer to feed.
+    // --suri is retained as a no-op for backcompat. `playground mod` is fully
+    // read-only on the chain side now (browse + metadata lookups go through
+    // getReadOnlyRegistryContract with the keyless pallet-revive dry-run
+    // origin), so there's no signer to feed.
     .option("--suri <suri>", "(deprecated, no-op) Signer secret URI")
     .action(async (rawDomain: string | undefined, _opts: { suri?: string }) =>
         runCliCommand("mod", { watchdog: true, hardExit: true }, () => runModCommand(rawDomain)),

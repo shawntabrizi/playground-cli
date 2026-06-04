@@ -20,7 +20,6 @@
 import { ContractManager, type CdmJson } from "@parity/product-sdk-contracts";
 import { ss58Encode } from "@parity/product-sdk-address";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
-import { getDevPublicKey } from "@parity/product-sdk-tx";
 import type { PolkadotClient } from "polkadot-api";
 import type { ResolvedSigner } from "./signer.js";
 import {
@@ -39,12 +38,21 @@ import cdmJsonRaw from "../../cdm.json";
 const cdmJson = cdmJsonRaw as unknown as CdmJson;
 
 /**
- * Stable origin used for read-only registry queries (`dot mod` and friends).
- * Derived from Alice's dev pubkey so it stays consistent across runs without
- * dragging the user's product account into the call. Revive query nodes
- * accept any SS58 as origin for read-only dry-runs.
+ * Stable origin used for read-only registry queries (`playground mod` and
+ * friends): pallet-revive's own keyless pallet account, mirroring
+ * `Pallet::<T>::account_id()` — `PalletId(*b"py/reviv").into_account_truncating()`,
+ * i.e. the PalletId `TYPE_ID` (`b"modl"`) + `b"py/reviv"` + 20 trailing zero
+ * bytes. This is the same fallback `@parity/product-sdk-contracts` uses when
+ * no origin is configured (its `QUERY_FALLBACK_ORIGIN` isn't exported, so we
+ * derive the identical bytes here — `5EYCAe5ij…`). We still pass it explicitly
+ * as `defaultOrigin` so the SDK's per-query "No origin configured" warning
+ * never fires inside the TUI. Revive query nodes accept any SS58 as origin
+ * for read-only dry-runs; this one is semantically neutral, not tied to a dev
+ * seed, and always exists on chain.
  */
-const READ_ONLY_QUERY_ORIGIN = ss58Encode(getDevPublicKey("Alice"));
+const REVIVE_PALLET_PUBLIC_KEY = new Uint8Array(32);
+REVIVE_PALLET_PUBLIC_KEY.set(new TextEncoder().encode("modlpy/reviv"));
+const READ_ONLY_QUERY_ORIGIN = ss58Encode(REVIVE_PALLET_PUBLIC_KEY);
 
 /**
  * Build a ContractManager whose contract ADDRESSES are resolved live from the
@@ -96,8 +104,8 @@ export async function getRegistryContract(rawClient: PolkadotClient, signer: Res
  * so the command doesn't need the user to be logged in / mapped first.
  *
  * Do NOT call `.tx()` on the returned contract — there is no signer wired in,
- * and `defaultOrigin` is Alice, so any submission would either crash or be
- * misattributed.
+ * and `defaultOrigin` is the keyless pallet-revive account, so any submission
+ * would either crash or be misattributed.
  */
 export async function getReadOnlyRegistryContract(rawClient: PolkadotClient) {
     const manager = await liveManager(rawClient, READ_ONLY_QUERY_ORIGIN);

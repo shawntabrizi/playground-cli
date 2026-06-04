@@ -32,14 +32,6 @@ vi.mock("@parity/product-sdk-descriptors/paseo-asset-hub", () => ({
     paseo_asset_hub: { genesis: "0xasset" },
 }));
 
-vi.mock("@parity/product-sdk-address", () => ({
-    ss58Encode: () => "5AliceReadOnlyOrigin",
-}));
-
-vi.mock("@parity/product-sdk-tx", () => ({
-    getDevPublicKey: () => new Uint8Array(32),
-}));
-
 vi.mock("./contractManifest.js", () => ({
     PLAYGROUND_REGISTRY_CONTRACT: "@w3s/playground-registry",
     suppressReviveTraceNoise: (contract: unknown) => contract,
@@ -49,7 +41,10 @@ vi.mock("./contractManifest.js", () => ({
 
 import { getRegistryContract, getReadOnlyRegistryContract } from "./registry.js";
 
-const READ_ONLY_ORIGIN = "5AliceReadOnlyOrigin";
+// pallet-revive's keyless pallet account ("modlpy/reviv" + 20 zero bytes),
+// frozen here so a regression back to Alice (or any other origin) fails loudly.
+// Must match @parity/product-sdk-contracts' QUERY_FALLBACK_ORIGIN.
+const READ_ONLY_ORIGIN = "5EYCAe5ijiYfhaAUBd6H9WGRTsvwFFc7GnhQkiHvBYxdvpbV";
 
 const fakeSigner: ResolvedSigner = {
     signer: {} as any,
