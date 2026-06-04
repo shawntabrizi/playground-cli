@@ -51,9 +51,15 @@ export interface StorageDeployOptions {
     domainName: string | null;
     /**
      * Auth options forwarded to bulletin-deploy. Usually produced by
-     * `resolveSignerSetup()`. May be `{}` for the dev path.
+     * `resolveSignerSetup()` merged with `resolveStorageSignerOptions()`.
+     * May be `{}` for the dev path. `storageSigner` (the BulletInAllowance
+     * slot key) takes precedence over `signer` for Bulletin storage routing
+     * inside bulletin-deploy — chunk txs are too large for phone signing.
      */
-    auth: Pick<DeployOptions, "signer" | "signerAddress" | "mnemonic">;
+    auth: Pick<
+        DeployOptions,
+        "signer" | "signerAddress" | "mnemonic" | "storageSigner" | "storageSignerAddress"
+    >;
     /** Emits progress events derived from bulletin-deploy's log output. */
     onLogEvent?: (event: DeployLogEvent) => void;
     /** Target environment — currently only `testnet` is supported. */

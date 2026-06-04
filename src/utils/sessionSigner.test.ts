@@ -13,15 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { ss58Encode } from "@parity/product-sdk-address";
 import { seedToAccount } from "@parity/product-sdk-keys";
 import type { UserSession } from "@parity/product-sdk-terminal";
+import type { PolkadotSigner } from "polkadot-api";
 import { PLAYGROUND_PRODUCT_ID } from "../config.js";
 import {
     INCOMPLETE_SESSION_MESSAGE,
+    SESSION_EXPIRED_MESSAGE,
     createPlaygroundSessionSigner,
     derivePlaygroundProductPublicKey,
+    wrapSignerWithSssFastFail,
 } from "./sessionSigner.js";
 
 const DEV_PHRASE = "bottom drive obey lake curtain smoke basket hold race lonely fit walk";
@@ -108,5 +111,116 @@ describe("createPlaygroundSessionSigner", () => {
         // playground-app derives MyApps ownership from this exact id; a silent
         // rename would orphan every published app.
         expect(PLAYGROUND_PRODUCT_ID).toEqual("playground.dot");
+    });
+});
+
+describe("wrapSignerWithSssFastFail", () => {
+    // The statement-store adapter logs NoAllowanceError to console.error but
+    // does NOT reject the createTransaction promise — without intervention the
+    // phone-signing call hangs for the SDK's 180s queue timeout while the
+    // outer transaction watcher gives up with a useless message. The wrapper
+    // detects the log line and rejects within ~200ms with a fix-it message.
+    const NO_ALLOWANCE_LINE =
+        "submitRequest failed: NoAllowanceError: Submit failed, no allowance set for account";
+
+    function makeSigner(overrides: Partial<PolkadotSigner>): PolkadotSigner {
+        return {
+            publicKey: new Uint8Array(32).fill(1),
+            signTx: vi.fn(async () => new Uint8Array([1])),
+            signBytes: vi.fn(async () => new Uint8Array([2])),
+            ...overrides,
+        } as PolkadotSigner;
+    }
+
+    test("rejects fast with the logout/init message when NoAllowanceError is logged", async () => {
+        const hanging = makeSigner({
+            signTx: () => {
+                console.error(NO_ALLOWANCE_LINE);
+                return new Promise<never>(() => {}); // never settles — the real failure mode
+            },
+        });
+        const wrapped = wrapSignerWithSssFastFail(hanging);
+
+        const started = Date.now();
+        await expect(wrapped.signTx(new Uint8Array(), {}, new Uint8Array(), 0)).rejects.toThrow(
+            SESSION_EXPIRED_MESSAGE,
+        );
+        // Well under the SDK's 180s queue timeout / 90s watcher timeout.
+        expect(Date.now() - started).toBeLessThan(5_000);
+        expect(SESSION_EXPIRED_MESSAGE).toMatch(/playground logout/);
+        expect(SESSION_EXPIRED_MESSAGE).toMatch(/playground init/);
+    });
+
+    test("signBytes gets the same fast-fail (raw signing rides the same channel)", async () => {
+        const hanging = makeSigner({
+            signBytes: () => {
+                console.error(NO_ALLOWANCE_LINE);
+                return new Promise<never>(() => {});
+            },
+        });
+        const wrapped = wrapSignerWithSssFastFail(hanging);
+        await expect(wrapped.signBytes(new Uint8Array())).rejects.toThrow(SESSION_EXPIRED_MESSAGE);
+    });
+
+    test("happy path passes the result through and restores console.error", async () => {
+        const original = console.error;
+        const inner = makeSigner({});
+        const wrapped = wrapSignerWithSssFastFail(inner);
+
+        const result = await wrapped.signTx(new Uint8Array(), {}, new Uint8Array(), 0);
+
+        expect(result).toEqual(new Uint8Array([1]));
+        expect(console.error).toBe(original);
+        expect(wrapped.publicKey).toBe(inner.publicKey);
+    });
+
+    test("console.error is restored even after a fast-fail rejection", async () => {
+        const original = console.error;
+        const hanging = makeSigner({
+            signTx: () => {
+                console.error(NO_ALLOWANCE_LINE);
+                return new Promise<never>(() => {});
+            },
+        });
+        const wrapped = wrapSignerWithSssFastFail(hanging);
+        await wrapped.signTx(new Uint8Array(), {}, new Uint8Array(), 0).catch(() => {});
+        expect(console.error).toBe(original);
+    });
+
+    test("unrelated console.error lines are forwarded, not swallowed", async () => {
+        const seen: string[] = [];
+        const original = console.error;
+        console.error = (...args: unknown[]) => {
+            seen.push(args.map(String).join(" "));
+        };
+        try {
+            const inner = makeSigner({
+                signTx: async () => {
+                    console.error("some unrelated diagnostic");
+                    return new Uint8Array([1]);
+                },
+            });
+            const wrapped = wrapSignerWithSssFastFail(inner);
+            await wrapped.signTx(new Uint8Array(), {}, new Uint8Array(), 0);
+            expect(seen).toContain("some unrelated diagnostic");
+            // And the nested interception restored OUR replacement, not the
+            // process original — interception must be re-entrant because the
+            // deploy pipeline (storage.ts) intercepts console too.
+            expect(seen.length).toBe(1);
+        } finally {
+            console.error = original;
+        }
+    });
+
+    test("underlying rejection is passed through unchanged", async () => {
+        const failing = makeSigner({
+            signTx: async () => {
+                throw new Error("user declined on phone");
+            },
+        });
+        const wrapped = wrapSignerWithSssFastFail(failing);
+        await expect(wrapped.signTx(new Uint8Array(), {}, new Uint8Array(), 0)).rejects.toThrow(
+            "user declined on phone",
+        );
     });
 });

@@ -19,6 +19,7 @@ import { Command, Option } from "commander";
 import { render } from "ink";
 import { renderSummaryText } from "./summary.js";
 import { captureWarning, errorMessage, withSpan } from "../../telemetry.js";
+import { readLoginStampMs, staleSessionWarning } from "../../utils/loginStamp.js";
 import { resolveSigner, SignerNotAvailableError, type ResolvedSigner } from "../../utils/signer.js";
 import { getConnection, destroyConnection } from "../../utils/connection.js";
 import { checkMapping } from "../../utils/account/mapping.js";
@@ -256,6 +257,17 @@ async function preflight(opts: {
     // always return "not authorized" and produce a false block. bulletin-deploy
     // 0.7.19 surfaces a clear "Payment" error if the host's allowance is
     // missing — the user runs `dot init` to re-request.
+
+    // Warn-only staleness heuristic for the statement-store allowance (the
+    // channel every phone tap rides). It expires ~2 days after login and has
+    // no on-chain query, so the recorded login time is the best signal we
+    // have. Never blocks: a wrong guess costs one stderr line, and the SSS
+    // fast-fail in sessionSigner.ts catches the real expiry at signing time.
+    // Skipped for dev mode (no phone taps). Runs before the TUI mounts.
+    if (opts.mode !== "dev") {
+        const warning = staleSessionWarning(await readLoginStampMs(), Date.now());
+        if (warning) process.stderr.write(`${warning}\n`);
+    }
 
     return signer;
 }

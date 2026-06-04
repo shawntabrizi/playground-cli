@@ -13,8 +13,51 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { describe, expect, it } from "vitest";
-import { describeDeployEvent } from "./run.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Heavy underlying pieces mocked — the orchestrator test only cares about
+// which signer reaches the Bulletin storage layer. Same pattern as
+// `../deploy/run.test.ts`.
+const { runStorageDeployMock, mirrorSiteMock, ensureSlotAccountSignerMock } = vi.hoisted(() => ({
+    // Explicit arg type so `mock.calls[0][0]` typechecks (an arg-less vi.fn
+    // infers Parameters = [] and indexing the empty tuple is a tsc error).
+    runStorageDeployMock: vi.fn<
+        (arg: unknown) => Promise<{
+            domainName: string;
+            fullDomain: string;
+            cid: string;
+            ipfsCid: string;
+        }>
+    >(async () => ({
+        domainName: "my-site",
+        fullDomain: "my-site.dot",
+        cid: "bafysite",
+        ipfsCid: "bafyipfs",
+    })),
+    mirrorSiteMock: vi.fn(async () => ({
+        directory: "/tmp/playground-cli-test-mirror-does-not-exist",
+        uploadRoot: "/tmp/playground-cli-test-mirror-does-not-exist",
+        fileCount: 3,
+    })),
+    ensureSlotAccountSignerMock: vi.fn(),
+}));
+
+vi.mock("../deploy/storage.js", () => ({ runStorageDeploy: runStorageDeployMock }));
+vi.mock("./mirror.js", () => ({ mirrorSite: mirrorSiteMock }));
+vi.mock("@parity/product-sdk-terminal/host", () => ({
+    createSlotAccountSigner: vi.fn(),
+    ensureSlotAccountSigner: ensureSlotAccountSignerMock,
+    requestResourceAllocation: vi.fn(),
+}));
+// Hermeticity: the corrected-derivation path reads the REAL allowance cache
+// from ~/.polkadot-apps; null forces the SDK-signer fallback so assertions
+// stay deterministic on machines that have a cached key.
+vi.mock("../allowances/slotSigner.js", () => ({
+    readCachedBulletinSlotSigner: vi.fn(async () => null),
+}));
+
+import type { ResolvedSigner } from "../signer.js";
+import { describeDeployEvent, runDecentralize } from "./run.js";
 
 describe("describeDeployEvent", () => {
     it("renders chunk-progress as a human-readable upload line", () => {
@@ -33,5 +76,78 @@ describe("describeDeployEvent", () => {
         // This is the bug the rewrite fixed: phase banners used to surface as
         // the raw "phase-start" string in the log tail.
         expect(describeDeployEvent({ kind: "phase-start", phase: "storage" })).toBeNull();
+    });
+});
+
+describe("runDecentralize — Bulletin storage signer", () => {
+    const SLOT_PUBLIC_KEY = new Uint8Array(32).fill(7);
+    const slotSigner = { publicKey: SLOT_PUBLIC_KEY } as any;
+
+    const sessionSigner: ResolvedSigner = {
+        signer: {
+            publicKey: new Uint8Array(32),
+            signTx: vi.fn(),
+            signBytes: vi.fn(),
+        } as any,
+        address: "5Fake",
+        source: "session",
+        userSession: {} as any,
+        adapter: {} as any,
+        addresses: {
+            rootAddress: "5Root",
+            productAddress: "5Fake",
+            productH160: "0xbeefbeefbeefbeefbeefbeefbeefbeefbeefbeef",
+        },
+        destroy: vi.fn(),
+    };
+
+    beforeEach(() => {
+        runStorageDeployMock.mockClear();
+        mirrorSiteMock.mockClear();
+        ensureSlotAccountSignerMock.mockReset();
+        ensureSlotAccountSignerMock.mockResolvedValue(slotSigner);
+    });
+
+    it("phone mode threads the slot key as storageSigner — chunks never phone-sign", async () => {
+        await runDecentralize({
+            siteUrl: "https://example.com",
+            label: "my-site",
+            fullDomain: "my-site.dot",
+            mode: "phone",
+            userSigner: sessionSigner,
+            env: "paseo-next-v2",
+        });
+
+        expect(runStorageDeployMock).toHaveBeenCalledTimes(1);
+        const arg = runStorageDeployMock.mock.calls[0][0] as unknown as {
+            auth: {
+                signerAddress?: string;
+                storageSigner?: unknown;
+                storageSignerAddress?: string;
+            };
+        };
+        // DotNS keeps the phone signer...
+        expect(arg.auth.signerAddress).toBe("5Fake");
+        // ...but Bulletin storage signs with the local slot key.
+        expect(arg.auth.storageSigner).toBe(slotSigner);
+        expect(arg.auth.storageSignerAddress).toBeDefined();
+        expect(arg.auth.storageSignerAddress).not.toBe("5Fake");
+    });
+
+    it("dev mode passes no storageSigner and never touches the slot key", async () => {
+        await runDecentralize({
+            siteUrl: "https://example.com",
+            label: "my-site",
+            fullDomain: "my-site.dot",
+            mode: "dev",
+            userSigner: null,
+            env: "paseo-next-v2",
+        });
+
+        const arg = runStorageDeployMock.mock.calls[0][0] as unknown as {
+            auth: { storageSigner?: unknown };
+        };
+        expect(arg.auth.storageSigner).toBeUndefined();
+        expect(ensureSlotAccountSignerMock).not.toHaveBeenCalled();
     });
 });

@@ -78,6 +78,26 @@ vi.mock("../../telemetry.js", () => ({
     errorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
 }));
 
+// Boundary mock for the BulletInAllowance slot key. Phone-mode deploys
+// resolve it as the Bulletin STORAGE signer (chunk txs are too large for the
+// phone's statement-store channel). The slot public key differs from the
+// session signer's so assertions can prove which key was threaded through.
+const SLOT_PUBLIC_KEY = new Uint8Array(32).fill(7);
+const slotSigner = { publicKey: SLOT_PUBLIC_KEY } as any;
+const { getBulletinAllowanceSignerMock, createStorageQuotaContextMock, quotaDestroyMock } =
+    vi.hoisted(() => ({
+        getBulletinAllowanceSignerMock: vi.fn(),
+        createStorageQuotaContextMock: vi.fn(),
+        quotaDestroyMock: vi.fn(),
+    }));
+vi.mock("../allowances/bulletin.js", () => ({
+    getBulletinAllowanceSigner: getBulletinAllowanceSignerMock,
+}));
+vi.mock("./storageQuota.js", () => ({
+    createStorageQuotaContext: createStorageQuotaContextMock,
+}));
+const quotaApi = { marker: "bulletin-api" } as any;
+
 import { runDeploy, type DeployEvent } from "./run.js";
 import type { ResolvedSigner } from "../signer.js";
 
@@ -89,6 +109,9 @@ const fakeUserSigner: ResolvedSigner = {
     },
     address: "5Fake",
     source: "session",
+    // Host wiring consumed by resolveStorageSignerOptions in phone mode.
+    userSession: {} as any,
+    adapter: {} as any,
     // `addresses` is forwarded from SessionHandle in real code. The
     // claimed-owner flow reads `addresses.productH160` — without it,
     // dev-mode publish would silently fall through to "no claimed
@@ -111,6 +134,15 @@ beforeEach(() => {
     publishToPlaygroundMock.mockClear();
     runBuildMock.mockClear();
     withSpanMock.mockClear();
+    getBulletinAllowanceSignerMock.mockReset();
+    getBulletinAllowanceSignerMock.mockResolvedValue(slotSigner);
+    createStorageQuotaContextMock.mockReset();
+    quotaDestroyMock.mockClear();
+    createStorageQuotaContextMock.mockReturnValue({
+        bulletinApi: quotaApi,
+        requiredBytes: 1234,
+        destroy: quotaDestroyMock,
+    });
 });
 
 describe("runDeploy", () => {
@@ -138,6 +170,10 @@ describe("runDeploy", () => {
         const arg = runStorageDeploy.mock.calls[0][0];
         expect(arg.auth).toEqual({});
         expect(arg.domainName).toBe("my-app");
+
+        // Dev mode never opens a Bulletin client for quota checks — no slot
+        // signer is used, so there is nothing to check.
+        expect(createStorageQuotaContextMock).not.toHaveBeenCalled();
     });
 
     it("dev mode with playground: ZERO planned approvals AND user H160 is claimed as owner", async () => {
@@ -231,6 +267,27 @@ describe("runDeploy", () => {
         const arg = runStorageDeploy.mock.calls[0][0];
         expect(arg.auth.signerAddress).toBe("5Fake");
         expect(arg.auth.signer).toBeDefined();
+
+        // Bulletin STORAGE must sign with the local slot key, never the phone
+        // signer: chunk txs carry up to 2 MiB of callData and the phone's
+        // statement-store channel rejects them as "message too big" before
+        // the phone is even contacted. storageSigner takes precedence over
+        // signer for storage routing inside bulletin-deploy 0.8.3+.
+        expect(arg.auth.storageSigner).toBe(slotSigner);
+        expect(arg.auth.storageSignerAddress).toBeDefined();
+        expect(arg.auth.storageSignerAddress).not.toBe("5Fake");
+
+        // The quota context flows into the allowance resolution so an
+        // undersized slot grant triggers the Increase flow BEFORE the upload
+        // starts (mid-upload Payment failures never fall back to the pool),
+        // and the dedicated WS client is always torn down.
+        expect(createStorageQuotaContextMock).toHaveBeenCalledWith(undefined, "/tmp/proj/dist");
+        expect(getBulletinAllowanceSignerMock).toHaveBeenCalledWith({
+            publishSigner: fakeUserSigner,
+            bulletinApi: quotaApi,
+            requiredBytes: 1234,
+        });
+        expect(quotaDestroyMock).toHaveBeenCalledTimes(1);
 
         const plan = events.find((e) => e.kind === "plan");
         if (plan?.kind === "plan") {

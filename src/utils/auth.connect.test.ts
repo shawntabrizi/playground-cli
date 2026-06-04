@@ -48,7 +48,16 @@ vi.mock("@parity/product-sdk-terminal", async (importOriginal) => {
     };
 });
 
-import { connect } from "./auth.js";
+// waitForLogin records the login stamp with its default storage dir; mock it
+// so tests never write to the real ~/.polkadot-apps.
+const { recordLoginStampMock } = vi.hoisted(() => ({
+    recordLoginStampMock: vi.fn(async () => undefined),
+}));
+vi.mock("./loginStamp.js", () => ({
+    recordLoginStamp: recordLoginStampMock,
+}));
+
+import { connect, getSessionSigner, waitForLogin } from "./auth.js";
 
 // A valid ristretto255 point — same frozen vector as `auth.test.ts`'s
 // deriveSessionAddresses block. `connect()` derives display addresses from
@@ -117,5 +126,92 @@ describe("connect() adapter lifecycle", () => {
         if (result.kind === "qr") {
             expect(result.login.adapter).toBe(adapter);
         }
+    });
+});
+
+// A second valid ristretto255 point, distinct from TEST_ROOT_BYTES, so the
+// two sessions derive different display addresses. Frozen output of
+// `scure.getPublicKey(scure.secretFromSeed(new Uint8Array(32).fill(2)))`.
+const OTHER_ROOT_BYTES = Uint8Array.from([
+    0x1a, 0x4f, 0xee, 0x48, 0xc1, 0xba, 0x1a, 0x48, 0xe8, 0xcd, 0x43, 0x78, 0x2a, 0x84, 0x85, 0xd6,
+    0x35, 0xaa, 0x91, 0xcf, 0xb8, 0x2c, 0xbb, 0x47, 0x7f, 0x0c, 0x1c, 0x57, 0x6b, 0xc4, 0x03, 0x1c,
+]);
+
+describe("multi-session selection", () => {
+    beforeEach(() => {
+        createTerminalAdapterMock.mockReset();
+        waitForSessionsMock.mockReset();
+        recordLoginStampMock.mockClear();
+    });
+
+    it("getSessionSigner uses the NEWEST session, not the oldest", async () => {
+        // The session repository APPENDS: after a re-pair the array holds
+        // [stale, fresh]. Requests sent on the stale session reach a channel
+        // the phone may no longer serve — the silent "nothing shows up on the
+        // phone" failure. Selection must always be the most recent pairing.
+        const stale = { id: "old", rootAccountId: TEST_ROOT_BYTES };
+        const fresh = { id: "new", rootAccountId: OTHER_ROOT_BYTES };
+        const adapter = fakeAdapter();
+        createTerminalAdapterMock.mockReturnValue(adapter);
+        waitForSessionsMock.mockResolvedValue([stale, fresh]);
+
+        const handle = await getSessionSigner();
+
+        expect(handle).not.toBeNull();
+        expect(handle!.userSession).toBe(fresh);
+        handle!.destroy();
+    });
+
+    it("waitForLogin reports the newest session and prunes stale ones", async () => {
+        const stale = { id: "old", rootAccountId: TEST_ROOT_BYTES };
+        const fresh = { id: "new", rootAccountId: OTHER_ROOT_BYTES };
+        const disconnect = vi.fn(async () => ({ isOk: () => true }));
+        const adapter = {
+            ...fakeAdapter(),
+            sessions: { disconnect },
+        };
+        waitForSessionsMock.mockResolvedValue([stale, fresh]);
+
+        const statuses: Array<{ step: string; address?: string }> = [];
+        const authPromise = Promise.resolve({
+            match: (ok: (s: unknown) => void) => ok(fresh),
+        });
+
+        const address = await waitForLogin({ adapter, authPromise } as any, (status) =>
+            statuses.push(status as { step: string; address?: string }),
+        );
+
+        // The reported identity is the JUST-PAIRED session's, never a stale one.
+        const success = statuses.find((s) => s.step === "success");
+        expect(success?.address).toBe(address);
+        expect(address).toBeTruthy();
+
+        // Stale sessions are disconnected (best-effort) so they cannot be
+        // selected by later commands or accumulate across re-pairs.
+        expect(disconnect).toHaveBeenCalledTimes(1);
+        expect(disconnect).toHaveBeenCalledWith(stale);
+        expect(recordLoginStampMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("waitForLogin survives a failing stale-session disconnect", async () => {
+        const stale = { id: "old", rootAccountId: TEST_ROOT_BYTES };
+        const fresh = { id: "new", rootAccountId: OTHER_ROOT_BYTES };
+        const disconnect = vi.fn(async () => {
+            throw new Error("remote unreachable");
+        });
+        const adapter = { ...fakeAdapter(), sessions: { disconnect } };
+        waitForSessionsMock.mockResolvedValue([stale, fresh]);
+
+        const statuses: Array<{ step: string }> = [];
+        const authPromise = Promise.resolve({
+            match: (ok: (s: unknown) => void) => ok(fresh),
+        });
+
+        const address = await waitForLogin({ adapter, authPromise } as any, (s) =>
+            statuses.push(s),
+        );
+
+        expect(address).toBeTruthy();
+        expect(statuses.some((s) => s.step === "success")).toBe(true);
     });
 });

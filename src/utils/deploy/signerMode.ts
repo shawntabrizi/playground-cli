@@ -30,15 +30,18 @@
  *     phone. With no session, `claimedOwnerH160 = null` and the contract
  *     falls back to caller (dev account owns the app).
  *   - Phone mode: bulletin-deploy uses the user's phone signer for DotNS
- *     (3 taps). Storage always uses the bulletin-deploy pool mnemonic.
- *     Playground publish uses the user's phone signer (1 more tap).
- *     `claimedOwnerH160 = null` — the contract defaults to caller, which
- *     is the user's H160 anyway.
+ *     (3 taps). Storage uses the BulletInAllowance slot key resolved by
+ *     `resolveStorageSignerOptions` — NEVER the phone signer (see that
+ *     function's doc for why). Playground publish uses the user's phone
+ *     signer (1 more tap). `claimedOwnerH160 = null` — the contract
+ *     defaults to caller, which is the user's H160 anyway.
  */
 
 import { DEFAULT_MNEMONIC, type DeployOptions } from "bulletin-deploy";
 import { ss58Encode } from "@parity/product-sdk-address";
+import type { CloudStorageApi } from "@parity/product-sdk-cloud-storage";
 import { seedToAccount } from "@parity/product-sdk-keys";
+import { getBulletinAllowanceSigner } from "../allowances/bulletin.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { DeployPlan } from "./availability.js";
 
@@ -242,4 +245,93 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
     }
 
     return { bulletinDeployAuthOptions, publishSigner, claimedOwnerH160, approvals };
+}
+
+/**
+ * Resolve the signer for Bulletin STORAGE txs (the CAR chunk uploads) in
+ * phone mode: the local BulletInAllowance slot key, threaded to
+ * bulletin-deploy as `storageSigner` / `storageSignerAddress`.
+ *
+ * Why this exists: since bulletin-deploy 0.8.x, passing `signer` routes
+ * Bulletin storage through that signer too — not just DotNS. Chunk txs carry
+ * up to 2 MiB of callData, and the phone session signer forwards the FULL
+ * callData over the statement store (`session.createTransaction`), whose
+ * request-size cap is 4 KiB on the pinned host-papp 0.7.9 (254 KiB upstream,
+ * and the Android app itself caps statements at 256 KiB). A phone-signed
+ * chunk therefore fails client-side with "message too big" before the phone
+ * is ever contacted. bulletin-deploy's `storageSigner` takes precedence over
+ * `signer` for storage routing only, so DotNS keeps the phone signer while
+ * chunks sign locally. bulletin-deploy 0.8.3 can resolve the same slot key
+ * itself from the shared `dot-cli` allowance cache, but only as a best-effort
+ * side path — when it misses (fresh machine, declined grant) it silently
+ * falls back to phone-signing the chunks, so we resolve and pass the key
+ * explicitly and fail fast with an actionable message instead.
+ *
+ * Resolution is delegated to `allowances/bulletin.ts::getBulletinAllowanceSigner`
+ * — the single source for slot allocation (cache hit → silent; miss → one
+ * phone approval), the CORRECTED schnorrkel key derivation (see
+ * `allowances/slotSigner.ts` — the SDK's own derivation produces an address
+ * the chain never granted anything to), and the quota check + `Increase`
+ * flow when `quota` is provided.
+ *
+ * Pass `quota` ({ bulletinApi, requiredBytes }) when the upload size is
+ * known: the slot's on-chain extent is verified up front and an undersized
+ * allowance triggers a single `Increase` request on the phone, instead of
+ * the upload dying mid-flight with Payment errors (which do NOT fall back
+ * to the pool — only a first-connection failure does).
+ *
+ * Quota shortfall is WARN-AND-PROCEED, never a block: whether the chain
+ * enforces the authorization extent at `store()` time is unconfirmed
+ * (upstream guidance is "the authorization is what counts", i.e. existence
+ * and expiry). After the Increase attempt the resolution retries without
+ * the quota check, surfaces `quota.onWarning`, and the deploy continues
+ * with the slot signer — bulletin-deploy reports per-chunk truth if the
+ * extent does turn out to be enforced. Only a total resolution failure
+ * (no slot key at all, grant declined) aborts the deploy.
+ *
+ * Dev mode returns `{}`: storage signs with bulletin-deploy's mnemonic or
+ * the `--suri` key (both local, no size hazard) and must never prompt the
+ * phone. A `--suri` signer under `--signer phone` also returns `{}` for the
+ * same reason.
+ */
+export async function resolveStorageSignerOptions(
+    mode: SignerMode,
+    userSigner: ResolvedSigner | null,
+    quota?: {
+        bulletinApi?: CloudStorageApi;
+        requiredBytes?: number;
+        onWarning?: (message: string) => void;
+    },
+): Promise<Pick<DeployOptions, "storageSigner" | "storageSignerAddress">> {
+    if (mode !== "phone" || userSigner?.source !== "session") return {};
+
+    const resolve = async (withQuota: boolean) => {
+        const storageSigner = await getBulletinAllowanceSigner({
+            publishSigner: userSigner,
+            bulletinApi: withQuota ? quota?.bulletinApi : undefined,
+            requiredBytes: withQuota ? quota?.requiredBytes : undefined,
+        });
+        return { storageSigner, storageSignerAddress: ss58Encode(storageSigner.publicKey) };
+    };
+
+    try {
+        return await resolve(true);
+    } catch (firstError) {
+        const firstMessage = firstError instanceof Error ? firstError.message : String(firstError);
+        try {
+            const fallback = await resolve(false);
+            quota?.onWarning?.(
+                `Bulletin storage quota check did not pass (${firstMessage}). ` +
+                    "Continuing with the existing authorization — the upload will report " +
+                    "per-chunk errors if the allowance really is exhausted.",
+            );
+            return fallback;
+        } catch {
+            throw new Error(
+                `Could not resolve the Bulletin storage key for this session (${firstMessage}). ` +
+                    "Storage uploads are too large to sign on the phone, so deploy cannot continue. " +
+                    'Re-run "playground init" and approve the Bulletin allowance on your phone.',
+            );
+        }
+    }
 }

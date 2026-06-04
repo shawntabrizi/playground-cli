@@ -27,8 +27,12 @@ import {
     type AllocatableResource,
 } from "@parity/product-sdk-terminal/host";
 import type { ResolvedSigner } from "../signer.js";
+import { readCachedBulletinSlotSigner } from "./slotSigner.js";
 
-const BULLETIN_RESOURCE: AllocatableResource = { tag: "BulletInAllowance", value: undefined };
+export const BULLETIN_RESOURCE: AllocatableResource = {
+    tag: "BulletInAllowance",
+    value: undefined,
+};
 
 const INIT_HINT = 'Run "playground init" to grant allowances.';
 
@@ -76,7 +80,30 @@ export async function cachedBulletinSlotAuthorization(
 ): Promise<BulletinSlotAuthorization | null> {
     const slotSigner = await createSlotAccountSigner(adapter, BULLETIN_RESOURCE);
     if (!slotSigner) return null;
-    return getBulletinSlotAuthorization(bulletinApi, slotSigner, requiredBytes);
+    return getBulletinSlotAuthorization(
+        bulletinApi,
+        await correctedSlotSigner(slotSigner, adapter),
+        requiredBytes,
+    );
+}
+
+/**
+ * Swap the SDK-built slot signer for one derived with the correct schnorrkel
+ * normalization (see `slotSigner.ts` — the SDK's `createSlotAccountSigner`
+ * derives the wrong public key for 64-byte phone-issued keys, an address the
+ * chain has never granted anything to). Falls back to the SDK signer when the
+ * local cache is unreadable, which preserves today's behavior. Remove once
+ * product-sdk-terminal fixes the derivation upstream.
+ *
+ * The cache is read from the ADAPTER's storage namespace (its readonly
+ * `storageDir`/`appId` fields) — the same place `ensureSlotAccountSigner`
+ * just wrote it — never from hardcoded defaults.
+ */
+async function correctedSlotSigner(
+    sdkSigner: PolkadotSigner,
+    adapter: NonNullable<ResolvedSigner["adapter"]>,
+): Promise<PolkadotSigner> {
+    return (await readCachedBulletinSlotSigner(adapter.storageDir, adapter.appId)) ?? sdkSigner;
 }
 
 function requireSession(publishSigner: ResolvedSigner) {
@@ -105,8 +132,13 @@ export async function getBulletinAllowanceSigner({
 
     const { userSession, adapter } = requireSession(publishSigner);
 
-    // Cache hit → local sr25519 signer; miss → one phone approval.
-    let slotSigner = await ensureSlotAccountSigner(userSession, adapter, BULLETIN_RESOURCE);
+    // Cache hit → local sr25519 signer; miss → one phone approval. The SDK
+    // call owns allocation + caching; the signer itself is rebuilt from the
+    // cached key with the correct derivation (see correctedSlotSigner).
+    let slotSigner = await correctedSlotSigner(
+        await ensureSlotAccountSigner(userSession, adapter, BULLETIN_RESOURCE),
+        adapter,
+    );
     if (!bulletinApi) return slotSigner;
 
     let authorization = await getBulletinSlotAuthorization(bulletinApi, slotSigner, requiredBytes);
@@ -116,7 +148,10 @@ export async function getBulletinAllowanceSigner({
         await requestResourceAllocation(userSession, adapter, [BULLETIN_RESOURCE], {
             onExisting: "Increase",
         });
-        slotSigner = await ensureSlotAccountSigner(userSession, adapter, BULLETIN_RESOURCE);
+        slotSigner = await correctedSlotSigner(
+            await ensureSlotAccountSigner(userSession, adapter, BULLETIN_RESOURCE),
+            adapter,
+        );
         authorization = await getBulletinSlotAuthorization(bulletinApi, slotSigner, requiredBytes);
     }
 

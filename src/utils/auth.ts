@@ -44,6 +44,7 @@ import {
     TERMINAL_METADATA_URL,
     getChainConfig,
 } from "../config.js";
+import { recordLoginStamp } from "./loginStamp.js";
 import {
     createPlaygroundSessionSigner,
     derivePlaygroundProductPublicKey,
@@ -124,6 +125,21 @@ async function loadSessions(adapter: TerminalAdapter, timeoutMs?: number): Promi
         }
         throw err;
     }
+}
+
+/**
+ * Pick the session every flow should operate on: the MOST RECENT pairing.
+ *
+ * The SDK's session repository APPENDS (`ssoSessionRepository.add`), so after
+ * a re-pair the persisted list is `[stale, ..., fresh]`. The phone keeps a
+ * session map keyed by id and serves whichever sessions it still knows about,
+ * but a stale local entry may map to a channel the phone dropped — requests
+ * sent on it disappear without an error (the "scanned the QR but nothing
+ * shows on the phone" failure). `sessions[0]` selected exactly that stale
+ * entry. Callers must use this helper, never index the array directly.
+ */
+function newestSession(sessions: UserSession[]): UserSession {
+    return sessions[sessions.length - 1];
 }
 
 function createPlaygroundSigner(session: UserSession): PolkadotSigner {
@@ -212,7 +228,7 @@ export async function connect(): Promise<ConnectResult> {
     try {
         sessions = await loadSessions(adapter);
         if (sessions.length > 0) {
-            const addresses = deriveSessionAddresses(sessions[0]);
+            const addresses = deriveSessionAddresses(newestSession(sessions));
             // The "existing" result carries plain address data only — the
             // adapter is not part of it, so this is the last place that can
             // release it. Leaking it keeps a statement-store WebSocket +
@@ -325,8 +341,24 @@ export async function waitForLogin(
         if (authenticated) {
             const sessions = await loadSessions(adapter, 3000);
             if (sessions.length > 0) {
-                const addresses = deriveSessionAddresses(sessions[0]);
+                const addresses = deriveSessionAddresses(newestSession(sessions));
                 address = addresses.productAddress;
+                // Prune stale sessions left behind by earlier pairings.
+                // Best-effort: disconnect tells the phone to drop its side
+                // and filters the local repository, so later commands can
+                // never select a dead channel. A failed disconnect is fine —
+                // newestSession() keeps selection correct regardless.
+                for (const stale of sessions.slice(0, -1)) {
+                    try {
+                        await adapter.sessions.disconnect(stale);
+                    } catch {
+                        // Phone unreachable for the stale session — ignore.
+                    }
+                }
+                // Best-effort, never throws: powers the stale-session warning
+                // in deploy's preflight (the SSS allowance has no on-chain
+                // query, so "when did we last pair" is the only signal).
+                void recordLoginStamp();
                 onStatus({ step: "success", address, addresses });
             } else {
                 onStatus({
@@ -409,7 +441,7 @@ export async function getSessionSigner(): Promise<SessionHandle | null> {
         return null;
     }
 
-    const session = sessions[0];
+    const session = newestSession(sessions);
     const signer = createPlaygroundSigner(session);
     const addresses = deriveSessionAddresses(session);
 
@@ -479,7 +511,7 @@ export async function findSession(): Promise<LogoutHandle | null> {
         }
         return null;
     }
-    const session = sessions[0];
+    const session = newestSession(sessions);
     const address = sessionLogoutAddress(session);
     return { adapter, address, session };
 }

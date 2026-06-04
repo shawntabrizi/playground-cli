@@ -13,8 +13,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { describe, it, expect } from "vitest";
-import { resolveSignerSetup } from "./signerMode.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Boundary mock: resolveStorageSignerOptions delegates slot resolution to
+// allowances/bulletin.ts (single source for allocation, corrected derivation,
+// and the quota/Increase flow). signerMode only owns the mode matrix.
+const { getBulletinAllowanceSignerMock } = vi.hoisted(() => ({
+    getBulletinAllowanceSignerMock: vi.fn(),
+}));
+
+vi.mock("../allowances/bulletin.js", () => ({
+    getBulletinAllowanceSigner: getBulletinAllowanceSignerMock,
+}));
+
+import { ss58Encode } from "@parity/product-sdk-address";
+import { resolveSignerSetup, resolveStorageSignerOptions } from "./signerMode.js";
 import type { ResolvedSigner } from "../signer.js";
 
 function fakeSigner(
@@ -174,5 +187,145 @@ describe("resolveSignerSetup — phone mode", () => {
             { phase: "playground", label: "Publish to Playground registry" },
         ]);
         expect(result.publishSigner).toBe(user);
+    });
+});
+
+describe("resolveStorageSignerOptions", () => {
+    // The slot key's public key deliberately differs from the session
+    // signer's so the address assertions can prove which key was chosen.
+    const SLOT_PUBLIC_KEY = new Uint8Array(32).fill(7);
+    const SLOT_SIGNER = { publicKey: SLOT_PUBLIC_KEY } as any;
+
+    function sessionSignerWithHost(): ResolvedSigner {
+        return {
+            ...fakeSigner("session", "5UserPhone"),
+            userSession: {} as any,
+            adapter: {} as any,
+        };
+    }
+
+    beforeEach(() => {
+        getBulletinAllowanceSignerMock.mockReset();
+    });
+
+    it("phone mode with a session resolves the Bulletin slot key as the storage signer", async () => {
+        // Bulletin chunk txs carry up to 2 MiB of callData. The statement-store
+        // session to the phone caps request messages far below that, so the
+        // storage signer MUST be a local key — the BulletInAllowance slot
+        // account — never the phone session signer.
+        getBulletinAllowanceSignerMock.mockResolvedValue(SLOT_SIGNER);
+        const user = sessionSignerWithHost();
+
+        const result = await resolveStorageSignerOptions("phone", user);
+
+        expect(result.storageSigner).toBe(SLOT_SIGNER);
+        expect(result.storageSignerAddress).toBe(ss58Encode(SLOT_PUBLIC_KEY));
+        expect(result.storageSignerAddress).not.toBe(user.address);
+        expect(getBulletinAllowanceSignerMock).toHaveBeenCalledWith({
+            publishSigner: user,
+            bulletinApi: undefined,
+            requiredBytes: undefined,
+        });
+    });
+
+    it("forwards the quota context so an undersized allowance triggers the Increase flow", async () => {
+        getBulletinAllowanceSignerMock.mockResolvedValue(SLOT_SIGNER);
+        const user = sessionSignerWithHost();
+        const bulletinApi = { marker: true } as any;
+
+        await resolveStorageSignerOptions("phone", user, {
+            bulletinApi,
+            requiredBytes: 14_000_000,
+        });
+
+        expect(getBulletinAllowanceSignerMock).toHaveBeenCalledWith({
+            publishSigner: user,
+            bulletinApi,
+            requiredBytes: 14_000_000,
+        });
+    });
+
+    it("dev mode never touches the slot key — no phone prompt in dev mode", async () => {
+        const user = sessionSignerWithHost();
+        await expect(resolveStorageSignerOptions("dev", user)).resolves.toEqual({});
+        expect(getBulletinAllowanceSignerMock).not.toHaveBeenCalled();
+    });
+
+    it("phone mode with a --suri dev signer returns {} (local key, no size hazard)", async () => {
+        await expect(resolveStorageSignerOptions("phone", fakeSigner("dev"))).resolves.toEqual({});
+        expect(getBulletinAllowanceSignerMock).not.toHaveBeenCalled();
+    });
+
+    it("phone mode with no signer returns {}", async () => {
+        await expect(resolveStorageSignerOptions("phone", null)).resolves.toEqual({});
+    });
+
+    it("slot resolution failure surfaces an actionable error, not a cryptic chunk failure", async () => {
+        // Without the slot key, bulletin-deploy would route 2 MiB chunk txs to
+        // the phone and every one would die with "message too big" after
+        // retries. Fail fast with a fix-it hint instead.
+        getBulletinAllowanceSignerMock.mockRejectedValue(new Error("user declined"));
+        await expect(resolveStorageSignerOptions("phone", sessionSignerWithHost())).rejects.toThrow(
+            /playground init/,
+        );
+    });
+
+    it("quota shortfall downgrades to warn-and-proceed: slot signer still used", async () => {
+        // Whether the chain actually enforces the authorization extent at
+        // store() time is unconfirmed (upstream guidance: "the authorization
+        // is what counts"). Blocking a deploy on possibly-decorative numbers
+        // would be worse than letting bulletin-deploy report per-chunk truth,
+        // so a quota failure retries WITHOUT the quota check and proceeds.
+        const SLOT_PUBLIC_KEY2 = new Uint8Array(32).fill(8);
+        const fallbackSigner = { publicKey: SLOT_PUBLIC_KEY2 } as any;
+        getBulletinAllowanceSignerMock
+            .mockRejectedValueOnce(
+                new Error(
+                    "Bulletin allowance for 5Slot is live but does not have enough quota. Re-run `playground init` and approve on your phone.",
+                ),
+            )
+            .mockResolvedValueOnce(fallbackSigner);
+        const warnings: string[] = [];
+        const user = sessionSignerWithHost();
+
+        const result = await resolveStorageSignerOptions("phone", user, {
+            bulletinApi: { marker: true } as any,
+            requiredBytes: 14_000_000,
+            onWarning: (msg) => warnings.push(msg),
+        });
+
+        expect(result.storageSigner).toBe(fallbackSigner);
+        expect(result.storageSignerAddress).toBe(ss58Encode(SLOT_PUBLIC_KEY2));
+        // Second call drops the quota context (no bulletinApi).
+        expect(getBulletinAllowanceSignerMock).toHaveBeenNthCalledWith(2, {
+            publishSigner: user,
+            bulletinApi: undefined,
+            requiredBytes: undefined,
+        });
+        expect(warnings.join(" ")).toMatch(/quota/i);
+    });
+
+    it("quota shortfall without a fallback signer still fails with the actionable error", async () => {
+        getBulletinAllowanceSignerMock
+            .mockRejectedValueOnce(new Error("does not have enough quota"))
+            .mockRejectedValueOnce(new Error("user declined"));
+        await expect(
+            resolveStorageSignerOptions("phone", sessionSignerWithHost(), {
+                bulletinApi: {} as any,
+                requiredBytes: 1,
+            }),
+        ).rejects.toThrow(/playground init/);
+    });
+
+    it("session missing host wiring throws the init hint", async () => {
+        // requireSession inside getBulletinAllowanceSigner fires here; the
+        // wrap keeps the message actionable either way.
+        getBulletinAllowanceSignerMock.mockRejectedValue(
+            new Error(
+                'No Bulletin allowance account available. Run "playground init" to grant allowances.',
+            ),
+        );
+        const user = fakeSigner("session"); // no userSession / adapter
+        await expect(resolveStorageSignerOptions("phone", user)).rejects.toThrow(/playground init/);
     });
 });

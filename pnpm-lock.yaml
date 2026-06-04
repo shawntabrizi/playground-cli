@@ -71,8 +71,8 @@ importers:
         specifier: ^9.47.1
         version: 9.47.1
       bulletin-deploy:
-        specifier: 0.8.1
-        version: 0.8.1(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3)
+        specifier: 0.8.3
+        version: 0.8.3(@novasamatech/host-api-wrapper@0.8.4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@novasamatech/host-api@0.7.9)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3)
       commander:
         specifier: ^12.0.0
         version: 12.1.0
@@ -1269,6 +1269,9 @@ packages:
   '@parity/product-sdk-storage@0.1.5':
     resolution: {integrity: sha512-TKW7HesTCihDtR1usKg/xMhKiO1kVPJej0bDhXXKTHCDfVWkdPR1A//oG9b+pQtswVLFm4k+FanFOt8lAQMBDA==}
 
+  '@parity/product-sdk-terminal@0.2.1':
+    resolution: {integrity: sha512-xcuKoOMHETwHBefEeNSMDqzL+AQFoTmK3i6JBwsvGhpijwJ8QDdoEMhilYiMKnmoyDml9nu/VCcPUKw3Am0zow==}
+
   '@parity/product-sdk-terminal@0.3.0':
     resolution: {integrity: sha512-m5OP+G5osqzE+jtPaLp/RxAsYQ8B7Jiiw8jMOOJdaRni30bV07nSPwxHDDNYAefexW8zt90U/qHalYBG/C1XDw==}
 
@@ -2270,8 +2273,8 @@ packages:
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
 
-  bulletin-deploy@0.8.1:
-    resolution: {integrity: sha512-sINsYTeZ9ZIza5tLWZ10k0hAWnNYMHWbdfQWyKVQoL6K0jLCkEgRWumbX9qr9JdY2L3E3BR59vZunAuPd4y+sA==}
+  bulletin-deploy@0.8.3:
+    resolution: {integrity: sha512-PT2dzazWrXo8fpq2PgQlGSmyW6AjpQm2cf1y/HiEhCmatWTwdWMuapj6en3sbJGGirTSsaACRhBt3PJtxBLWQg==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -6859,6 +6862,30 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@parity/product-sdk-terminal@0.2.1(patch_hash=881abfac101745190526378af2ef8b2bffee3a6b8743272b706f434568e806d3)(esbuild@0.27.7)(rxjs@7.8.2)':
+    dependencies:
+      '@noble/ciphers': 2.2.0
+      '@noble/curves': 2.2.0
+      '@noble/hashes': 2.2.0
+      '@novasamatech/host-papp': 0.7.9(esbuild@0.27.7)(rxjs@7.8.2)
+      '@novasamatech/statement-store': 0.7.9(esbuild@0.27.7)(rxjs@7.8.2)
+      '@novasamatech/storage-adapter': 0.7.9
+      '@parity/product-sdk-logger': 0.1.1
+      '@polkadot-api/utils': 0.4.0
+      '@polkadot-api/ws-provider': 0.9.0(rxjs@7.8.2)
+      '@polkadot-labs/hdkd-helpers': 0.0.27
+      nanoid: 5.1.11
+      neverthrow: 8.2.0
+      polkadot-api: 2.1.5(esbuild@0.27.7)(rxjs@7.8.2)
+      qrcode: 1.5.4
+      scale-ts: 1.6.1
+    transitivePeerDependencies:
+      - bufferutil
+      - esbuild
+      - rxjs
+      - supports-color
+      - utf-8-validate
+
   '@parity/product-sdk-terminal@0.3.0(patch_hash=881abfac101745190526378af2ef8b2bffee3a6b8743272b706f434568e806d3)(esbuild@0.27.7)(rxjs@7.8.2)':
     dependencies:
       '@noble/ciphers': 2.2.0
@@ -8390,11 +8417,15 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bulletin-deploy@0.8.1(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3):
+  bulletin-deploy@0.8.3(@novasamatech/host-api-wrapper@0.8.4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@novasamatech/host-api@0.7.9)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2)(typescript@5.9.3):
     dependencies:
       '@ipld/car': 5.4.3
       '@ipld/dag-pb': 4.1.5
       '@noble/hashes': 1.8.0
+      '@parity/product-sdk-address': 0.1.1
+      '@parity/product-sdk-keys': 0.3.3(@novasamatech/host-api-wrapper@0.8.4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@novasamatech/host-api@0.7.9)(esbuild@0.27.7)(rxjs@7.8.2)
+      '@parity/product-sdk-terminal': 0.2.1(patch_hash=881abfac101745190526378af2ef8b2bffee3a6b8743272b706f434568e806d3)(esbuild@0.27.7)(rxjs@7.8.2)
+      '@parity/product-sdk-tx': 0.2.7(@novasamatech/host-api-wrapper@0.8.4(@polkadot/api@16.5.6)(@polkadot/util@14.0.3)(esbuild@0.27.7)(rxjs@7.8.2))(@novasamatech/host-api@0.7.9)(esbuild@0.27.7)(rxjs@7.8.2)
       '@polkadot-api/metadata-builders': 0.14.3
       '@polkadot-api/substrate-bindings': 0.20.3
       '@polkadot-labs/hdkd': 0.0.28
@@ -8410,6 +8441,8 @@ snapshots:
       verifiablejs: 1.3.0-beta.4
       viem: 2.52.0(typescript@5.9.3)
     transitivePeerDependencies:
+      - '@novasamatech/host-api'
+      - '@novasamatech/host-api-wrapper'
       - '@polkadot/util'
       - bufferutil
       - encoding

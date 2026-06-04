@@ -24,7 +24,12 @@
 
 import { runBuild, loadDetectInput, detectBuildConfig, type BuildConfig } from "../build/index.js";
 import { publishToPlayground, normalizeDomain } from "./playground.js";
-import { resolveSignerSetup, type SignerMode, type DeployApproval } from "./signerMode.js";
+import {
+    resolveSignerSetup,
+    resolveStorageSignerOptions,
+    type SignerMode,
+    type DeployApproval,
+} from "./signerMode.js";
 import {
     wrapSignerWithEvents,
     createSigningCounter,
@@ -32,6 +37,7 @@ import {
     type SigningEvent,
 } from "./signingProxy.js";
 import type { DeployLogEvent } from "./progress.js";
+import { createStorageQuotaContext } from "./storageQuota.js";
 import { withDeployPhase } from "./phase.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { Env } from "../../config.js";
@@ -139,6 +145,40 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
             counter,
             setup.approvals,
         );
+        // Bulletin storage chunks must sign with the local BulletInAllowance
+        // slot key, never the phone signer — 2 MiB chunk txs blow the phone's
+        // statement-store message cap. Resolved AFTER the wrap so the slot
+        // signer never goes through the phone-approval event proxy.
+        //
+        // The quota context (size estimate + dedicated Bulletin client) lets
+        // the slot's on-chain extent be verified BEFORE the upload starts; an
+        // undersized grant triggers one Increase tap on the phone instead of
+        // the upload dying mid-flight with Payment errors. Best-effort: a null
+        // context just skips the check. Built only for phone-mode sessions —
+        // dev mode never uses the slot key.
+        const quota =
+            options.mode === "phone" && options.userSigner?.source === "session"
+                ? createStorageQuotaContext(options.env, buildAbs)
+                : null;
+        let storageSignerOptions: Awaited<ReturnType<typeof resolveStorageSignerOptions>>;
+        try {
+            storageSignerOptions = await resolveStorageSignerOptions(
+                options.mode,
+                options.userSigner,
+                quota
+                    ? {
+                          ...quota,
+                          onWarning: (message) =>
+                              options.onEvent({
+                                  kind: "storage-event",
+                                  event: { kind: "info", message },
+                              }),
+                      }
+                    : undefined,
+            );
+        } finally {
+            quota?.destroy();
+        }
         return await withDeployPhase(
             "storage-and-dotns",
             "cli.deploy.storage-dotns",
@@ -149,7 +189,7 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
                 return await runStorageDeploy({
                     content: buildAbs,
                     domainName: label,
-                    auth: storageAuth,
+                    auth: { ...storageAuth, ...storageSignerOptions },
                     onLogEvent: (event) => options.onEvent({ kind: "storage-event", event }),
                     env: options.env,
                 });

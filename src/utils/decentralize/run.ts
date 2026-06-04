@@ -31,7 +31,12 @@ import { rmSync } from "node:fs";
 import { getChainConfig, type Env } from "../../config.js";
 import { publishToPlayground } from "../deploy/playground.js";
 import type { DeployLogEvent } from "../deploy/progress.js";
-import { type DeployApproval, resolveSignerSetup, type SignerMode } from "../deploy/signerMode.js";
+import {
+    type DeployApproval,
+    resolveSignerSetup,
+    resolveStorageSignerOptions,
+    type SignerMode,
+} from "../deploy/signerMode.js";
 import {
     createSigningCounter,
     type SigningCounter,
@@ -168,6 +173,11 @@ export async function runDecentralize(
             directory: mirror.uploadRoot,
         });
 
+        // Bulletin storage chunks must sign with the local BulletInAllowance
+        // slot key, never the phone signer — chunk txs blow the phone's
+        // statement-store message cap. See resolveStorageSignerOptions.
+        const storageSignerOptions = await resolveStorageSignerOptions(mode, userSigner);
+
         onEvent?.({ kind: "storage-start", fullDomain });
         const result = await runStorageDeploy({
             // Upload from the resolved index.html parent, NOT from
@@ -177,12 +187,15 @@ export async function runDecentralize(
             // Wrap the DotNS auth signer so each phone tap surfaces a
             // "check your phone" lifecycle event. No-op in dev mode (auth
             // has no signer — bulletin-deploy uses its default mnemonic).
-            auth: wrapAuthForSigning(
-                setup.bulletinDeployAuthOptions,
-                setup.approvals,
-                counter,
-                emitSigning,
-            ),
+            auth: {
+                ...wrapAuthForSigning(
+                    setup.bulletinDeployAuthOptions,
+                    setup.approvals,
+                    counter,
+                    emitSigning,
+                ),
+                ...storageSignerOptions,
+            },
             env,
             onLogEvent: (event) => onEvent?.({ kind: "storage-event", event }),
         });

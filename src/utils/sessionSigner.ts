@@ -84,5 +84,88 @@ export function createPlaygroundSessionSigner(
     ref: Pick<ProductAccountRef, "productId" | "derivationIndex">,
 ): PolkadotSigner {
     const publicKey = derivePlaygroundProductPublicKey(sessionRootPublicKey(session), ref);
-    return createSessionSignerForAccount(session, { ...ref, publicKey });
+    return wrapSignerWithSssFastFail(createSessionSignerForAccount(session, { ...ref, publicKey }));
+}
+
+export const SESSION_EXPIRED_MESSAGE =
+    "Phone session expired: the statement-store allowance lapses ~2-3 days after login " +
+    "and cannot be renewed remotely (renewal requests travel over the expired channel). " +
+    'Run "playground logout" and then "playground init" to pair again.';
+
+/**
+ * Fast-fail for expired statement-store (SSS) allowances.
+ *
+ * Phone signing rides the statement store: `session.createTransaction` /
+ * `session.signRaw` submit a statement on the People chain that the phone
+ * subscribes to. The SSS allowance is a 1-day renewable resource (plus a
+ * grace window, ~2-3 days total after login). When it lapses, the
+ * statement-store adapter logs `NoAllowanceError` to `console.error` but
+ * does NOT reject the promise — the signing call hangs for the SDK's 180s
+ * queue timeout while the outer transaction watcher gives up at 90s with a
+ * misleading "transaction watcher silent" error, times 3 retries.
+ *
+ * This wrapper intercepts `console.error` for the duration of each signing
+ * call, detects the NoAllowanceError line, and rejects within ~200ms with an
+ * actionable message. Renewal genuinely requires re-pairing: the
+ * `requestResourceAllocation` that would extend the allowance itself travels
+ * over SSS, and only the QR login flow has a direct WebSocket channel.
+ * Mirrors bulletin-deploy's vendored `sessionSigner.ts` fast-fail, which does
+ * not cover us because we inject our own signer.
+ *
+ * Re-entrancy: the deploy pipeline (`deploy/storage.ts::interceptConsoleLog`)
+ * also swaps `console.error`. We capture whatever `console.error` is at call
+ * time and restore exactly that in `finally`, so the interceptions nest.
+ * Overlapping signing calls cannot interleave restores in practice —
+ * host-papp serializes all session operations through a poolSize-1 queue.
+ * A matched line is suppressed (the thrown error IS the user-facing
+ * message); everything else is forwarded.
+ *
+ * On a fast-fail the underlying signing promise is intentionally abandoned
+ * (it never settles in this failure mode — that's the bug). If it ever does
+ * settle later, Promise.race has both arms handled, so no unhandled
+ * rejection escapes; any post-restore NoAllowanceError lines simply land on
+ * the regular console.error.
+ */
+export function wrapSignerWithSssFastFail(signer: PolkadotSigner): PolkadotSigner {
+    function wrap<Args extends unknown[], R>(
+        fn: (...args: Args) => Promise<R>,
+    ): (...args: Args) => Promise<R> {
+        return async (...args: Args): Promise<R> => {
+            let sawNoAllowance = false;
+            const previousError = console.error;
+            console.error = (...errArgs: unknown[]) => {
+                const line = errArgs.map(String).join(" ");
+                if (line.includes("NoAllowanceError") || line.includes("no allowance set")) {
+                    sawNoAllowance = true;
+                    return; // suppressed — SESSION_EXPIRED_MESSAGE replaces the raw stack
+                }
+                previousError(...errArgs);
+            };
+
+            let poll: ReturnType<typeof setInterval> | null = null;
+            try {
+                return await Promise.race([
+                    fn(...args),
+                    new Promise<never>((_, reject) => {
+                        poll = setInterval(() => {
+                            if (sawNoAllowance) reject(new Error(SESSION_EXPIRED_MESSAGE));
+                        }, 200);
+                    }),
+                ]);
+            } finally {
+                // Both arms are settled or abandoned here: the interval must
+                // die (it would otherwise keep the event loop alive — see
+                // process-guard), and console.error must be restored to
+                // whatever interceptor was active when we started.
+                if (poll !== null) clearInterval(poll);
+                console.error = previousError;
+            }
+        };
+    }
+
+    return {
+        publicKey: signer.publicKey,
+        signTx: wrap(signer.signTx.bind(signer)),
+        signBytes: wrap(signer.signBytes.bind(signer)),
+    };
 }
