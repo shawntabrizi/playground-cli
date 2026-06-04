@@ -82,7 +82,7 @@ async function runModCommand(rawDomain: string | undefined): Promise<void> {
         // with a clean message so the user can pick a different app before we
         // mount SetupScreen and start writing files.
         //
-        // The direct-domain path (`dot mod some-domain.dot`) has no metadata
+        // The direct-domain path (`playground mod some-domain.dot`) has no metadata
         // at this point and falls through to SetupScreen, where a private or
         // missing repo surfaces as a `downloadGitHubTarball` 404 step failure.
         // Slightly less polished UX, but lifting the metadata fetch up here

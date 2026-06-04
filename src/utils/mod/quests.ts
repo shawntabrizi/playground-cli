@@ -14,7 +14,7 @@
 // limitations under the License.
 
 /**
- * Quest manifest loader for the `dot mod` quest picker.
+ * Quest manifest loader for the `playground mod` quest picker.
  *
  * Quest tracks ship a `quests.json` at the repo root describing the tutorial
  * steps a learner can follow on `main`. The manifest is purely informational
