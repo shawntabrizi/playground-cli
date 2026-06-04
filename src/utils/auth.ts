@@ -208,13 +208,32 @@ export interface LoginHandle {
 export async function connect(): Promise<ConnectResult> {
     const adapter = createAdapter();
 
-    const sessions = await loadSessions(adapter);
-    if (sessions.length > 0) {
-        const addresses = deriveSessionAddresses(sessions[0]);
-        // `address` is kept for back-compat with callers that only need the
-        // product-account SS58 (signer flows). UI consumers should read the
-        // richer `addresses` field instead.
-        return { kind: "existing", address: addresses.productAddress, addresses };
+    let sessions: UserSession[];
+    try {
+        sessions = await loadSessions(adapter);
+        if (sessions.length > 0) {
+            const addresses = deriveSessionAddresses(sessions[0]);
+            // The "existing" result carries plain address data only — the
+            // adapter is not part of it, so this is the last place that can
+            // release it. Leaking it keeps a statement-store WebSocket +
+            // subscriptions alive for the rest of the process: the event
+            // loop never drains, and the leaked subscription machinery is
+            // the kind that can enter the polkadot-api microtask-flood
+            // state (see process-guard.ts) and grow the process unbounded.
+            // Same fire-and-forget + `.catch()` rationale as
+            // `getSessionSigner()`'s no-session path below.
+            adapter.destroy().catch(() => {});
+            // `address` is kept for back-compat with callers that only need
+            // the product-account SS58 (signer flows). UI consumers should
+            // read the richer `addresses` field instead.
+            return { kind: "existing", address: addresses.productAddress, addresses };
+        }
+    } catch (err) {
+        // Probe failed (statement store unreachable, stale session, …) —
+        // release the WebSocket before propagating, mirroring the QR-wait
+        // catch below.
+        adapter.destroy().catch(() => {});
+        throw err;
     }
 
     // Start authenticate — this triggers the pairing flow and QR emission
