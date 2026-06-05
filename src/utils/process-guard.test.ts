@@ -65,11 +65,23 @@ describe("isBenignUnsubscriptionError", () => {
         expect(isBenignUnsubscriptionError(err)).toBe(false);
     });
 
-    it("rejects non-UnsubscriptionError errors with Not connected message", () => {
-        // A bare `Error("Not connected")` is usually a real network failure
-        // from an active request path, not the teardown-race we're filtering.
+    it("matches a bare Error with exactly Not connected (host-papp 0.8 teardown shape)", () => {
+        // The 0.8 statement-store stack surfaces the raw-client teardown
+        // throw as a floating bare rejection instead of wrapping it in an
+        // rxjs UnsubscriptionError. Same benign family, new shape — without
+        // this match a successful `pg init` exits 1. (Pre-0.8 this test
+        // pinned the opposite: the bare form never occurred at teardown.)
         const err = new Error("Not connected");
-        expect(isBenignUnsubscriptionError(err)).toBe(false);
+        expect(isBenignUnsubscriptionError(err)).toBe(true);
+    });
+
+    it("rejects bare Errors whose message merely CONTAINS Not connected", () => {
+        // Contextual messages indicate a real failure from an active request
+        // path — only the exact raw-client teardown throw is benign.
+        expect(isBenignUnsubscriptionError(new Error("RPC failed: Not connected to peer"))).toBe(
+            false,
+        );
+        expect(isBenignUnsubscriptionError(new Error("Not connected: retry later"))).toBe(false);
     });
 
     it("rejects non-Error inputs", () => {

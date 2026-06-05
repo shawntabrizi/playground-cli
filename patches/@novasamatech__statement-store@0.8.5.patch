@@ -1,0 +1,22 @@
+diff --git a/dist/adapter/rpc.js b/dist/adapter/rpc.js
+index 8907426e3fe1c3d02a12aac00d31c0bf99aa141d..664b1a761d8542f99c2bc215a095e784b4bf45b3 100644
+--- a/dist/adapter/rpc.js
++++ b/dist/adapter/rpc.js
+@@ -69,6 +69,17 @@ export function createPapiStatementStoreAdapter(lazyClient) {
+                         setTimeout(flush, 0);
+                     }
+                 }, error => {
++                    // PATCH(playground-cli): a DestroyedError here is the
++                    // expected artifact of destroying the websocket client
++                    // while subscriptions are live — not a real subscription
++                    // failure. Logging it prints a scary stack right after
++                    // successful commands. Real errors still log. The match
++                    // mirrors process-guard's isBenignUnsubscriptionError
++                    // (name AND message) so the two filters stay consistent.
++                    // Remove when upstream gates its logging.
++                    if (error?.name === 'DestroyedError' &&
++                        /client destroyed/i.test(error?.message ?? ''))
++                        return;
+                     console.error('Statement subscription error:', error);
+                 });
+                 activeSubscriptions.set(key, unsub);

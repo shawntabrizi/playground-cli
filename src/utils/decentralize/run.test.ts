@@ -52,13 +52,6 @@ vi.mock("@parity/product-sdk-terminal/host", () => ({
     getCachedAllocation: vi.fn(async () => ({ tag: "BulletInAllowance" })),
     requestResourceAllocation: vi.fn(),
 }));
-// Hermeticity: the corrected-derivation path reads the REAL allowance cache
-// from ~/.polkadot-apps; null forces the SDK-signer fallback so assertions
-// stay deterministic on machines that have a cached key.
-vi.mock("../allowances/slotSigner.js", () => ({
-    readCachedBulletinSlotSigner: vi.fn(async () => null),
-}));
-
 import { DEFAULT_MNEMONIC } from "bulletin-deploy";
 import type { ResolvedSigner } from "../signer.js";
 import { DEV_PUBLISH_ADDRESS } from "../deploy/signerMode.js";

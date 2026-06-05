@@ -1,0 +1,58 @@
+diff --git a/dist/sso/auth/impl.js b/dist/sso/auth/impl.js
+index 66104643771a1e5d8edec80edf626e655dfde563..328354f8b9da6619f26a262237025cc14211c4bb 100644
+--- a/dist/sso/auth/impl.js
++++ b/dist/sso/auth/impl.js
+@@ -1,4 +1,6 @@
+ import { createAccountId, createLocalSessionAccount, createRemoteSessionAccount } from '@novasamatech/statement-store';
++// PATCH(playground-cli): see persistAndNotify below.
++import { createSharedSecret } from '../../crypto.js';
+ import { ResultAsync, errAsync, okAsync } from 'neverthrow';
+ import { createFlowId, emitHostPappDebugMessage } from '../../debugBus.js';
+ import { AbortError } from '../../helpers/abortError.js';
+@@ -148,7 +150,25 @@ export function createAuth({ hostMetadata, deviceIdentity, deviceIdentityStore,
+     };
+     function persistAndNotify(identity, success, _flowId) {
+         const localAccount = createLocalSessionAccount(createAccountId(identity.statementAccountPublicKey));
+-        const remoteAccount = createRemoteSessionAccount(createAccountId(success.peerStatementAccountId ?? new Uint8Array(32)), success.deviceEncPubKey);
++        // PATCH(playground-cli): the session transport (statement topic +
++        // AES key, both derived from remoteAccount.publicKey downstream in
++        // sessionManager) must key on the ECDH shared secret
++        //   ECDH(host encryptionPrivateKey, phone ssoEncPubKey)
++        // which is what the phone derives for its SSO channel
++        // (ECDH(//wallet//sso private, host QR encryptionPublicKey)).
++        // Upstream 0.8.5 stores the raw 65-byte deviceEncPubKey instead:
++        // no ECDH is ever computed, ssoEncPubKey is persisted but never
++        // consumed, and the 65-byte value is silently truncated by the
++        // Bytes(32) session codec on the disk round-trip. Every
++        // post-handshake session request (requestResourceAllocation,
++        // createTransaction, signRaw) then rides a topic/key the phone
++        // never reads and hangs out the 180s queue timeout.
++        // The 32-byte ECDH X-coordinate also fits the Bytes(32) codec.
++        // Remove when host-papp ships the fix.
++        const sessionKey = success.ssoEncPubKey
++            ? createSharedSecret(identity.encryptionPrivateKey, success.ssoEncPubKey)
++            : success.deviceEncPubKey;
++        const remoteAccount = createRemoteSessionAccount(createAccountId(success.peerStatementAccountId ?? new Uint8Array(32)), sessionKey);
+         const session = createStoredUserSession(localAccount, remoteAccount, createAccountId(success.rootAccountId ?? new Uint8Array(32)), {
+             identityAccountId: createAccountId(success.identityAccountId),
+             identityChatPublicKey: success.identityChatPublicKey,
+diff --git a/dist/sso/auth/v2/service.js b/dist/sso/auth/v2/service.js
+index 1efb9f45df7d2527c611b5b1d009aa0d8109b6cc..158213850e79f31805634714f0a25f87cb4f0dca 100644
+--- a/dist/sso/auth/v2/service.js
++++ b/dist/sso/auth/v2/service.js
+@@ -74,7 +74,15 @@ export const startPairingV2 = (deps) => {
+         clearInterval(pollHandle);
+         pollHandle = null;
+     };
++    // PATCH(playground-cli): upstream logs unconditionally via console.info
++    // (no env var, no option, no logger injection). Gate behind DOT_DEBUG /
++    // HOST_PAPP_DEBUG so `pg init` output stays clean. Remove when host-papp
++    // grows a proper logging gate.
++    const debugLogsEnabled = typeof process !== 'undefined' &&
++        (process.env?.DOT_DEBUG || process.env?.HOST_PAPP_DEBUG);
+     const log = (msg, extra) => {
++        if (!debugLogsEnabled)
++            return;
+         if (extra === undefined)
+             console.info(`[sso-v2] ${msg}`);
+         else

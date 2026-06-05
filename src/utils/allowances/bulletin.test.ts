@@ -24,14 +24,12 @@ const {
     ensureSlotAccountSignerMock,
     getCachedAllocationMock,
     requestResourceAllocationMock,
-    readCachedBulletinSlotSignerMock,
 } = vi.hoisted(() => ({
     checkAuthorizationMock: vi.fn(),
     createSlotAccountSignerMock: vi.fn(),
     ensureSlotAccountSignerMock: vi.fn(),
     getCachedAllocationMock: vi.fn(),
     requestResourceAllocationMock: vi.fn(),
-    readCachedBulletinSlotSignerMock: vi.fn(),
 }));
 
 vi.mock("@parity/product-sdk-cloud-storage", () => ({
@@ -43,10 +41,6 @@ vi.mock("@parity/product-sdk-terminal/host", () => ({
     ensureSlotAccountSigner: ensureSlotAccountSignerMock,
     getCachedAllocation: getCachedAllocationMock,
     requestResourceAllocation: requestResourceAllocationMock,
-}));
-
-vi.mock("./slotSigner.js", () => ({
-    readCachedBulletinSlotSigner: readCachedBulletinSlotSignerMock,
 }));
 
 import {
@@ -88,10 +82,6 @@ beforeEach(() => {
     ensureSlotAccountSignerMock.mockReset();
     getCachedAllocationMock.mockReset();
     requestResourceAllocationMock.mockReset();
-    readCachedBulletinSlotSignerMock.mockReset();
-    // Default: no local cache read available — every existing test exercises
-    // the SDK-signer fallback path unchanged.
-    readCachedBulletinSlotSignerMock.mockResolvedValue(null);
     // Default: slot key already in the SDK cache, so ensureSlotAccountSigner
     // resolves silently and no grant prompt fires.
     getCachedAllocationMock.mockResolvedValue({ tag: "BulletInAllowance" });
@@ -338,44 +328,13 @@ describe("getBulletinAllowanceSigner — phone approval prompts", () => {
     });
 });
 
-describe("getBulletinAllowanceSigner — corrected slot derivation", () => {
-    // The SDK's createSlotAccountSigner derives the WRONG public key for
-    // 64-byte phone-issued keys (missing schnorrkel x8 normalization), so the
-    // signer actually used must come from readCachedBulletinSlotSigner. The
-    // pubkeys differ so the assertions can prove which one won.
-    const CORRECTED_PUBLIC_KEY = new Uint8Array(32).fill(9);
-    const CORRECTED_SIGNER = { publicKey: CORRECTED_PUBLIC_KEY } as any;
-
-    it("prefers the cache-derived signer over the SDK's mis-derived one", async () => {
+describe("getBulletinAllowanceSigner — SDK signer passthrough", () => {
+    // terminal 0.3.1+ owns the schnorrkel-normalized derivation for 64-byte
+    // phone-issued keys (the playground-cli slotSigner.ts workaround was
+    // deleted once the fix shipped upstream). The SDK-built signer must be
+    // used as-is, and the authorization check must run against ITS address.
+    it("uses the SDK-built slot signer and checks authorization on its address", async () => {
         ensureSlotAccountSignerMock.mockResolvedValue(SLOT_SIGNER);
-        readCachedBulletinSlotSignerMock.mockResolvedValue(CORRECTED_SIGNER);
-
-        const signer = await getBulletinAllowanceSigner({ publishSigner: sessionSigner() });
-
-        expect(signer).toBe(CORRECTED_SIGNER);
-        // The SDK ensure call still runs first — it owns allocation + caching.
-        expect(ensureSlotAccountSignerMock).toHaveBeenCalledTimes(1);
-    });
-
-    it("reads the cache from the ADAPTER's storage dir and appId, not hardcoded defaults", async () => {
-        // ensureSlotAccountSigner writes its cache to the adapter's storage
-        // namespace. Reading from a hardcoded ~/.polkadot-apps/dot-cli_* path
-        // would silently fall back to the SDK's wrong-address signer the
-        // moment an adapter uses a custom storageDir or appId — re-arming the
-        // exact bug the corrected derivation exists to fix.
-        ensureSlotAccountSignerMock.mockResolvedValue(SLOT_SIGNER);
-        readCachedBulletinSlotSignerMock.mockResolvedValue(CORRECTED_SIGNER);
-        const adapter = { appId: "custom-app", storageDir: "/custom/dir" } as any;
-        const publishSigner = { ...sessionSigner(), adapter };
-
-        await getBulletinAllowanceSigner({ publishSigner });
-
-        expect(readCachedBulletinSlotSignerMock).toHaveBeenCalledWith("/custom/dir", "custom-app");
-    });
-
-    it("runs the authorization check against the corrected address, not the SDK's", async () => {
-        ensureSlotAccountSignerMock.mockResolvedValue(SLOT_SIGNER);
-        readCachedBulletinSlotSignerMock.mockResolvedValue(CORRECTED_SIGNER);
         checkAuthorizationMock.mockResolvedValue({
             authorized: true,
             remainingTransactions: 1,
@@ -383,37 +342,21 @@ describe("getBulletinAllowanceSigner — corrected slot derivation", () => {
             expiration: 1,
         });
 
-        await getBulletinAllowanceSigner({
+        const signer = await getBulletinAllowanceSigner({
             publishSigner: sessionSigner(),
             bulletinApi: {} as any,
             requiredBytes: 50,
         });
 
+        expect(signer).toBe(SLOT_SIGNER);
+        expect(ensureSlotAccountSignerMock).toHaveBeenCalledTimes(1);
         const checkedAddress = checkAuthorizationMock.mock.calls[0][1] as string;
         const { ss58Encode } = await import("@parity/product-sdk-address");
-        expect(checkedAddress).toBe(ss58Encode(CORRECTED_PUBLIC_KEY));
-        expect(checkedAddress).not.toBe(ss58Encode(PUBLIC_KEY));
+        expect(checkedAddress).toBe(ss58Encode(PUBLIC_KEY));
     });
 });
 
 describe("cachedBulletinSlotAuthorization", () => {
-    it("checks the corrected address when the cache is readable", async () => {
-        const CORRECTED = { publicKey: new Uint8Array(32).fill(9) } as any;
-        createSlotAccountSignerMock.mockResolvedValue(SLOT_SIGNER);
-        readCachedBulletinSlotSignerMock.mockResolvedValue(CORRECTED);
-        checkAuthorizationMock.mockResolvedValue({
-            authorized: true,
-            remainingTransactions: 1,
-            remainingBytes: 100n,
-            expiration: 1,
-        });
-
-        const result = await cachedBulletinSlotAuthorization({} as any, {} as any, 50);
-
-        const { ss58Encode } = await import("@parity/product-sdk-address");
-        expect(result?.address).toBe(ss58Encode(new Uint8Array(32).fill(9)));
-    });
-
     it("returns null on a cache miss without touching the wire", async () => {
         createSlotAccountSignerMock.mockResolvedValue(null);
 

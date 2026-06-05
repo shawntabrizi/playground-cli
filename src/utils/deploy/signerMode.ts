@@ -299,10 +299,9 @@ export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {
  *
  * Resolution is delegated to `allowances/bulletin.ts::getBulletinAllowanceSigner`
  * — the single source for slot allocation (cache hit → silent; miss → one
- * phone approval), the CORRECTED schnorrkel key derivation (see
- * `allowances/slotSigner.ts` — the SDK's own derivation produces an address
- * the chain never granted anything to), and the quota check + `Increase`
- * flow when `quota` is provided.
+ * phone approval) and the quota check + `Increase` flow when `quota` is
+ * provided. Key derivation is the SDK's (`@parity/product-sdk-terminal`
+ * 0.3.1+ derives the schnorrkel-normalized address the chain granted to).
  *
  * Pass `quota` ({ bulletinApi, requiredBytes }) when the upload size is
  * known: the slot's on-chain extent is verified up front and an undersized

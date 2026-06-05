@@ -178,8 +178,18 @@ function logSuppressedBenign(reason: unknown): void {
  *   1. `UnsubscriptionError` wrapping inner `Not connected` errors (rxjs).
  *   2. `DisjointError: ChainHead disjointed` from polkadot-api's substrate
  *      client when an outstanding chainHead operation races the unfollow.
+ *   3. A BARE `Error("Not connected")` — the host-papp 0.8 / terminal 0.3
+ *      stack surfaces the same raw-client throw (`createClient.ts`'s
+ *      `if (!connection) throw new Error("Not connected")`) from a floating
+ *      teardown promise instead of wrapping it in rxjs UnsubscriptionError.
+ *      Observed on `pg init` after a fresh pairing: setup completes, the
+ *      login adapter's destroy races an in-flight statement-store call, and
+ *      the bare rejection escaped the filter — turning a successful init
+ *      into exit code 1. The match requires the message to be EXACTLY
+ *      "Not connected" so a real mid-work connection failure (which carries
+ *      contextual messages) still escalates.
  *
- * Both look terrifying but are already the expected outcome. Keeping the match
+ * All look terrifying but are already the expected outcome. Keeping the match
  * narrow so a genuinely new failure still escalates.
  *
  * `DestroyedError: Client destroyed` from PAPI's raw-client was originally
@@ -201,6 +211,10 @@ export function isBenignUnsubscriptionError(reason: unknown): boolean {
     if (!(reason instanceof Error)) return false;
     if (reason.name === "DisjointError") return true;
     if (reason.name === "DestroyedError" && /client destroyed/i.test(reason.message)) {
+        return true;
+    }
+    // Bare raw-client teardown throw (host-papp 0.8 stack) — see docstring §3.
+    if (reason.name === "Error" && /^not connected$/i.test(reason.message.trim())) {
         return true;
     }
     if (reason.name !== "UnsubscriptionError") return false;

@@ -164,19 +164,16 @@ export const DAPP_ID = "dot-cli";
 export const PLAYGROUND_PRODUCT_ID = "playground.dot";
 
 /**
- * Host metadata URL embedded in the V1 pairing QR. The mobile app fetches
- * this URL while loading the pairing request and renders `{ name, icon }`
- * on the Sign-In screen — a blank value makes pairing fail with "Failed to
- * load pairing request". Hosted on a gist today; intentionally a URL rather
- * than a pinned file so it can be rotated without a CLI release.
- *
- * Only meaningful while `@novasamatech/*` is pinned to 0.7.9 (the V1 QR);
- * host-papp 0.8 replaced this with structured `hostMetadata` entries inside
- * the V2 proposal. Remove together with the 0.7.9 override + the
- * `product-sdk-terminal` patch that forwards it.
+ * Host metadata carried inline in the V2 pairing proposal (host-papp 0.8+).
+ * The mobile app renders these fields on the Sign-In pair sheet — no network
+ * fetch involved, unlike the V1 QR's metadata URL (which pointed at a gist
+ * and was removed together with the `@novasamatech` 0.7.9 mobile-compat pin).
+ * `hostVersion` is filled in by the caller from `package.json`.
  */
-export const TERMINAL_METADATA_URL =
-    "https://gist.githubusercontent.com/ReinhardHatko/1967dd3f4afe78683cc0ba14d6ec8744/raw/c1625eb7ed7671b7e09a3fa2a25998dde33c70b8/metadata.json";
+export const TERMINAL_HOST_METADATA = {
+    hostName: "Polkadot Playground",
+    hostIcon: "https://cryptologos.cc/logos/polkadot-new-dot-logo.png",
+} as const;
 
 /** Default build output directory — matches Vite and the interactive prompt default. */
 export const DEFAULT_BUILD_DIR = "dist";

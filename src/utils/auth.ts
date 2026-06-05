@@ -38,10 +38,11 @@ import {
     type UserSession,
 } from "@parity/product-sdk-terminal";
 import type { PolkadotSigner } from "polkadot-api";
+import pkg from "../../package.json" with { type: "json" };
 import {
     DAPP_ID,
     PLAYGROUND_PRODUCT_ID,
-    TERMINAL_METADATA_URL,
+    TERMINAL_HOST_METADATA,
     getChainConfig,
 } from "../config.js";
 import { recordLoginStamp } from "./loginStamp.js";
@@ -82,11 +83,11 @@ function createAdapter(): TerminalAdapter {
     return createTerminalAdapter({
         appId: DAPP_ID,
         endpoints: getChainConfig().peopleEndpoints,
-        // `metadataUrl` exists via our patch on product-sdk-terminal (see
-        // patches/): it forwards into the V1 pairing QR's metadata field,
-        // which the phone fetches to render the Sign-In screen. Required
-        // while the @novasamatech 0.7.9 mobile-compat pin is active.
-        metadataUrl: TERMINAL_METADATA_URL,
+        // Rendered on the phone's Sign-In pair sheet. Travels inline in the
+        // V2 pairing proposal (host-papp 0.8+) — the phone only accepts V2
+        // offers since its Handshake V2 rewrite, so the @novasamatech 0.7.9
+        // pin (V1 QR) had to go.
+        hostMetadata: { ...TERMINAL_HOST_METADATA, hostVersion: pkg.version },
     });
 }
 
@@ -108,11 +109,12 @@ export function isStaleSessionDecodeError(err: unknown): boolean {
 }
 
 /**
- * `waitForSessions` with stale-session translation. Purely defensive on the
- * current `@novasamatech@0.7.9` pin (its session format matches what released
- * CLIs wrote), but any future wire/storage bump can leave sessions on disk
- * the new codec can't decode — surface that as an actionable message instead
- * of a raw SCALE/decode error.
+ * `waitForSessions` with stale-session translation. Mostly defensive on
+ * host-papp 0.8+: its session repository swallows decode failures and returns
+ * an empty list (so pre-0.8 session blobs written by older CLIs silently
+ * disappear and the user just re-pairs), but a future wire/storage bump may
+ * throw again — surface that as an actionable message instead of a raw
+ * SCALE/decode error.
  */
 async function loadSessions(adapter: TerminalAdapter, timeoutMs?: number): Promise<UserSession[]> {
     try {
