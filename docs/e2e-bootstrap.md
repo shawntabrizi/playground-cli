@@ -69,20 +69,18 @@ After a registry-contract redeploy, the next CI run restores them automatically.
 Run these once per registry-contract lifetime (or to recover — see §3).
 
 ```bash
-# Step 1: verify SIGNER has sufficient balance
-bun tools/probe-registry-resolution.ts e2e-cli-foundry.dot
-# If this 404s cleanly → SIGNER is not yet funded or fixtures not registered.
-# If this returns a valid CID → SIGNER already owns this domain (re-run is safe).
+# Step 1: list registered apps and check whether the fixtures already exist
+bun tools/list-registry-apps.ts
+# If the fixture domains are absent → SIGNER not yet funded or fixtures not registered.
+# If they already appear → registered (re-running step 2 is safe; it dedupes).
 
 # Step 2: register (or re-register) all 5 tool-managed fixture domains
 bun tools/register-e2e-fixtures.ts
 # Output: signer balance, top-up if needed, then publishes each domain.
 
-# Step 3: verify each tool-managed fixture
-for d in dot-cli-mod-fixture e2e-cli-foundry e2e-cli-cdm e2e-cli-hardhat e2e-cli-multi; do
-    bun tools/probe-registry-resolution.ts "$d.dot"
-done
-# Each line should print a resolved CID, not an error.
+# Step 3: verify each tool-managed fixture is now listed
+bun tools/list-registry-apps.ts | grep -E "dot-cli-mod-fixture|e2e-cli-foundry|e2e-cli-cdm|e2e-cli-hardhat|e2e-cli-multi"
+# All 5 fixture domains should appear.
 ```
 
 To register a single fixture (e.g. after adding a new cell):
