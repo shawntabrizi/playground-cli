@@ -99,7 +99,11 @@ export function InitScreen({
             <DependencyList onDone={handleDepsDone} />
 
             {addresses && depsComplete && (
-                <AccountSetup address={addresses.productAddress} onDone={handleAccountDone} />
+                <AccountSetup
+                    address={addresses.productAddress}
+                    freshlyPaired={needsQr}
+                    onDone={handleAccountDone}
+                />
             )}
 
             {addresses && accountComplete && accountOk && (
