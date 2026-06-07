@@ -19,6 +19,7 @@ import { DEFAULT_MNEMONIC as BULLETIN_DEPLOY_DEFAULT_MNEMONIC } from "bulletin-d
 import { describe, expect, it } from "vitest";
 import { getChainConfig } from "../config.js";
 import {
+    assertSupportedCdmJson,
     parseContractInstallLibraryArg,
     resolveContractDeployTarget,
     resolveContractInstallTarget,
@@ -140,6 +141,31 @@ describe("resolveContractInstallTarget", () => {
         expect(() => resolveContractInstallTarget({ registryAddress: "0x1234" })).toThrow(
             "Registry address must be a 20-byte hex address",
         );
+    });
+});
+
+describe("assertSupportedCdmJson", () => {
+    it("accepts the flat cdm.json shape", () => {
+        expect(() => assertSupportedCdmJson({ dependencies: {}, contracts: {} })).not.toThrow();
+        expect(() =>
+            assertSupportedCdmJson({
+                dependencies: { "@polkadot/contexts": "latest" },
+                contracts: {},
+                registry: "0x1111111111111111111111111111111111111111",
+            }),
+        ).not.toThrow();
+    });
+
+    it("rejects a legacy targets-keyed cdm.json with a plain-English error", () => {
+        const legacy = {
+            targets: { abc123: { "asset-hub": "wss://x", bulletin: "https://y", registry: "0xz" } },
+            dependencies: {},
+            contracts: {},
+        } as unknown as CdmJson;
+        expect(() => assertSupportedCdmJson(legacy, "/proj/cdm.json")).toThrow(
+            /old multi-target format/,
+        );
+        expect(() => assertSupportedCdmJson(legacy, "/proj/cdm.json")).toThrow(/\/proj\/cdm\.json/);
     });
 });
 

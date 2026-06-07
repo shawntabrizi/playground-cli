@@ -146,6 +146,24 @@ export function parseContractInstallLibraryArg(arg: string): InstallLibraryReque
     return { library: arg, requestedVersion: "latest" };
 }
 
+/**
+ * Guard against a pre-migration `cdm.json`. The flat manifest dropped the
+ * `targets`/`targetHash` layer, and `readCdmJson`'s `normalizeCdmJson` is an
+ * identity pass, so an old multi-target file would otherwise flow through and
+ * fail opaquely (target-hash keys read as library names, orphaned nested
+ * `contracts` entries with undefined fields). Fail fast with a clear message.
+ */
+export function assertSupportedCdmJson(cdmJson: CdmJson, cdmJsonPath?: string): void {
+    if (cdmJson && typeof cdmJson === "object" && "targets" in cdmJson) {
+        const where = cdmJsonPath ? ` (${cdmJsonPath})` : "";
+        throw new Error(
+            `cdm.json${where} uses the old multi-target format, which is no longer supported. ` +
+                `Remove the "targets" section, or delete cdm.json and re-run, so it uses the flat ` +
+                `dependencies/contracts format.`,
+        );
+    }
+}
+
 export function resolveContractInstallTarget(
     opts: ContractInstallOpts,
     cdmJson?: CdmJson,
@@ -387,6 +405,7 @@ async function runContractInstall(libraries: string[], opts: ContractInstallOpts
     const rootDir = resolve(process.cwd());
     const cdmResult = readCdmJson(rootDir);
     const cdmJson = cdmResult?.cdmJson ?? { dependencies: {}, contracts: {} };
+    assertSupportedCdmJson(cdmJson, cdmResult?.cdmJsonPath);
     const target = resolveContractInstallTarget(opts, cdmJson);
     const requests = installRequestsFromArgs(libraries, cdmJson);
 
