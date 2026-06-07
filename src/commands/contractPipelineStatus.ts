@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { BuildEvent, ContractInfo, DeployEvent } from "@dotdm/contracts";
+import type { BuildEvent, ContractInfo, DeployEvent } from "@parity/cdm-builder";
 import type { SigningEvent } from "../utils/deploy/signingProxy.js";
 
 export type ContractState =
@@ -214,7 +214,10 @@ export class ContractPipelineStatusAdapter {
                 this.update(event.crate, "building", {
                     buildProgress: {
                         compiled: event.compiled,
-                        total: event.total,
+                        // @parity/cdm-builder's build-progress event made `total`
+                        // optional. The UI already treats total === 0 as "unknown"
+                        // (it guards `total > 0`), so coalesce the unknown case.
+                        total: event.total ?? 0,
                     },
                 });
                 return;
