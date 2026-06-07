@@ -28,6 +28,15 @@ jobs:
                       echo "::error::Direct @polkadot-apps/* imports are not allowed — migrate to @parity/product-sdk-*"
                       exit 1
                   fi
+            - name: No @dotdm/* imports in tracked source
+              run: |
+                  # @dotdm/* contract packages were migrated to @parity/cdm-*.
+                  # Match quoted module specifiers only, so prose/backticks that
+                  # reference the legacy name don't trip the guard.
+                  if grep -rnE "['\"]@dotdm/" src/ e2e/ scripts/ tools/; then
+                      echo "::error::Direct @dotdm/* imports are not allowed — use @parity/cdm-*"
+                      exit 1
+                  fi
 
     unit-tests:
         name: Unit Tests

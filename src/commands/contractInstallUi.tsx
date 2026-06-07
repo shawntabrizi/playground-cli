@@ -21,7 +21,7 @@ import {
     type InstallEvent,
     type InstallResult,
     type InstallSummary,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 import { getNetworkLabel } from "../config.js";
 import { COLOR, GLYPH, Header, Mark, Row, Section, TIMING } from "../utils/ui/theme/index.js";
 import { VERSION_LABEL } from "../utils/version.js";

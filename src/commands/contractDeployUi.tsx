@@ -20,7 +20,7 @@ import {
     detectBuildOrder,
     type DeployContractsOptions,
     type DeploySummary,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 import { getNetworkLabel } from "../config.js";
 import {
     COLOR,
