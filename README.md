@@ -1,5 +1,8 @@
 # playground-cli
 
+> [!WARNING]
+> The following is a prototype, reference implementation, and proof-of-concept. This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
+
 CLI tooling for Polkadot Playground. Installed as the `playground` command, with `pg` as a short alias — both invoke the same binary, so `playground init` and `pg init` are interchangeable.
 
 ## Quick Start
