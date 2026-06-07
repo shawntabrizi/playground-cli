@@ -1,0 +1,27 @@
+# pnpm settings (moved here from package.json#pnpm — pnpm 11 no longer reads
+# that field). This is NOT a multi-package workspace; pnpm-workspace.yaml is
+# simply where pnpm >= 11 keeps its settings, single-package repos included.
+
+# pnpm 11 renamed onlyBuiltDependencies to an allowBuilds map. Only biome's
+# postinstall runs (same as the old onlyBuiltDependencies allowlist); the
+# explicit `false` entries were implicitly denied under pnpm 10 and the tree
+# works without their build scripts.
+allowBuilds:
+  "@biomejs/biome": true
+  "@parity/product-sdk-terminal": false
+  esbuild: false
+  node-datachannel: false
+
+overrides:
+  # dotns-cli 0.6.1 ships a broken publish manifest (file:.papi/descriptors
+  # missing from the tarball); redirect to a local empty stub. See CLAUDE.md.
+  "@parity/dotns-cli>@polkadot-api/descriptors": "file:./stubs/papi-descriptors-stub"
+  # Load-bearing: collapses three transitive json-rpc-provider versions onto
+  # one to avoid wire-shape divergence. See CLAUDE.md.
+  "@polkadot-api/json-rpc-provider": "^0.2.0"
+
+patchedDependencies:
+  # PATCH(playground-cli) — local-only fixes pending upstream. See CLAUDE.md
+  # "Two local pnpm patches remain" for what each one does.
+  "@novasamatech/statement-store@0.8.6": "patches/@novasamatech__statement-store@0.8.6.patch"
+  "@novasamatech/sdk-statement@0.6.0": "patches/@novasamatech__sdk-statement@0.6.0.patch"
