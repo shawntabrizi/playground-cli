@@ -29,13 +29,13 @@
         "@dotdm/env": "^2.0.2",
         "@parity/dotns-cli": "0.6.1",
         "@parity/product-sdk-address": "^0.1.1",
-        "@parity/product-sdk-cloud-storage": "^0.5.4",
-        "@parity/product-sdk-contracts": "^0.7.1",
+        "@parity/product-sdk-cloud-storage": "^0.5.5",
+        "@parity/product-sdk-contracts": "^0.7.2",
         "@parity/product-sdk-descriptors": "^0.5.2",
-        "@parity/product-sdk-keys": "^0.3.4",
+        "@parity/product-sdk-keys": "^0.3.5",
         "@parity/product-sdk-logger": "^0.1.1",
-        "@parity/product-sdk-terminal": "^0.3.1",
-        "@parity/product-sdk-tx": "^0.2.8",
+        "@parity/product-sdk-terminal": "^0.3.2",
+        "@parity/product-sdk-tx": "^0.2.9",
         "@parity/product-sdk-utils": "^0.1.1",
         "@polkadot-api/sdk-ink": "^0.7.0",
         "@scure/sr25519": "^2.2.0",
@@ -67,8 +67,7 @@
             "@polkadot-api/json-rpc-provider": "^0.2.0"
         },
         "patchedDependencies": {
-            "@novasamatech/host-papp@0.8.5": "patches/@novasamatech__host-papp@0.8.5.patch",
-            "@novasamatech/statement-store@0.8.5": "patches/@novasamatech__statement-store@0.8.5.patch",
+            "@novasamatech/statement-store@0.8.6": "patches/@novasamatech__statement-store@0.8.6.patch",
             "@novasamatech/sdk-statement@0.6.0": "patches/@novasamatech__sdk-statement@0.6.0.patch"
         }
     }
