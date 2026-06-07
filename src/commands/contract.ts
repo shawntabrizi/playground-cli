@@ -15,28 +15,27 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { generateContractTypes, generateContractsAugmentation } from "@dotdm/cdm";
+import { generateContractTypes, generateContractsAugmentation } from "@parity/cdm-codegen";
 import {
     CONTRACTS_REGISTRY_ABI,
-    computeTargetHash,
     generateSolidityImport,
     hasBuildableSolidityProject,
     readCdmJson,
     resolveFeatures,
-    resolveTargetRegistryAddress,
     type CdmJson,
     type InstallLibraryRequest,
     type InstallResult,
     type PipelineChainClient,
     type SolidityAbiEntry,
     writeCdmJson,
-} from "@dotdm/contracts";
+} from "@parity/cdm-builder";
 import {
     connectIpfsGateway,
     createCdmAssetHubClient,
     getChainPreset,
     getRegistryAddress,
-} from "@dotdm/env";
+} from "@parity/cdm-env";
+import type { CloudStorageApi } from "@parity/product-sdk-cloud-storage";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
@@ -88,12 +87,10 @@ interface ContractInstallTarget {
     assethubUrl: string;
     ipfsGatewayUrl: string;
     registryAddress: HexString;
-    targetHash: string;
     chainName?: string;
 }
 
 type ContractChainClient = PipelineChainClient & { destroy(): void };
-type CdmTargetEntry = [string, CdmJson["targets"][string]];
 
 function assertHexAddress(value: string, label: string): HexString {
     if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
@@ -157,7 +154,7 @@ export function resolveContractInstallTarget(
     let assethubUrl = opts.assethubUrl;
     let ipfsGatewayUrl = opts.ipfsGatewayUrl;
     let registryAddress = opts.registryAddress;
-    let chainName = opts.name;
+    const chainName = opts.name;
 
     if (opts.name && opts.name !== "custom") {
         const preset = getChainPreset(opts.name);
@@ -166,22 +163,7 @@ export function resolveContractInstallTarget(
         registryAddress ??= preset.registryAddress;
     }
 
-    const explicitTarget =
-        Boolean(opts.assethubUrl || opts.ipfsGatewayUrl || opts.registryAddress) ||
-        Boolean(opts.name && opts.name !== "custom");
-    let selectedTargetHash: string | undefined;
-    const selectedTargetEntry = explicitTarget ? undefined : selectCdmTargetEntry(cdmJson);
-    const selectedTarget = selectedTargetEntry?.[1];
-
-    if (selectedTarget) {
-        if (!assethubUrl && (!opts.name || opts.name === "custom")) {
-            assethubUrl = selectedTarget["asset-hub"];
-        }
-        ipfsGatewayUrl ??= selectedTarget.bulletin;
-        registryAddress ??= resolveTargetRegistryAddress(selectedTarget);
-        selectedTargetHash = selectedTargetEntry[0];
-    }
-
+    registryAddress ??= cdmJson?.registry;
     assethubUrl ??= cfg.assetHubRpc;
     ipfsGatewayUrl ??= cfg.bulletinGateway;
     registryAddress ??= getRegistryAddress(cfg.env);
@@ -190,19 +172,8 @@ export function resolveContractInstallTarget(
         assethubUrl,
         ipfsGatewayUrl,
         registryAddress: assertHexAddress(registryAddress, "Registry address"),
-        targetHash:
-            selectedTargetHash ?? computeTargetHash(assethubUrl, ipfsGatewayUrl, registryAddress),
         chainName: chainName === "custom" ? undefined : chainName,
     };
-}
-
-function selectCdmTargetEntry(cdmJson: CdmJson | undefined): CdmTargetEntry | undefined {
-    const entries = Object.entries(cdmJson?.targets ?? {});
-    return (
-        entries.find(
-            ([targetHash]) => Object.keys(cdmJson?.dependencies[targetHash] ?? {}).length > 0,
-        ) ?? entries[0]
-    );
 }
 
 async function createContractChainClient(
@@ -272,7 +243,10 @@ async function runContractDeploy(opts: ContractDeployOpts): Promise<void> {
         client = await createContractChainClient(target);
         const metadataSigner = await getBulletinAllowanceSigner({
             publishSigner: signer,
-            bulletinApi: client.bulletin,
+            // client.bulletin is the same runtime bulletin API, but it's nominally
+            // typed as @parity/cdm-env's CdmBulletinApi (built against an older
+            // product-sdk-cloud-storage than the CLI's). Bridge the version skew.
+            bulletinApi: client.bulletin as unknown as CloudStorageApi,
         });
 
         const result = await runContractDeployWithUI({
@@ -307,18 +281,12 @@ function detectProjectType(rootDir: string): {
     };
 }
 
-function installRequestsFromArgs(
-    libraries: string[],
-    cdmJson: CdmJson,
-    targetHash: string,
-): InstallLibraryRequest[] {
+function installRequestsFromArgs(libraries: string[], cdmJson: CdmJson): InstallLibraryRequest[] {
     if (libraries.length > 0) return libraries.map(parseContractInstallLibraryArg);
 
-    const deps = cdmJson.dependencies[targetHash];
+    const deps = cdmJson.dependencies;
     if (!deps || Object.keys(deps).length === 0) {
-        throw new Error(
-            "No library specified and no dependencies found in cdm.json for this target.",
-        );
+        throw new Error("No library specified and no dependencies found in cdm.json.");
     }
 
     return Object.entries(deps).map(([library, version]) => ({
@@ -333,20 +301,15 @@ function updateCdmJsonAfterInstall(
     requests: InstallLibraryRequest[],
     results: InstallResult[],
 ): void {
-    cdmJson.targets[target.targetHash] = {
-        "asset-hub": target.assethubUrl,
-        bulletin: target.ipfsGatewayUrl,
-        registry: target.registryAddress,
-    };
-    cdmJson.dependencies[target.targetHash] ??= {};
+    cdmJson.registry = target.registryAddress;
+    cdmJson.dependencies ??= {};
     cdmJson.contracts ??= {};
-    cdmJson.contracts[target.targetHash] ??= {};
 
     for (const result of results) {
         const request = requests.find((entry) => entry.library === result.library);
         if (!request) continue;
-        cdmJson.dependencies[target.targetHash][result.library] = request.requestedVersion;
-        cdmJson.contracts[target.targetHash][result.library] = {
+        cdmJson.dependencies[result.library] = request.requestedVersion;
+        cdmJson.contracts[result.library] = {
             version: result.version,
             address: result.address,
             abi: result.abi,
@@ -380,8 +343,8 @@ function ensureTsconfigIncludesCdm(rootDir: string): void {
     writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 4)}\n`);
 }
 
-function postInstallSolidity(rootDir: string, cdmJson: CdmJson, targetHash: string): void {
-    const contractsForTarget = cdmJson.contracts?.[targetHash];
+function postInstallSolidity(rootDir: string, cdmJson: CdmJson): void {
+    const contractsForTarget = cdmJson.contracts;
     if (!contractsForTarget) return;
 
     for (const [library, data] of Object.entries(contractsForTarget)) {
@@ -397,8 +360,8 @@ function postInstallSolidity(rootDir: string, cdmJson: CdmJson, targetHash: stri
     }
 }
 
-function postInstallTypeScript(rootDir: string, cdmJson: CdmJson, targetHash: string): void {
-    const contractsForTarget = cdmJson.contracts?.[targetHash];
+function postInstallTypeScript(rootDir: string, cdmJson: CdmJson): void {
+    const contractsForTarget = cdmJson.contracts;
     if (!contractsForTarget) return;
 
     const contracts = Object.entries(contractsForTarget).map(([library, data]) => ({
@@ -414,18 +377,18 @@ function postInstallTypeScript(rootDir: string, cdmJson: CdmJson, targetHash: st
     ensureTsconfigIncludesCdm(rootDir);
 }
 
-function runPostInstallHooks(rootDir: string, cdmJson: CdmJson, targetHash: string): void {
+function runPostInstallHooks(rootDir: string, cdmJson: CdmJson): void {
     const projectType = detectProjectType(rootDir);
-    if (projectType.hasSolidity) postInstallSolidity(rootDir, cdmJson, targetHash);
-    if (projectType.hasTypeScript) postInstallTypeScript(rootDir, cdmJson, targetHash);
+    if (projectType.hasSolidity) postInstallSolidity(rootDir, cdmJson);
+    if (projectType.hasTypeScript) postInstallTypeScript(rootDir, cdmJson);
 }
 
 async function runContractInstall(libraries: string[], opts: ContractInstallOpts): Promise<void> {
     const rootDir = resolve(process.cwd());
     const cdmResult = readCdmJson(rootDir);
-    const cdmJson = cdmResult?.cdmJson ?? { targets: {}, dependencies: {}, contracts: {} };
+    const cdmJson = cdmResult?.cdmJson ?? { dependencies: {}, contracts: {} };
     const target = resolveContractInstallTarget(opts, cdmJson);
-    const requests = installRequestsFromArgs(libraries, cdmJson, target.targetHash);
+    const requests = installRequestsFromArgs(libraries, cdmJson);
 
     let client: Awaited<ReturnType<typeof createCdmAssetHubClient>> | null = null;
     const cleanupOnce = (() => {
@@ -460,7 +423,6 @@ async function runContractInstall(libraries: string[], opts: ContractInstallOpts
             libraries: requests,
             registry,
             ipfs,
-            targetHash: target.targetHash,
             registryAddress: target.registryAddress,
             assethubUrl: target.assethubUrl,
             ipfsGatewayUrl: target.ipfsGatewayUrl,
@@ -469,7 +431,7 @@ async function runContractInstall(libraries: string[], opts: ContractInstallOpts
         updateCdmJsonAfterInstall(cdmJson, target, requests, result.summary.results);
         writeCdmJson(cdmJson, rootDir);
         if (result.summary.results.length > 0) {
-            runPostInstallHooks(rootDir, cdmJson, target.targetHash);
+            runPostInstallHooks(rootDir, cdmJson);
         }
         if (!result.success) process.exitCode = 1;
     } finally {
