@@ -63,7 +63,7 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 [[package]]
 name = "cdm"
 version = "0.1.0"
-source = "git+https://github.com/paritytech/contract-dependency-manager#4b7410fa681441da25f3620fef01cadb2258ec59"
+source = "git+https://github.com/paritytech/contract-dependency-manager?rev=4b7410fa681441da25f3620fef01cadb2258ec59#4b7410fa681441da25f3620fef01cadb2258ec59"
 dependencies = [
  "cdm-macros",
 ]
@@ -71,7 +71,7 @@ dependencies = [
 [[package]]
 name = "cdm-macros"
 version = "0.1.0"
-source = "git+https://github.com/paritytech/contract-dependency-manager#4b7410fa681441da25f3620fef01cadb2258ec59"
+source = "git+https://github.com/paritytech/contract-dependency-manager?rev=4b7410fa681441da25f3620fef01cadb2258ec59#4b7410fa681441da25f3620fef01cadb2258ec59"
 dependencies = [
  "home",
  "proc-macro2",
@@ -576,7 +576,7 @@ dependencies = [
 [[package]]
 name = "pvm-contract-macros"
 version = "0.3.0"
-source = "git+https://github.com/paritytech/cargo-pvm-contract?branch=charles%2Fcdm-integration#917a573ea9bf919e107290fd047827cf604049ff"
+source = "git+https://github.com/paritytech/cargo-pvm-contract?rev=917a573ea9bf919e107290fd047827cf604049ff#917a573ea9bf919e107290fd047827cf604049ff"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -588,7 +588,7 @@ dependencies = [
 [[package]]
 name = "pvm_contract"
 version = "0.3.0"
-source = "git+https://github.com/paritytech/cargo-pvm-contract?branch=charles%2Fcdm-integration#917a573ea9bf919e107290fd047827cf604049ff"
+source = "git+https://github.com/paritytech/cargo-pvm-contract?rev=917a573ea9bf919e107290fd047827cf604049ff#917a573ea9bf919e107290fd047827cf604049ff"
 dependencies = [
  "alloy-primitives",
  "const_format",

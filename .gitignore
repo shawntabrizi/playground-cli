@@ -8,3 +8,15 @@ docs/superpowers/
 reference-repos/
 .tokensave
 e2e-reports/
+
+# Environment files — never commit real credentials. `.env.example` is allow-listed.
+.env*
+!.env.example
+
+# OS / editor cruft
+.DS_Store
+
+# Per-developer Claude Code state (team config in CLAUDE.md / AGENTS.md stays tracked)
+.claude/settings.local.json
+.claude/sessions/
+.claude/cache/

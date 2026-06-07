@@ -49,7 +49,7 @@ fi
 if ! cargo pvm-contract help >/dev/null 2>&1; then
     echo "warning: cargo-pvm-contract not found — CDM contract tests will be skipped." >&2
     echo "         install with: rustup toolchain install nightly --component rust-src && rustup default nightly" >&2
-    echo "                       cargo install cargo-pvm-contract --git https://github.com/paritytech/cargo-pvm-contract --branch charles/cdm-integration --locked" >&2
+    echo "                       cargo install cargo-pvm-contract --git https://github.com/paritytech/cargo-pvm-contract --rev 917a573ea9bf919e107290fd047827cf604049ff --locked" >&2
     echo "" >&2
 fi
 
