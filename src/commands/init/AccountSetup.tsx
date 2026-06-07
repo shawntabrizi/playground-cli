@@ -60,11 +60,32 @@ interface PhonePrompt {
     label: string;
 }
 
+// Grace period to wait after a fresh QR pairing before sending the RFC-0010
+// resource-allocation request to the phone. The mobile app sends the
+// host-facing `HandshakeResponse.Success` (which resolves our login) PART-WAY
+// through its pairing flow — during the "Registering" step — then runs a
+// "Syncing data" step before it dismisses its non-cancellable "Connecting
+// device" modal. As of polkadot-app-android-v2 that sync step is a stubbed
+// `delay(800ms)` (RealSyncDeviceUseCase). If we fire the allowance request in
+// that window, the phone opens the approval dialog on the SAME NavController
+// that still holds the pairing modal: the approval sheet is obscured, and the
+// pairing flow's `router.back()` (top-of-stack pop) then dismisses the
+// approval sheet instead of the pairing modal — so the request is silently
+// lost and our `requestResourceAllocation` hangs to its queue timeout.
+// Waiting comfortably past the 800ms stub lets the phone dismiss its modal
+// first, so our request lands on a clean navigation stack. This is a stopgap
+// keyed to that stub delay; the durable fix is phone-side (send Success only
+// after pairing completes / pop a specific destination). See the android
+// issue tracked for this race.
+const PHONE_PAIRING_MODAL_GRACE_MS = 2000;
+
 export function AccountSetup({
     address,
+    freshlyPaired,
     onDone,
 }: {
     address: string;
+    freshlyPaired: boolean;
     onDone: (success: boolean) => void;
 }) {
     const [steps, setSteps] = useState<StepState[]>([
@@ -76,6 +97,7 @@ export function AccountSetup({
     useEffect(() => {
         let cancelled = false;
         let session: SessionHandle | null = null;
+        let graceTimer: ReturnType<typeof setTimeout> | undefined;
 
         const update = (idx: number, patch: Partial<StepState>) => {
             if (cancelled) return;
@@ -149,6 +171,20 @@ export function AccountSetup({
                         valueTone: "muted",
                     });
                 } else {
+                    // Only a fresh QR pairing puts the phone's "Connecting
+                    // device" modal up; on a re-run with an existing session
+                    // there is nothing to wait for, so skip the grace.
+                    if (freshlyPaired) {
+                        update(0, {
+                            status: "active",
+                            value: "finishing pairing on your phone…",
+                            valueTone: "muted",
+                        });
+                        await new Promise((resolve) => {
+                            graceTimer = setTimeout(resolve, PHONE_PAIRING_MODAL_GRACE_MS);
+                        });
+                        if (cancelled) return;
+                    }
                     update(0, {
                         status: "active",
                         value: "approve on your Polkadot mobile app…",
@@ -265,9 +301,13 @@ export function AccountSetup({
         // Ink's cursor anchor and the whole screen re-renders stacked).
         return () => {
             cancelled = true;
+            // Clear a pending grace timer so an unmount mid-wait doesn't keep
+            // the Node event loop alive — `init` runs `hardExit: false` and
+            // relies on the loop draining naturally after teardown.
+            if (graceTimer) clearTimeout(graceTimer);
             session?.destroy();
         };
-    }, [address, onDone]);
+    }, [address, freshlyPaired, onDone]);
 
     return (
         <Box flexDirection="column">
