@@ -19,6 +19,13 @@ overrides:
   # Load-bearing: collapses three transitive json-rpc-provider versions onto
   # one to avoid wire-shape divergence. See CLAUDE.md.
   "@polkadot-api/json-rpc-provider": "^0.2.0"
+  # Security: force axios >= 1.16.0 to clear a batch of Dependabot advisories
+  # (ReDoS, proxy-auth leaks, prototype-pollution gadgets). axios is transitive
+  # only through @parity/dotns-cli, which ships a fully bundled dist/cli.js
+  # (inlined deps, never resolved at runtime), so this is lockfile hygiene; the
+  # advisories are browser/proxy paths that don't apply to the Node CLI anyway.
+  # Drop once dotns-cli's own tree carries >= 1.16.0.
+  "axios": "^1.16.0"
 
 patchedDependencies:
   # PATCH(playground-cli) — local-only fixes pending upstream. See CLAUDE.md

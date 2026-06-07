@@ -32,14 +32,20 @@ const isTestnet = vi.fn(async () => true);
 const connect = vi.fn(async () => {});
 const disconnect = vi.fn();
 
+// Use a regular `function` (not an arrow) for the implementation: since
+// vitest 4 spies forward `new.target`, `new DotNS()` invokes the
+// implementation as a constructor, and arrow functions can't be constructed.
+// A function that returns an object has that object override `this`.
 vi.mock("bulletin-deploy", () => ({
-    DotNS: vi.fn().mockImplementation(() => ({
-        connect,
-        checkOwnership,
-        getUserPopStatus,
-        isTestnet,
-        disconnect,
-    })),
+    DotNS: vi.fn(function () {
+        return {
+            connect,
+            checkOwnership,
+            getUserPopStatus,
+            isTestnet,
+            disconnect,
+        };
+    }),
 }));
 
 // A realistic dev SS58 → H160 pair so the tests exercise the real derivation.
