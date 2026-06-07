@@ -88,6 +88,11 @@ export interface ToolStep {
     manualHint?: string;
 }
 
+// Pinned to a specific cargo-pvm-contract `main` commit for reproducibility.
+// main (not the old charles/cdm-integration branch) is where the CDM work now
+// lives and is the only branch that emits the `cargo-pvm-contract-build-plan`
+// progress protocol that @parity/cdm-builder prefers. Bump deliberately.
+const CARGO_PVM_CONTRACT_REV = "533087395f1df1d1de53da55d8c1882c95eecdd2";
 const CARGO_PVM_CONTRACT_INSTALL = `
 set -euo pipefail
 tmp_dir="$(mktemp -d)"
@@ -95,7 +100,10 @@ cleanup() {
     rm -rf "$tmp_dir"
 }
 trap cleanup EXIT
-git clone --depth 1 --branch charles/cdm-integration https://github.com/paritytech/cargo-pvm-contract.git "$tmp_dir"
+git init -q "$tmp_dir"
+git -C "$tmp_dir" remote add origin https://github.com/paritytech/cargo-pvm-contract.git
+git -C "$tmp_dir" fetch -q --depth 1 origin ${CARGO_PVM_CONTRACT_REV}
+git -C "$tmp_dir" checkout -q FETCH_HEAD
 host_target="$(rustc -vV | awk '/^host:/ { print $2 }')"
 cargo install --force --locked --target "$host_target" --path "$tmp_dir/crates/cargo-pvm-contract"
 `.trim();
@@ -131,8 +139,7 @@ export const TOOL_STEPS: ToolStep[] = [
         name: "cargo-pvm-contract",
         check: () => hasCargoPvmContract(),
         install: (onData) => runPiped(CARGO_PVM_CONTRACT_INSTALL, onData),
-        manualHint:
-            "Install cargo-pvm-contract from https://github.com/paritytech/cargo-pvm-contract/tree/charles/cdm-integration",
+        manualHint: `Install cargo-pvm-contract from https://github.com/paritytech/cargo-pvm-contract at commit ${CARGO_PVM_CONTRACT_REV}`,
     },
     {
         name: "IPFS",
