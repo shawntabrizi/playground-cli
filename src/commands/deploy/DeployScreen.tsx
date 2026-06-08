@@ -125,8 +125,8 @@ export function DeployScreen({
     const [repositoryUrl, setRepositoryUrl] = useState<string | null>(null);
     const [domainError, setDomainError] = useState<string | null>(null);
     // Captured from the availability check; feeds `resolveSignerSetup` so
-    // the summary card shows the correct phone-approval count (register +
-    // PoP upgrade = 4 DotNS taps, vs register alone = 3, vs update = 1).
+    // the summary card shows the correct phone-approval count (a new register
+    // is 3 DotNS taps, an update of a name we already own is 1).
     const [plan, setPlan] = useState<DeployPlan | null>(null);
     const [stage, setStage] = useState<Stage>(() =>
         pickInitialStage(
@@ -870,9 +870,7 @@ function RunningStage({
         <Box flexDirection="column">
             {showPhoneNotice && (
                 <Callout tone="warning" title="Keep Your Phone Ready">
-                    <Text>
-                        This deploy may ask you to approve transactions in your mobile app.
-                    </Text>
+                    <Text>This deploy may ask you to approve transactions in your mobile app.</Text>
                 </Callout>
             )}
             <FrontendSectionView state={frontendState} />
