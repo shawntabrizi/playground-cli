@@ -275,8 +275,8 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
  *
  * Labels are pulled from the DotNS-phase entries of `setup.approvals`, in
  * order. `resolveSignerSetup` built that list to match bulletin-deploy's
- * actual on-chain call sequence (including the optional `setUserPopStatus`
- * at the start when a PoP upgrade is needed), so `seen === N` → phone shows
+ * actual on-chain call sequence (the DotNS commitment / register /
+ * setContenthash steps), so `seen === N` → phone shows
  * the Nth entry. If bulletin-deploy ever fires *more* sigs than approvals
  * anticipated, we fall back to the last known label — better than emitting
  * a bogus index. The step counter itself is plan-independent (bare

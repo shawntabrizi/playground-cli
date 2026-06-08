@@ -116,19 +116,35 @@ beforeEach(() => {
 });
 
 describe("normalizeDomain", () => {
-    it("accepts a bare label", () => {
+    it("accepts a valid label and appends .dot", () => {
         expect(normalizeDomain("my-app")).toEqual({ label: "my-app", fullDomain: "my-app.dot" });
     });
 
-    it("accepts a label with .dot suffix", () => {
+    it("strips an existing .dot suffix", () => {
         expect(normalizeDomain("my-app.dot")).toEqual({
             label: "my-app",
             fullDomain: "my-app.dot",
         });
     });
 
-    it("rejects invalid characters", () => {
+    it("rejects illegal characters", () => {
         expect(() => normalizeDomain("My_App!")).toThrow(/Invalid domain/);
+    });
+
+    it("rejects uppercase (chain stores lowercase only)", () => {
+        expect(() => normalizeDomain("MyApp")).toThrow(/lowercase/i);
+    });
+
+    it("rejects labels shorter than 3 characters", () => {
+        expect(() => normalizeDomain("ab")).toThrow(/at least 3/i);
+    });
+
+    it("rejects a trailing dash", () => {
+        expect(() => normalizeDomain("my-app-")).toThrow(/dash/i);
+    });
+
+    it("rejects a one-digit suffix", () => {
+        expect(() => normalizeDomain("myapp1")).toThrow(/two digits/i);
     });
 });
 

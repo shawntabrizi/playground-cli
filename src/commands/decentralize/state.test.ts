@@ -153,8 +153,8 @@ describe("validateDomainInput", () => {
         expect(validateDomainInput("myapp.dot")).toBeNull();
     });
 
-    it("accepts digits and dashes", () => {
-        expect(validateDomainInput("my-app-42")).toBeNull();
+    it("accepts digits and a valid 2-digit suffix", () => {
+        expect(validateDomainInput("my-app42")).toBeNull();
     });
 
     it("treats empty as 'auto-generate'", () => {
@@ -163,16 +163,19 @@ describe("validateDomainInput", () => {
     });
 
     it("rejects leading dashes and underscores", () => {
-        // Matches deploy's validator shape — leading char must be alphanumeric.
-        expect(validateDomainInput("-leading")).toBe("use lowercase letters, digits, and dashes");
-        expect(validateDomainInput("under_score")).toBe(
-            "use lowercase letters, digits, and dashes",
-        );
+        // Canonical rules: no leading/trailing dash, lowercase-only charset.
+        expect(validateDomainInput("-leading")).toMatch(/dash/i);
+        expect(validateDomainInput("under_score")).toMatch(/lowercase/i);
     });
 
-    it("is case-insensitive on input (deploy normalizes downstream)", () => {
-        // Mirrors deploy's `/^[a-z0-9][a-z0-9-]*(\.dot)?$/i` — `normalizeDomain`
-        // lowercases the label before any chain check, so we accept MixedCase here.
-        expect(validateDomainInput("MyApp")).toBeNull();
+    it("rejects uppercase (the chain stores lowercase only)", () => {
+        // Regression: the old inline validator was case-insensitive and let
+        // MixedCase through to fail one screen later at normalizeDomain. The
+        // canonical rules reject it inline.
+        expect(validateDomainInput("MyApp")).toMatch(/lowercase/i);
+    });
+
+    it("rejects a dash before the digit suffix (strips to a trailing-hyphen base)", () => {
+        expect(validateDomainInput("my-app-42")).toMatch(/dash/i);
     });
 });

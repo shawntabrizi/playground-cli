@@ -170,31 +170,13 @@ describe("resolveSignerSetup — phone mode", () => {
         expect(result.publishSigner).toBeNull();
     });
 
-    it("plan needs PoP upgrade → 4 approvals, PoP FIRST, then commitment/register/setContenthash", () => {
-        const user = fakeSigner("session");
-        const result = resolveSignerSetup({
-            mode: "phone",
-            userSigner: user,
-            publishToPlayground: false,
-            plan: { action: "register", needsPopUpgrade: true },
-        });
-        // Order is load-bearing: maybeWrapAuthForSigning labels the Nth
-        // incoming signTx with approvals[N].
-        expect(result.approvals).toEqual([
-            { phase: "dotns", label: "Grant Proof of Personhood" },
-            { phase: "dotns", label: "Reserve domain (DotNS commitment)" },
-            { phase: "dotns", label: "Finalize domain (DotNS register)" },
-            { phase: "dotns", label: "Link content (DotNS setContenthash)" },
-        ]);
-    });
-
     it("plan action=update → single setContenthash approval (no commitment/register)", () => {
         const user = fakeSigner("session");
         const result = resolveSignerSetup({
             mode: "phone",
             userSigner: user,
             publishToPlayground: false,
-            plan: { action: "update", needsPopUpgrade: false },
+            plan: { action: "update" },
         });
         expect(result.approvals).toEqual([
             { phase: "dotns", label: "Link content (DotNS setContenthash)" },

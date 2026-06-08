@@ -310,44 +310,6 @@ describe("runDeploy", () => {
         }
     });
 
-    it("phone mode + needsPopUpgrade: 5 planned approvals (setPop + commit + finalize + contenthash + playground)", async () => {
-        // Regression: this used to be 4 approvals across the board, so a
-        // PoP-gated name with a lower-tier signer (which triggers
-        // `setUserPopStatus` inside bulletin-deploy.register) printed
-        // "approve step 5 of 4" at the playground step.
-        const { events, push } = collectEvents();
-        const outcome = await runDeploy({
-            projectDir: "/tmp/proj",
-            buildDir: "/tmp/proj/dist",
-            domain: "my-app",
-            mode: "phone",
-            publishToPlayground: true,
-            userSigner: fakeUserSigner,
-            plan: { action: "register", needsPopUpgrade: true },
-            onEvent: push,
-        });
-
-        expect(outcome.approvalsRequested).toHaveLength(5);
-        expect(outcome.approvalsRequested.map((a) => a.label)).toEqual([
-            "Grant Proof of Personhood",
-            "Reserve domain (DotNS commitment)",
-            "Finalize domain (DotNS register)",
-            "Link content (DotNS setContenthash)",
-            "Publish to Playground registry",
-        ]);
-
-        const plan = events.find((e) => e.kind === "plan");
-        if (plan?.kind === "plan") {
-            expect(plan.approvals.map((a) => a.phase)).toEqual([
-                "dotns",
-                "dotns",
-                "dotns",
-                "dotns",
-                "playground",
-            ]);
-        }
-    });
-
     it("phone mode + re-deploy (plan.action=update): only setContenthash + playground taps", async () => {
         // When the domain is already owned by the signer, bulletin-deploy
         // skips `register()` entirely (no commit, no reveal, no PoP grant)
@@ -360,7 +322,7 @@ describe("runDeploy", () => {
             mode: "phone",
             publishToPlayground: true,
             userSigner: fakeUserSigner,
-            plan: { action: "update", needsPopUpgrade: false },
+            plan: { action: "update" },
             onEvent: push,
         });
 

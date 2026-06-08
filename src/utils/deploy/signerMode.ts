@@ -154,9 +154,9 @@ export interface ResolveOptions {
     publishToPlayground: boolean;
     /**
      * Known DotNS plan from the availability check. Shapes the approvals list
-     * to match what bulletin-deploy will actually submit. Absent = we haven't
-     * run the check yet, so assume the most common path (new register, no
-     * PoP upgrade, 3 DotNS taps). The list drives the pre-deploy summary and
+     * to match what bulletin-deploy will actually submit (3 DotNS taps for a
+     * new register, 1 for an update). Absent = we haven't run the check yet, so
+     * assume the most common path (new register). The list drives the pre-deploy summary and
      * the per-tap labels only — the runtime counter shows bare sequential
      * step numbers (no predicted total), so a wrong guess here can't strand
      * the user on "step 4 of 5" with no fifth step.
@@ -172,31 +172,24 @@ export interface ResolveOptions {
  * on the phone when the app is actually asking for commitment.
  */
 function dotnsApprovals(plan: DeployPlan | undefined): DeployApproval[] {
-    // Default to the most common path when the caller hasn't told us the
-    // plan yet. Counter will self-correct if we under-estimated.
-    const effective: DeployPlan = plan ?? { action: "register", needsPopUpgrade: false };
+    // Default to the most common path when the caller hasn't told us the plan
+    // yet. The runtime counter self-corrects if we under-estimate.
+    const effective: DeployPlan = plan ?? { action: "register" };
 
     if (effective.action === "update") {
-        // Domain already owned by the signer — bulletin-deploy skips
-        // `register()` entirely (no commitment, no finalize, no PoP grant)
-        // and jumps straight to `setContenthash`. So only one tap.
+        // Domain already owned by the signer — bulletin-deploy skips register()
+        // entirely and jumps straight to setContenthash. One tap.
         return [{ phase: "dotns", label: "Link content (DotNS setContenthash)" }];
     }
 
-    const approvals: DeployApproval[] = [];
-    if (effective.needsPopUpgrade) {
-        // `register()` submits `setUserPopStatus` first whenever the predicted
-        // post-grant status differs from the user's current one. Without this
-        // entry the counter previously ran one past total ("step 5 of 4") for
-        // any PoP-gated name.
-        approvals.push({ phase: "dotns", label: "Grant Proof of Personhood" });
-    }
-    approvals.push(
+    // New register: commitment + finalize + setContenthash. There is NO PoP
+    // tap — bulletin-deploy reads the signer's tier and fails if insufficient;
+    // it never submits a setUserPopStatus tx.
+    return [
         { phase: "dotns", label: "Reserve domain (DotNS commitment)" },
         { phase: "dotns", label: "Finalize domain (DotNS register)" },
         { phase: "dotns", label: "Link content (DotNS setContenthash)" },
-    );
-    return approvals;
+    ];
 }
 
 export function resolveSignerSetup(opts: ResolveOptions): DeploySignerSetup {

@@ -16,12 +16,16 @@
 /**
  * Preflight domain availability check.
  *
- * Hits two view-only DotNS calls via bulletin-deploy's `DotNS` class:
+ * Classification is local and pure — `classifyLabel` from the canonical
+ * `dotnsRules` module (no chain read). One view-only DotNS RPC remains:
  *
- *   - `classifyDotnsLabel(label)` — PopOracle classification
+ *   - classification (`classifyLabel`):
  *       - `Reserved` → hard block (nobody can register).
- *       - `PoP Lite/Full` → advisory note; bulletin-deploy self-attests
- *         during register on testnet.
+ *       - `PoP Lite/Full` → advisory note. PoP-gated names require the
+ *         SIGNING account to already be a verified person on the target
+ *         chain — nothing in the deploy path can grant personhood, so the
+ *         `register()` tx simply fails on-chain if the signer's tier is
+ *         insufficient.
  *   - `checkOwnership(label, userH160?)` — catches names registered to
  *     a different account *before* we build + upload. When the caller
  *     passes their own H160 (derived from SS58 via `ss58ToH160`), a
@@ -31,13 +35,8 @@
 
 import { ss58ToH160 } from "@parity/product-sdk-address";
 import { normalizeDomain } from "./playground.js";
+import { classifyLabel, POP_STATUS } from "./dotnsRules.js";
 import { getChainConfig, type Env } from "../../config.js";
-
-/** Mirror of bulletin-deploy's `ProofOfPersonhoodStatus` enum. Kept local so we don't couple to internals. */
-const POP_STATUS_NO_STATUS = 0;
-const POP_STATUS_LITE = 1;
-const POP_STATUS_FULL = 2;
-const POP_STATUS_RESERVED = 3;
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -52,107 +51,18 @@ async function createDotNS(): Promise<DotNSInstance> {
 }
 
 /**
- * Mirror of `classifyDotnsLabel` from bulletin-deploy 0.7.6. The function
- * exists in `dist/dotns.js` but is not re-exported from the package root,
- * and bulletin-deploy's `exports` map blocks deep imports. Reproduced here
- * with the same logic — if the upstream rule set changes (governance
- * threshold tweaks, PoP-tier remap), this needs to track it. Pure function,
- * no RPC.
- */
-function classifyLabel(label: string): { status: number; message: string } {
-    const totalLength = label.length;
-    const trailingDigits = countTrailing(label, /[0-9]/);
-    if (trailingDigits > 2) {
-        return {
-            status: POP_STATUS_RESERVED,
-            message: `Name has ${trailingDigits} trailing digits; DotNS allows at most 2.`,
-        };
-    }
-    const baseLength = totalLength - trailingDigits;
-    if (baseLength <= 5) {
-        return {
-            status: POP_STATUS_RESERVED,
-            message: `Base name is ${baseLength} char${baseLength === 1 ? "" : "s"}; DotNS reserves base names of 5 chars or fewer for governance.`,
-        };
-    }
-    if (baseLength >= 6 && baseLength <= 8) {
-        if (trailingDigits === 2) {
-            return { status: POP_STATUS_LITE, message: "Requires Light personhood verification" };
-        }
-        return { status: POP_STATUS_FULL, message: "Requires Full personhood verification" };
-    }
-    if (trailingDigits === 2) {
-        return { status: POP_STATUS_NO_STATUS, message: "Available to all" };
-    }
-    return { status: POP_STATUS_FULL, message: "Requires Full personhood verification" };
-}
-
-function countTrailing(s: string, re: RegExp): number {
-    let n = 0;
-    for (let i = s.length - 1; i >= 0; i--) {
-        if (re.test(s[i])) n++;
-        else break;
-    }
-    return n;
-}
-
-/**
- * Mirror of `simulateUserStatus` from bulletin-deploy. Reproduced (not
- * imported) because the helper isn't exported from the package root and we
- * don't want to reach into `bulletin-deploy/dist/dotns.js`. If the upstream
- * rule set changes, this needs to track it — but the rule is small and has
- * been stable since the preflight feature shipped in 0.6.9-rc.5.
+ * What bulletin-deploy will submit on-chain, used to render a correct phone-tap
+ * count BEFORE the user confirms.
  *
- * Predicts the user's PoP status AFTER `registerDomain`'s internal
- * `setUserPopStatus` call completes. Used here to decide whether
- * bulletin-deploy will actually submit that extra tx — which determines
- * whether we count 3 or 4 DotNS approvals in the summary card.
- */
-function predictPostRegisterPopStatus(
-    currentStatus: number,
-    requiredStatus: number,
-    isTestnet: boolean,
-    explicitStatus?: number,
-): number {
-    const max = (a: number, b: number) => (a > b ? a : b);
-    if (explicitStatus !== undefined) {
-        return max(currentStatus, explicitStatus);
-    }
-    if (requiredStatus === POP_STATUS_NO_STATUS && currentStatus === POP_STATUS_LITE && isTestnet) {
-        // Paseo auto-escape: Lite signer on a NoStatus label gets bumped to
-        // Full so `PopRules.priceWithCheck` accepts the signer. Mainnet path
-        // never triggers this branch.
-        return POP_STATUS_FULL;
-    }
-    if (requiredStatus !== POP_STATUS_NO_STATUS) {
-        return max(currentStatus, requiredStatus);
-    }
-    return currentStatus;
-}
-
-function parseExplicitPopStatus(status: string | undefined): number | undefined {
-    if (!status) return undefined;
-    const value = status.toLowerCase();
-    if (value === "none" || value === "nostatus") return POP_STATUS_NO_STATUS;
-    if (value === "lite" || value === "poplite") return POP_STATUS_LITE;
-    if (value === "full" || value === "popfull") return POP_STATUS_FULL;
-    throw new Error("Invalid status. Use none, lite, or full");
-}
-
-/**
- * What bulletin-deploy will actually submit on-chain, in order. The TUI uses
- * this to render a correct "N phone taps" count BEFORE the user confirms —
- * the previous hard-coded "3 DotNS taps" assumption missed the extra
- * `setUserPopStatus` tap that fires whenever the classifier demands a PoP
- * level above the user's current one (e.g. short NoStatus name + Lite signer,
- * or any PoP-gated name + NoStatus signer). Seeing "step 5 of 4" after the
- * fact is a worse UX than predicting "5" upfront.
+ * `register` = new domain (commit + reveal + setContenthash).
+ * `update`   = already owned by us; only setContenthash fires.
+ *
+ * NOTE: there is no PoP-grant tap. bulletin-deploy reads the signer's PoP tier
+ * and fails if it is insufficient — it never submits a setUserPopStatus tx — so
+ * the prediction does not include one.
  */
 export interface DeployPlan {
-    /** `register` = new domain (commit + reveal + setContenthash, ± setUserPopStatus). `update` = already owned by us; only setContenthash fires. */
     action: "register" | "update";
-    /** True iff bulletin-deploy will submit a `setUserPopStatus` tx before `register()`. */
-    needsPopUpgrade: boolean;
 }
 
 export type AvailabilityResult =
@@ -215,9 +125,8 @@ export async function checkDomainAvailability(
     // the user sees is the one bulletin-deploy logs from the *actual* deploy
     // (which uses the user's signer and we don't suppress).
     //
-    // Silence is narrowed to the `connect()` call ONLY — `checkOwnership`,
-    // `getUserPopStatus`, and `isTestnet` below run with normal console
-    // semantics so any unexpected log surfaces.
+    // Silence is narrowed to the `connect()` call ONLY — `checkOwnership`
+    // below runs with normal console semantics so any unexpected log surfaces.
     const dotns = await createDotNS();
     try {
         const restore = silenceConsole();
@@ -231,13 +140,10 @@ export async function checkDomainAvailability(
             restore();
         }
 
-        // bulletin-deploy 0.7.6 removed `dotns.classifyName(label)` and moved
-        // the logic into a top-level `classifyDotnsLabel`. The function is in
-        // `dist/dotns.js` but the package's `exports` map blocks deep imports
-        // and the root `dist/index.js` doesn't re-export it. Mirror it locally
-        // (see `classifyLabel` above) — same pattern as `simulateUserStatus`.
+        // Classification is local + pure via the canonical `dotnsRules`
+        // module — no RPC. It mirrors the on-chain dotns contract rules.
         const classification = classifyLabel(label);
-        if (classification.status === POP_STATUS_RESERVED) {
+        if (classification.status === POP_STATUS.Reserved) {
             return {
                 status: "reserved",
                 label,
@@ -264,55 +170,33 @@ export async function checkDomainAvailability(
                     label,
                     fullDomain,
                     note: "Already owned by you — will update the existing deployment.",
-                    plan: { action: "update", needsPopUpgrade: false },
+                    plan: { action: "update" },
                 };
             }
         }
 
-        // Whether bulletin-deploy will fire `setUserPopStatus` before
-        // `register()` is a pure function of (classifier requirement, user's
-        // current status, chain = testnet). Reading getUserPopStatus requires
-        // an EVM address — if the caller didn't supply one, we can't tell,
-        // so we assume no upgrade (the counter will self-correct at runtime).
-        let needsPopUpgrade = false;
-        if (userH160) {
-            try {
-                const [userStatus, isTestnet] = await Promise.all([
-                    dotns.getUserPopStatus(userH160),
-                    dotns.isTestnet(),
-                ]);
-                const target = predictPostRegisterPopStatus(
-                    userStatus,
-                    classification.status,
-                    isTestnet,
-                    parseExplicitPopStatus(process.env.DOTNS_STATUS),
-                );
-                needsPopUpgrade = target !== userStatus && target !== POP_STATUS_NO_STATUS;
-            } catch {
-                // RPC flake here shouldn't block the availability check —
-                // under-counting DotNS approvals is recoverable at runtime
-                // via the counter's clamp-up safety net.
-            }
-        }
+        const plan: DeployPlan = { action: "register" };
 
-        const plan: DeployPlan = { action: "register", needsPopUpgrade };
-
-        // Names that require Proof-of-Personhood are registrable on testnet
-        // environments where self-attestation is allowed (bulletin-deploy calls
-        // `setUserPopStatus` during `register()`). On paseo-next-v2 that call
-        // is owner-gated, so a NoStatus signer cannot self-attest and the
-        // deploy will fail at the network phase. We surface this as an advisory
-        // note rather than a hard block because the rule varies per environment.
+        // PoP-gated names (base length 6-8) require the SIGNING account to
+        // already be a verified person on the target chain. Nothing in the
+        // deploy path can grant personhood — bulletin-deploy reads the tier and
+        // the register() tx fails on-chain if it is insufficient. So this is an
+        // advisory note (the rule varies per environment and we don't read the
+        // signer's tier here), not a hard block.
         if (
-            classification.status === POP_STATUS_LITE ||
-            classification.status === POP_STATUS_FULL
+            classification.status === POP_STATUS.Lite ||
+            classification.status === POP_STATUS.Full
         ) {
-            const requirement = classification.status === POP_STATUS_FULL ? "Full" : "Lite";
+            const requirement = classification.status === POP_STATUS.Full ? "Full" : "Lite";
+            const noStatusHint = `${label}-app`;
             return {
                 status: "available",
                 label,
                 fullDomain,
-                note: `Requires Proof of Personhood (${requirement}). Will be set up automatically.`,
+                note:
+                    `Requires ${requirement} Proof of Personhood — the signing account must already be ` +
+                    `verified on this network, or registration will fail. ` +
+                    `Tip: a name with a 9+ character base (e.g. "${noStatusHint}") is open to everyone.`,
                 plan,
             };
         }

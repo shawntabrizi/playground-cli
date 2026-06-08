@@ -18,11 +18,11 @@ import { checkDomainAvailability, type AvailabilityResult } from "../deploy/avai
 import type { Env } from "../../config.js";
 
 /**
- * Label-generation rules (see `availability.ts::classifyLabel`):
+ * Label-generation rules (see `dotnsRules.ts::classifyLabel`):
  *
- *   - `baseLength >= 9` + exactly 2 trailing digits → `POP_STATUS_NO_STATUS`
+ *   - `baseLength >= 9` (with 0 or 2 trailing digits) → NoStatus
  *     (any signer, no personhood credential)
- *   - More than 2 trailing digits → `POP_STATUS_RESERVED` (unregistrable)
+ *   - A 1- or >2-digit suffix → Reserved (unregistrable)
  *   - Base <= 5 chars → reserved for governance
  *
  * We aim for NoStatus so a fresh //Bob demo or any user without PoP can

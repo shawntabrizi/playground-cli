@@ -23,12 +23,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //
 // Ownership check is driven by the caller's H160 (derived from SS58 via
 // `@parity/product-sdk-address::ss58ToH160`), so the mock reflects the full
-// `{ owned, owner }` shape. `getUserPopStatus` + `isTestnet` feed the
-// `needsPopUpgrade` prediction that's threaded into the summary card's
-// phone-approval count.
+// `{ owned, owner }` shape. Classification is local + pure (no PoP RPC), so
+// there is no `getUserPopStatus`/`isTestnet` to mock.
 const checkOwnership = vi.fn();
-const getUserPopStatus = vi.fn(async () => 2); // default: user already has Full PoP → no upgrade fires
-const isTestnet = vi.fn(async () => true);
 const connect = vi.fn(async () => {});
 const disconnect = vi.fn();
 
@@ -41,8 +38,6 @@ vi.mock("bulletin-deploy", () => ({
         return {
             connect,
             checkOwnership,
-            getUserPopStatus,
-            isTestnet,
             disconnect,
         };
     }),
@@ -52,31 +47,25 @@ vi.mock("bulletin-deploy", () => ({
 // We use Alice's substrate address; its H160 is deterministic.
 const ALICE_SS58 = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY";
 
-// Label-classification reference (mirror of bulletin-deploy's rules):
+// Label-classification reference (mirror of the canonical dotns rules):
 //   - trailingDigits > 2          → Reserved
 //   - baseLength <= 5             → Reserved
 //   - baseLength 6-8, td === 2    → PoP Lite
 //   - baseLength 6-8, td !== 2    → PoP Full
 //   - baseLength >= 9, td === 2   → NoStatus
-//   - baseLength >= 9, td !== 2   → PoP Full
+//   - baseLength >= 9, td !== 2   → NoStatus
 //
 // Labels picked below to land in each branch deterministically.
 const NO_STATUS_LABEL = "my-app-test01"; // baseLength=11, td=2 → NoStatus
 const POP_LITE_LABEL = "myappz12"; // baseLength=6, td=2 → Lite
 const POP_FULL_8CHAR_LABEL = "myapptst"; // baseLength=8, td=0 → Full
-const POP_FULL_LONG_LABEL = "my-cool-app"; // baseLength=11, td=0 → Full
-const RESERVED_LABEL = "polkadot12345"; // td=5 > 2 → Reserved
+const POP_FULL_LONG_LABEL = "my-cool-app"; // baseLength=11, td=0 → NoStatus
 const RESERVED_SHORT_LABEL = "abc"; // baseLength=3 → Reserved
 
 import { checkDomainAvailability, formatAvailability } from "./availability.js";
 
 beforeEach(() => {
-    delete process.env.DOTNS_STATUS;
     checkOwnership.mockReset();
-    getUserPopStatus.mockReset();
-    getUserPopStatus.mockResolvedValue(2); // default: Full PoP → no upgrade
-    isTestnet.mockReset();
-    isTestnet.mockResolvedValue(true);
     connect.mockReset();
     connect.mockResolvedValue(undefined);
     disconnect.mockReset();
@@ -93,18 +82,8 @@ describe("checkDomainAvailability", () => {
             status: "available",
             label: NO_STATUS_LABEL,
             fullDomain: `${NO_STATUS_LABEL}.dot`,
-            plan: { action: "register", needsPopUpgrade: false },
+            plan: { action: "register" },
         });
-    });
-
-    it("returns 'reserved' when the label classifies as Reserved (>2 trailing digits)", async () => {
-        const result = await checkDomainAvailability(`${RESERVED_LABEL}.dot`);
-        expect(result.status).toBe("reserved");
-        if (result.status === "reserved") {
-            expect(result.label).toBe(RESERVED_LABEL);
-            expect(result.fullDomain).toBe(`${RESERVED_LABEL}.dot`);
-            expect(result.message).toMatch(/trailing digits/);
-        }
     });
 
     it("returns 'reserved' when the base name is <=5 chars (governance-reserved)", async () => {
@@ -167,56 +146,23 @@ describe("checkDomainAvailability", () => {
     });
 
     it("treats PoP Lite / Full requirements as available-with-note, not blockers", async () => {
-        // Regression: bulletin-deploy auto-sets PoP via setUserPopStatus on
-        // testnet, so these names DO register successfully. We must not block
-        // them in preflight.
         const lite = await checkDomainAvailability(POP_LITE_LABEL);
         expect(lite.status).toBe("available");
         if (lite.status === "available") {
             expect(lite.note).toMatch(/Lite/);
-            expect(lite.note).toMatch(/automatically/);
+            expect(lite.note).toMatch(/verified/i);
+            expect(lite.note).not.toMatch(/automatically/i);
         }
 
         const full = await checkDomainAvailability(POP_FULL_8CHAR_LABEL);
         expect(full.status).toBe("available");
         if (full.status === "available") {
             expect(full.note).toMatch(/Full/);
+            expect(full.note).not.toMatch(/automatically/i);
         }
     });
 
-    it("predicts needsPopUpgrade=true when the user's current PoP is below what the label demands", async () => {
-        // Regression: the TUI used to hard-code "3 DotNS taps" for phone mode
-        // and print "step 5 of 4" on the phone prompt once bulletin-deploy
-        // fired its `setUserPopStatus` tx. Fix: plumb the predicted PoP
-        // transition from availability → `resolveSignerSetup` so the summary
-        // card and runtime counter agree on the real count.
-        checkOwnership.mockResolvedValue({ owned: false, owner: null });
-        getUserPopStatus.mockResolvedValue(1); // user only has Lite
-        isTestnet.mockResolvedValue(true);
-
-        const result = await checkDomainAvailability(POP_FULL_8CHAR_LABEL, {
-            ownerSs58Address: ALICE_SS58,
-        });
-        expect(result.status).toBe("available");
-        if (result.status === "available") {
-            expect(result.plan).toEqual({ action: "register", needsPopUpgrade: true });
-        }
-    });
-
-    it("predicts needsPopUpgrade=false when the user already has ≥ the required PoP", async () => {
-        checkOwnership.mockResolvedValue({ owned: false, owner: null });
-        getUserPopStatus.mockResolvedValue(2); // already Full
-        isTestnet.mockResolvedValue(true);
-
-        const result = await checkDomainAvailability(POP_FULL_8CHAR_LABEL, {
-            ownerSs58Address: ALICE_SS58,
-        });
-        if (result.status === "available") {
-            expect(result.plan.needsPopUpgrade).toBe(false);
-        }
-    });
-
-    it("re-deploy: plan is { action: 'update', needsPopUpgrade: false } — only setContenthash fires", async () => {
+    it("re-deploy: plan is { action: 'update' } — only setContenthash fires", async () => {
         checkOwnership.mockImplementation(async (_label: string, checkAddress: string) => ({
             owned: true,
             owner: checkAddress,
@@ -226,37 +172,7 @@ describe("checkDomainAvailability", () => {
             ownerSs58Address: ALICE_SS58,
         });
         if (result.status === "available") {
-            expect(result.plan).toEqual({ action: "update", needsPopUpgrade: false });
-        }
-    });
-
-    it("falls back to a safe default when getUserPopStatus throws", async () => {
-        // RPC flake on the PoP query shouldn't block the whole availability
-        // check — under-counting is recoverable via the counter's clamp.
-        checkOwnership.mockResolvedValue({ owned: false, owner: null });
-        getUserPopStatus.mockRejectedValue(new Error("RPC hiccup"));
-
-        const result = await checkDomainAvailability(POP_FULL_8CHAR_LABEL, {
-            ownerSs58Address: ALICE_SS58,
-        });
-        expect(result.status).toBe("available");
-        if (result.status === "available") {
-            expect(result.plan).toEqual({ action: "register", needsPopUpgrade: false });
-        }
-    });
-
-    it("includes explicit DOTNS_STATUS in the PoP upgrade prediction", async () => {
-        process.env.DOTNS_STATUS = "full";
-        checkOwnership.mockResolvedValue({ owned: false, owner: null });
-        getUserPopStatus.mockResolvedValue(0);
-
-        const result = await checkDomainAvailability("my-application12", {
-            ownerSs58Address: ALICE_SS58,
-        });
-
-        expect(result.status).toBe("available");
-        if (result.status === "available") {
-            expect(result.plan).toEqual({ action: "register", needsPopUpgrade: true });
+            expect(result.plan).toEqual({ action: "update" });
         }
     });
 
@@ -273,13 +189,16 @@ describe("checkDomainAvailability", () => {
 
     it("rejects invalid domain syntax before touching the network", async () => {
         await expect(checkDomainAvailability("NOT valid!")).rejects.toThrow(/Invalid domain/);
+        // A >2-digit suffix is a syntax error caught by normalizeDomain
+        // BEFORE classification, so it never reaches the network either.
+        await expect(checkDomainAvailability("polkadot12345")).rejects.toThrow(/two digits/i);
         expect(connect).not.toHaveBeenCalled();
     });
 });
 
 describe("formatAvailability", () => {
     it("renders a friendly sentence for each result kind", () => {
-        const freshRegisterPlan = { action: "register" as const, needsPopUpgrade: false };
+        const freshRegisterPlan = { action: "register" as const };
         expect(
             formatAvailability({
                 status: "available",
@@ -301,10 +220,10 @@ describe("formatAvailability", () => {
                 status: "available",
                 label: "x",
                 fullDomain: "x.dot",
-                note: "Requires Proof of Personhood (Lite). Will be set up automatically.",
+                note: "Requires Lite Proof of Personhood",
                 plan: freshRegisterPlan,
             }),
-        ).toMatch(/Proof of Personhood \(Lite\)/);
+        ).toMatch(/Lite Proof of Personhood/);
         expect(
             formatAvailability({
                 status: "taken",

@@ -54,6 +54,7 @@ import type { ResolvedSigner } from "../../utils/signer.js";
 import { DEFAULT_BUILD_DIR, getNetworkLabel } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
+import { validateDomainLabel } from "../../utils/deploy/dotnsRules.js";
 import { NO_SESSION_NOTICE_TITLE, NO_SESSION_NOTICE_BODY } from "./signerNotice.js";
 
 export interface DeployScreenInputs {
@@ -124,8 +125,8 @@ export function DeployScreen({
     const [repositoryUrl, setRepositoryUrl] = useState<string | null>(null);
     const [domainError, setDomainError] = useState<string | null>(null);
     // Captured from the availability check; feeds `resolveSignerSetup` so
-    // the summary card shows the correct phone-approval count (register +
-    // PoP upgrade = 4 DotNS taps, vs register alone = 3, vs update = 1).
+    // the summary card shows the correct phone-approval count (a new register
+    // is 3 DotNS taps, an update of a name we already own is 1).
     const [plan, setPlan] = useState<DeployPlan | null>(null);
     const [stage, setStage] = useState<Stage>(() =>
         pickInitialStage(
@@ -266,11 +267,11 @@ export function DeployScreen({
                     placeholder="my-app"
                     prefill={domain ?? ""}
                     externalError={domainError}
-                    validate={(v) =>
-                        /^[a-z0-9][a-z0-9-]*(\.dot)?$/i.test(v.trim())
-                            ? null
-                            : "use lowercase letters, digits, and dashes"
-                    }
+                    validate={(v) => {
+                        const label = v.trim().replace(/\.dot$/i, "");
+                        const result = validateDomainLabel(label);
+                        return result.ok ? null : result.reason;
+                    }}
                     onSubmit={(v) => {
                         const trimmed = v.trim();
                         setDomain(trimmed);
@@ -539,8 +540,8 @@ function ValidateDomainStage({
                 if (result.status === "available") {
                     setStatus("done");
                     setMessage(formatAvailability(result));
-                    // Short hold so users can read any note (e.g. "PoP will
-                    // be set up automatically") before the next prompt mounts.
+                    // Short hold so users can read any note (e.g. the PoP
+                    // verification advisory) before the next prompt mounts.
                     setTimeout(
                         () => {
                             if (!cancelled) onAvailable(result);
@@ -869,9 +870,7 @@ function RunningStage({
         <Box flexDirection="column">
             {showPhoneNotice && (
                 <Callout tone="warning" title="Keep Your Phone Ready">
-                    <Text>
-                        This deploy will ask you to approve transactions in your mobile app.
-                    </Text>
+                    <Text>This deploy may ask you to approve transactions in your mobile app.</Text>
                 </Callout>
             )}
             <FrontendSectionView state={frontendState} />

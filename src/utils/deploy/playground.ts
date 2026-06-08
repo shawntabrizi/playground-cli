@@ -50,6 +50,7 @@ import {
     type AllowancePrompt,
 } from "../allowances/bulletin.js";
 import { BULLETIN_WS_HEARTBEAT_MS } from "../bulletinWs.js";
+import { validateDomainLabel } from "./dotnsRules.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { DeployLogEvent } from "./progress.js";
 
@@ -175,13 +176,12 @@ export function readReadme(cwd: string, capBytes = README_CAP_BYTES): ReadmeStat
     }
 }
 
-/** Strip `.dot` suffix if present so we can normalize to a canonical `label.dot`. */
+/** Strip `.dot` suffix if present, then validate against canonical DotNS rules. */
 export function normalizeDomain(domain: string): { label: string; fullDomain: string } {
     const label = domain.replace(/\.dot$/i, "");
-    if (!/^[a-z0-9][a-z0-9-]*$/i.test(label)) {
-        throw new Error(
-            `Invalid domain "${domain}" — use lowercase letters, digits, and dashes (e.g. my-app.dot).`,
-        );
+    const result = validateDomainLabel(label);
+    if (!result.ok) {
+        throw new Error(`Invalid domain "${domain}" — ${result.reason}.`);
     }
     return { label, fullDomain: `${label}.dot` };
 }

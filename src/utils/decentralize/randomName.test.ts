@@ -120,8 +120,9 @@ describe("generateLabel", () => {
         expect(label.length).toBeLessThanOrEqual(40);
     });
 
-    it("produces labels matching normalizeDomain's regex", () => {
-        // playground.ts::normalizeDomain enforces /^[a-z0-9][a-z0-9-]*$/i.
+    it("produces labels matching normalizeDomain's charset", () => {
+        // dotnsRules.ts::validateDomainLabel (used by normalizeDomain) requires
+        // a lowercase [a-z0-9-] label with no leading/trailing dash.
         const re = /^[a-z0-9][a-z0-9-]*$/;
         for (const input of [
             "https://example.com",

@@ -21,6 +21,7 @@
  * `init/completion.ts`, `init/identityLine.ts`, etc.
  */
 
+import { validateDomainLabel } from "../../utils/deploy/dotnsRules.js";
 import type { DecentralizeOutcome } from "../../utils/decentralize/run.js";
 import type { SignerMode } from "../../utils/deploy/signerMode.js";
 
@@ -95,14 +96,16 @@ export function validateSiteUrlInput(raw: string): string | null {
 }
 
 /**
- * `dot deploy`'s same shape check, plus a tolerance for an optional `.dot`
- * suffix. Availability + reservation are decided by the chain in the
- * validate-domain stage, so this only screens the obviously-malformed.
+ * Inline TUI gate for the domain prompt. Delegates to the canonical DotNS
+ * `validateDomainLabel` (same rules as `dot deploy` and `normalizeDomain`),
+ * tolerating an optional `.dot` suffix. Availability + reservation are decided
+ * by the chain in the validate-domain stage; this just rejects labels the
+ * chain would reject so the user sees the error inline rather than after submit.
  */
 export function validateDomainInput(raw: string): string | null {
     const trimmed = raw.trim();
     if (!trimmed) return null; // empty = "auto-generate from URL"
-    return /^[a-z0-9][a-z0-9-]*(\.dot)?$/i.test(trimmed)
-        ? null
-        : "use lowercase letters, digits, and dashes";
+    const label = trimmed.replace(/\.dot$/i, "");
+    const result = validateDomainLabel(label);
+    return result.ok ? null : result.reason;
 }
