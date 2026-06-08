@@ -220,10 +220,10 @@ describe("formatAvailability", () => {
                 status: "available",
                 label: "x",
                 fullDomain: "x.dot",
-                note: "Requires Proof of Personhood (Lite). Will be set up automatically.",
+                note: "Requires Lite Proof of Personhood",
                 plan: freshRegisterPlan,
             }),
-        ).toMatch(/Proof of Personhood \(Lite\)/);
+        ).toMatch(/Lite Proof of Personhood/);
         expect(
             formatAvailability({
                 status: "taken",
