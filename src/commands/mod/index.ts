@@ -22,9 +22,20 @@ import { getConnection, destroyConnection } from "../../utils/connection.js";
 import { getReadOnlyRegistryContract } from "../../utils/registry.js";
 import { AppBrowser, type AppEntry } from "./AppBrowser.js";
 import { SetupScreen } from "./SetupScreen.js";
+import { QuestPicker } from "./QuestPicker.js";
 import { defaultRepoName } from "../../utils/git/repoName.js";
 import { runCliCommand } from "../../cli-runtime.js";
 import { assertPublicGitHubRepo, ModdablePreflightError } from "../../utils/deploy/moddable.js";
+import { parseGitHubRepoUrl, type GitHubRepoRef } from "../../utils/mod/source.js";
+import { fetchBulletinJson, getBulletinGateway } from "../../utils/bulletinGateway.js";
+
+interface FetchedAppMetadata {
+    name?: string;
+    description?: string;
+    repository?: string;
+    branch?: string;
+    tag?: string;
+}
 
 export const modCommand = new Command("mod")
     .description("Mod a playground app — clone the source as a fresh project to customise")
@@ -71,7 +82,7 @@ async function runModCommand(rawDomain: string | undefined): Promise<void> {
         // with a clean message so the user can pick a different app before we
         // mount SetupScreen and start writing files.
         //
-        // The direct-domain path (`dot mod some-domain.dot`) has no metadata
+        // The direct-domain path (`playground mod some-domain.dot`) has no metadata
         // at this point and falls through to SetupScreen, where a private or
         // missing repo surfaces as a `downloadGitHubTarball` 404 step failure.
         // Slightly less polished UX, but lifting the metadata fetch up here
@@ -96,6 +107,63 @@ async function runModCommand(rawDomain: string | undefined): Promise<void> {
                     return;
                 }
                 throw err;
+            }
+        }
+
+        // QuestPicker is a read-only display of `quests.json` from the track
+        // repo's main. It runs BEFORE the existing setup flow without
+        // changing any of it — when the user presses "Start tutorial" we just
+        // continue into the normal clone-main path; when there's no
+        // `quests.json` the picker auto-skips silently. The picker needs a
+        // GitHub ref, so we lift the metadata fetch up here for the
+        // direct-domain path (the interactive picker already pre-fetched).
+        //
+        // It is interactive-only: in non-TTY contexts (automation, piped
+        // stdin, the e2e suite) we skip it entirely so `playground mod
+        // <domain>` stays fully non-interactive as documented. Otherwise the
+        // Ink picker renders the quest list and blocks forever waiting for an
+        // Enter that never arrives, and the command hangs until its timeout.
+        let repoRef: GitHubRepoRef | null = null;
+        let questBranch: string | undefined;
+        if (process.stdin.isTTY) {
+            if (metadata?.repository) {
+                repoRef = parseGitHubRepoUrl(metadata.repository);
+                questBranch = metadata.branch ?? undefined;
+            } else {
+                try {
+                    const fetched = await withSpan(
+                        "cli.mod.fetch-metadata",
+                        "fetch app metadata for quest probe",
+                        () => fetchAppMetadata(registry, domain),
+                    );
+                    repoRef = fetched.repository ? parseGitHubRepoUrl(fetched.repository) : null;
+                    questBranch = fetched.branch;
+                    // Reuse what we just fetched so SetupScreen doesn't query
+                    // the registry + IPFS a second time for the same domain.
+                    metadata = {
+                        domain,
+                        name: fetched.name ?? null,
+                        description: fetched.description ?? null,
+                        repository: fetched.repository ?? null,
+                        branch: fetched.branch ?? null,
+                        tag: fetched.tag ?? null,
+                    };
+                } catch {
+                    // Fall through with `repoRef = null` — picker is skipped and
+                    // the existing SetupScreen step will surface the same error.
+                }
+            }
+        }
+        if (repoRef) {
+            // Capture into a const so the value type-narrows inside the closure
+            // (a `let` would widen back to `GitHubRepoRef | null`).
+            const ref = repoRef;
+            const continued = await withSpan("cli.mod.quest-picker", "browse quests", () =>
+                pickQuest(ref, questBranch),
+            );
+            if (!continued) {
+                process.exitCode = 0;
+                return;
             }
         }
 
@@ -148,6 +216,37 @@ async function resolveTargetDir(args: { domain: string }): Promise<string | null
         return null;
     }
     return fallback;
+}
+
+async function fetchAppMetadata(registry: any, domain: string): Promise<FetchedAppMetadata> {
+    const metaRes = await registry.getMetadataUri.query(domain);
+    if (!metaRes.success) {
+        throw new Error(
+            `Registry lookup for "${domain}" failed at dry-run (chain rejected the call)`,
+        );
+    }
+    const cid = metaRes.value.isSome ? metaRes.value.value : null;
+    if (!cid) throw new Error(`App "${domain}" not found in registry`);
+    return await fetchBulletinJson<FetchedAppMetadata>(cid, getBulletinGateway());
+}
+
+function pickQuest(repoRef: GitHubRepoRef, branch?: string): Promise<boolean> {
+    return new Promise((resolve) => {
+        const app = render(
+            React.createElement(QuestPicker, {
+                repoRef,
+                branch,
+                onDone: () => {
+                    app.unmount();
+                    resolve(true);
+                },
+                onCancel: () => {
+                    app.unmount();
+                    resolve(false);
+                },
+            }),
+        );
+    });
 }
 
 function browseAndPick(registry: any): Promise<AppEntry | null> {

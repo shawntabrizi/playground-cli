@@ -94,6 +94,8 @@ Pull a moddable playground app's source into a fresh local project so you can cu
 
 The implementation is GitHub-only and **requires no CLI tooling** — neither `git` nor `gh` is needed. Source is downloaded as a tarball over HTTPS from `codeload.github.com` (no auth needed for public repos), extracted into the target dir, then `git init`'d as a fresh empty history *if* `git` happens to be on `PATH`. No baseline commit is created, so you can stage and commit your first revision however you like. With `git` absent, the directory still works — you just don't get version control until you install git yourself.
 
+**Quest tracks.** If the app's source repo ships a `quests.json` at its root, `playground mod` shows a read-only quest browser (id, title, difficulty, dependencies, summary) and waits for you to press "Start tutorial" before cloning; `q` cancels. The manifest is fetched over the GitHub raw CDN (no API-quota cost) from the app's default branch. Apps without a `quests.json` — or with an empty quest list — skip the browser silently and clone straight away. The browser is interactive-only: in non-TTY contexts (automation, piped stdin, the e2e suite) it is skipped so `playground mod <domain>` stays fully non-interactive.
+
 Flags:
 
 - `[domain]` — positional; interactive picker over the registry if omitted. `.dot` suffix optional. The picker is filtered to moddable apps only.
