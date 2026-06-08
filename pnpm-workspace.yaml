@@ -9,6 +9,11 @@
 allowBuilds:
   "@biomejs/biome": true
   "@parity/product-sdk-terminal": false
+  # bulletin-deploy 0.9.0 ships a postinstall (`patch-package || true`) bundling
+  # an @novasamatech/sdk-statement@0.6.0 patch. We deny it: our own pnpm patch on
+  # that exact package (see patchedDependencies below) already applies the fix,
+  # so the postinstall is redundant. Keep at false.
+  bulletin-deploy: false
   esbuild: false
   node-datachannel: false
 
