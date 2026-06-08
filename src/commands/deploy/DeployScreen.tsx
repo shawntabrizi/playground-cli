@@ -54,6 +54,7 @@ import type { ResolvedSigner } from "../../utils/signer.js";
 import { DEFAULT_BUILD_DIR, getNetworkLabel } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
+import { NO_SESSION_NOTICE_TITLE, NO_SESSION_NOTICE_BODY } from "./signerNotice.js";
 
 export interface DeployScreenInputs {
     projectDir: string;
@@ -107,7 +108,14 @@ export function DeployScreen({
     userSigner,
     onDone,
 }: DeployScreenInputs) {
-    const [mode, setMode] = useState<SignerMode | null>(initialMode);
+    // Phone signing needs a paired session (from `playground init`). Without
+    // one the phone path is not offered — but a dev deploy still works. If the
+    // user pre-selected `--signer phone` yet has no session, drop back to the
+    // picker (mode = null) so they see the notice and can choose the dev signer.
+    const hasSession = userSigner?.source === "session";
+    const effectiveInitialMode: SignerMode | null =
+        !hasSession && initialMode === "phone" ? null : initialMode;
+    const [mode, setMode] = useState<SignerMode | null>(effectiveInitialMode);
     const [buildDir, setBuildDir] = useState<string | null>(initialBuildDir);
     const [domain, setDomain] = useState<string | null>(initialDomain);
     const [publishToPlayground, setPublishToPlayground] = useState<boolean | null>(initialPublish);
@@ -122,7 +130,7 @@ export function DeployScreen({
     const [stage, setStage] = useState<Stage>(() =>
         pickInitialStage(
             initialSkipBuild,
-            initialMode,
+            effectiveInitialMode,
             initialBuildDir,
             initialDomain,
             initialPublish,
@@ -206,25 +214,39 @@ export function DeployScreen({
             )}
 
             {stage.kind === "prompt-signer" && (
-                <Select<SignerMode>
-                    label="signer"
-                    options={[
-                        {
-                            value: "dev",
-                            label: "dev signer",
-                            hint: "fast, 0 phone taps for upload",
-                        },
-                        {
-                            value: "phone",
-                            label: "your phone signer",
-                            hint: "signed with your logged-in account",
-                        },
-                    ]}
-                    onSelect={(m) => {
-                        setMode(m);
-                        advance(skipBuild, m);
-                    }}
-                />
+                <Box flexDirection="column">
+                    {!hasSession && (
+                        <Callout tone="warning" title={NO_SESSION_NOTICE_TITLE}>
+                            <Text>{NO_SESSION_NOTICE_BODY}</Text>
+                        </Callout>
+                    )}
+                    <Select<SignerMode>
+                        label="signer"
+                        options={[
+                            {
+                                value: "dev" as SignerMode,
+                                label: "dev signer",
+                                hint: "fast, 0 phone taps for upload",
+                            },
+                            // The phone signer is only offered with a paired
+                            // session; otherwise the notice above explains how
+                            // to enable it.
+                            ...(hasSession
+                                ? [
+                                      {
+                                          value: "phone" as SignerMode,
+                                          label: "your phone signer",
+                                          hint: "signed with your logged-in account",
+                                      },
+                                  ]
+                                : []),
+                        ]}
+                        onSelect={(m) => {
+                            setMode(m);
+                            advance(skipBuild, m);
+                        }}
+                    />
+                </Box>
             )}
 
             {stage.kind === "prompt-buildDir" && (

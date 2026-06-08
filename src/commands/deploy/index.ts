@@ -40,6 +40,7 @@ import type { DeployOutcome, DeployEvent } from "../../utils/deploy/run.js";
 import { buildSummaryView } from "./summary.js";
 import { DEFAULT_BUILD_DIR, type Env, resolveLegacyEnv } from "../../config.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
+import { NO_SESSION_HEADLESS_ERROR } from "./signerNotice.js";
 
 interface DeployOpts {
     suri?: string;
@@ -201,33 +202,32 @@ async function preflight(opts: {
         signer = await resolveSigner({ suri: opts.suri });
     } catch (err) {
         if (err instanceof SignerNotAvailableError) {
-            // Dev mode can always proceed without a session — the publish
-            // is signed by a dev account either way. Without a session the
-            // registry records the dev account as both publisher and owner;
-            // with one, the session's H160 is claimed as owner so the app
-            // shows in MyApps. Returning null here is the "no session, no
-            // SURI" signal; downstream resolveSignerSetup constructs Alice
-            // for the actual publish.
-            if (opts.mode === "dev") {
-                if (opts.publishToPlayground) {
-                    // Catch the "forgot dot init" footgun: a user who
-                    // expected their account to be the owner just had
-                    // their app published under Alice's name. Warn loudly
-                    // so it isn't silently surprising; the deploy still
-                    // proceeds because pure-dev mode IS a supported flow
-                    // (e.g. quick smoke tests, CI without a session).
-                    process.stderr.write(
-                        "warning: --signer dev --playground with no session and no --suri — " +
-                            "publishing under the dev (Alice) account. Run `playground init` first " +
-                            "if you want the app to appear in your MyApps view.\n",
-                    );
-                    captureWarning("dev mode playground publish with no user identity", {
-                        attempted: "pure-dev-publish",
-                    });
-                }
-                return null;
+            // No session and no --suri. We DON'T hard-fail here for any mode:
+            // the dev path can always proceed (publish is signed by a dev
+            // account), and the phone path is gated downstream with an
+            // actionable message instead of this opaque error — the
+            // interactive TUI shows a yellow "run playground init" notice and
+            // offers the dev signer, while `runHeadless` rejects an explicit
+            // `--signer phone` with a clear instruction (no TUI to fall into).
+            // Returning null is the "no session, no SURI" signal;
+            // resolveSignerSetup constructs the dev account for the publish.
+            if (opts.mode === "dev" && opts.publishToPlayground) {
+                // Catch the "forgot dot init" footgun: a user who expected
+                // their account to be the owner just had their app published
+                // under the dev account's name. Warn loudly so it isn't
+                // silently surprising; the deploy still proceeds because
+                // pure-dev mode IS a supported flow (e.g. quick smoke tests,
+                // CI without a session).
+                process.stderr.write(
+                    "warning: --signer dev --playground with no session and no --suri — " +
+                        "publishing under the dev (Alice) account. Run `playground init` first " +
+                        "if you want the app to appear in your MyApps view.\n",
+                );
+                captureWarning("dev mode playground publish with no user identity", {
+                    attempted: "pure-dev-publish",
+                });
             }
-            throw err;
+            return null;
         }
         throw err;
     }
@@ -302,6 +302,14 @@ async function runHeadless(ctx: {
     const domain = ctx.opts.domain as string;
     const buildDir = ctx.opts.buildDir as string;
     const skipBuild = ctx.opts.build === false;
+
+    // Phone signing needs a paired session. Headless has no TUI to fall back
+    // into, so reject an explicit `--signer phone` with no session up front
+    // rather than letting a null user signer surface as an opaque failure deep
+    // in the publish. The interactive flow handles this case with a notice.
+    if (mode === "phone" && ctx.userSigner?.source !== "session") {
+        throw new Error(NO_SESSION_HEADLESS_ERROR);
+    }
 
     // Check availability BEFORE we build + upload, so CI fails fast on a
     // Reserved / already-taken name without wasting a chunk upload.

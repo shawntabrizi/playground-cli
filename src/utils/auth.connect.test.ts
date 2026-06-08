@@ -57,6 +57,16 @@ vi.mock("./loginStamp.js", () => ({
     recordLoginStamp: recordLoginStampMock,
 }));
 
+// connect() rotates the device identity before a fresh QR pairing. Mock it so
+// the unit tests assert the wiring without touching the real ~/.polkadot-apps;
+// the rotation's own behaviour is covered in sessionReset.test.ts.
+const { resetDeviceIdentityMock } = vi.hoisted(() => ({
+    resetDeviceIdentityMock: vi.fn(async () => undefined),
+}));
+vi.mock("./sessionReset.js", () => ({
+    resetDeviceIdentityForFreshPairing: resetDeviceIdentityMock,
+}));
+
 import { connect, getSessionSigner, waitForLogin } from "./auth.js";
 
 // A valid ristretto255 point — same frozen vector as `auth.test.ts`'s
@@ -85,6 +95,7 @@ describe("connect() adapter lifecycle", () => {
     beforeEach(() => {
         createTerminalAdapterMock.mockReset();
         waitForSessionsMock.mockReset();
+        resetDeviceIdentityMock.mockClear();
     });
 
     it("destroys the probe adapter on the existing-session path", async () => {
@@ -99,6 +110,9 @@ describe("connect() adapter lifecycle", () => {
         // must release it itself — a leak here keeps the statement-store
         // WebSocket (and the event loop) alive for the whole process.
         expect(adapter.destroy).toHaveBeenCalledTimes(1);
+        // A valid existing session must be reused as-is — rotating the device
+        // identity here would needlessly invalidate a working pairing.
+        expect(resetDeviceIdentityMock).not.toHaveBeenCalled();
     });
 
     it("destroys the adapter when the session probe throws", async () => {
@@ -110,11 +124,16 @@ describe("connect() adapter lifecycle", () => {
         expect(adapter.destroy).toHaveBeenCalledTimes(1);
     });
 
-    it("keeps the adapter alive on the QR path and hands it to the caller", async () => {
-        const adapter = fakeAdapter();
-        createTerminalAdapterMock.mockReturnValue(adapter);
+    it("rotates the device identity then pairs on a fresh adapter (QR path)", async () => {
+        // No existing session ⇒ fresh QR pairing. connect() must: probe with
+        // adapter #1, destroy it, rotate the device identity, then build a
+        // fresh adapter #2 that pairs on a clean (un-poisoned) topic and is
+        // handed to the caller still alive (authenticate() is in flight).
+        const probe = fakeAdapter();
+        const fresh = fakeAdapter();
+        createTerminalAdapterMock.mockReturnValueOnce(probe).mockReturnValueOnce(fresh);
         waitForSessionsMock.mockResolvedValue([]);
-        adapter.sso.pairingStatus.subscribe.mockImplementation(
+        fresh.sso.pairingStatus.subscribe.mockImplementation(
             (cb: (status: { step: string; payload: string }) => void) => {
                 cb({ step: "pairing", payload: "pairing-payload" });
                 return () => {};
@@ -124,12 +143,27 @@ describe("connect() adapter lifecycle", () => {
         const result = await connect();
 
         expect(result.kind).toBe("qr");
-        // QR path: the login flow still needs the adapter (authenticate()
-        // is in flight) — ownership transfers to the caller via LoginHandle.
-        expect(adapter.destroy).not.toHaveBeenCalled();
+        // The probe adapter is torn down before the identity is deleted...
+        expect(probe.destroy).toHaveBeenCalledTimes(1);
+        // ...the rotation runs exactly once, between probe and pairing...
+        expect(resetDeviceIdentityMock).toHaveBeenCalledTimes(1);
+        // ...and pairing happens on the fresh adapter, handed to the caller.
+        expect(fresh.sso.authenticate).toHaveBeenCalledTimes(1);
+        expect(fresh.destroy).not.toHaveBeenCalled();
         if (result.kind === "qr") {
-            expect(result.login.adapter).toBe(adapter);
+            expect(result.login.adapter).toBe(fresh);
         }
+    });
+
+    it("does not rotate the device identity when the session probe throws", async () => {
+        // A transient statement-store outage must not be mistaken for "no
+        // session" and trigger a destructive identity rotation.
+        const adapter = fakeAdapter();
+        createTerminalAdapterMock.mockReturnValue(adapter);
+        waitForSessionsMock.mockRejectedValue(new Error("statement store unreachable"));
+
+        await expect(connect()).rejects.toThrow("statement store unreachable");
+        expect(resetDeviceIdentityMock).not.toHaveBeenCalled();
     });
 });
 
@@ -166,7 +200,16 @@ describe("multi-session selection", () => {
         handle!.destroy();
     });
 
-    it("waitForLogin reports the newest session and prunes stale ones", async () => {
+    it("waitForLogin reports the newest session and NEVER disconnects on login", async () => {
+        // Regression: a previous version pruned older sessions here by calling
+        // `adapter.sessions.disconnect(stale)`. That submits a `Disconnected`
+        // statement to the phone, which echoes it back across EVERY tracked
+        // session — including the freshly paired one — and the SDK then filters
+        // each out of `SsoSessionsV2`, leaving an empty session repository the
+        // moment init finished (secret blobs survive). `pg deploy` then read
+        // zero sessions and failed with "No signer available". Selection is
+        // handled entirely by `newestSession()`, so login must touch no
+        // disconnect path at all.
         const stale = { id: "old", rootAccountId: TEST_ROOT_BYTES };
         const fresh = { id: "new", rootAccountId: OTHER_ROOT_BYTES };
         const disconnect = vi.fn(async () => ({ isOk: () => true }));
@@ -190,32 +233,8 @@ describe("multi-session selection", () => {
         expect(success?.address).toBe(address);
         expect(address).toBeTruthy();
 
-        // Stale sessions are disconnected (best-effort) so they cannot be
-        // selected by later commands or accumulate across re-pairs.
-        expect(disconnect).toHaveBeenCalledTimes(1);
-        expect(disconnect).toHaveBeenCalledWith(stale);
+        // The destructive prune is gone: login disconnects nothing.
+        expect(disconnect).not.toHaveBeenCalled();
         expect(recordLoginStampMock).toHaveBeenCalledTimes(1);
-    });
-
-    it("waitForLogin survives a failing stale-session disconnect", async () => {
-        const stale = { id: "old", rootAccountId: TEST_ROOT_BYTES };
-        const fresh = { id: "new", rootAccountId: OTHER_ROOT_BYTES };
-        const disconnect = vi.fn(async () => {
-            throw new Error("remote unreachable");
-        });
-        const adapter = { ...fakeAdapter(), sessions: { disconnect } };
-        waitForSessionsMock.mockResolvedValue([stale, fresh]);
-
-        const statuses: Array<{ step: string }> = [];
-        const authPromise = Promise.resolve({
-            match: (ok: (s: unknown) => void) => ok(fresh),
-        });
-
-        const address = await waitForLogin({ adapter, authPromise } as any, (s) =>
-            statuses.push(s),
-        );
-
-        expect(address).toBeTruthy();
-        expect(statuses.some((s) => s.step === "success")).toBe(true);
     });
 });

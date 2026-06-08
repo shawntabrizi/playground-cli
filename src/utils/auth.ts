@@ -46,6 +46,7 @@ import {
     getChainConfig,
 } from "../config.js";
 import { recordLoginStamp } from "./loginStamp.js";
+import { resetDeviceIdentityForFreshPairing } from "./sessionReset.js";
 import {
     createPlaygroundSessionSigner,
     derivePlaygroundProductPublicKey,
@@ -224,28 +225,11 @@ export interface LoginHandle {
  * and returns the QR code + a handle to await the auth result.
  */
 export async function connect(): Promise<ConnectResult> {
-    const adapter = createAdapter();
+    let adapter = createAdapter();
 
     let sessions: UserSession[];
     try {
         sessions = await loadSessions(adapter);
-        if (sessions.length > 0) {
-            const addresses = deriveSessionAddresses(newestSession(sessions));
-            // The "existing" result carries plain address data only — the
-            // adapter is not part of it, so this is the last place that can
-            // release it. Leaking it keeps a statement-store WebSocket +
-            // subscriptions alive for the rest of the process: the event
-            // loop never drains, and the leaked subscription machinery is
-            // the kind that can enter the polkadot-api microtask-flood
-            // state (see process-guard.ts) and grow the process unbounded.
-            // Same fire-and-forget + `.catch()` rationale as
-            // `getSessionSigner()`'s no-session path below.
-            adapter.destroy().catch(() => {});
-            // `address` is kept for back-compat with callers that only need
-            // the product-account SS58 (signer flows). UI consumers should
-            // read the richer `addresses` field instead.
-            return { kind: "existing", address: addresses.productAddress, addresses };
-        }
     } catch (err) {
         // Probe failed (statement store unreachable, stale session, …) —
         // release the WebSocket before propagating, mirroring the QR-wait
@@ -253,6 +237,39 @@ export async function connect(): Promise<ConnectResult> {
         adapter.destroy().catch(() => {});
         throw err;
     }
+
+    if (sessions.length > 0) {
+        const addresses = deriveSessionAddresses(newestSession(sessions));
+        // The "existing" result carries plain address data only — the
+        // adapter is not part of it, so this is the last place that can
+        // release it. Leaking it keeps a statement-store WebSocket +
+        // subscriptions alive for the rest of the process: the event
+        // loop never drains, and the leaked subscription machinery is
+        // the kind that can enter the polkadot-api microtask-flood
+        // state (see process-guard.ts) and grow the process unbounded.
+        // Same fire-and-forget + `.catch()` rationale as
+        // `getSessionSigner()`'s no-session path below.
+        adapter.destroy().catch(() => {});
+        // `address` is kept for back-compat with callers that only need
+        // the product-account SS58 (signer flows). UI consumers should
+        // read the richer `addresses` field instead.
+        return { kind: "existing", address: addresses.productAddress, addresses };
+    }
+
+    // No existing session — we are about to do a fresh QR pairing. Rotate the
+    // host device identity FIRST so the new session lands on a pristine
+    // statement-store topic. Re-pairing otherwise reuses the same topic (the
+    // phone reuses its account; the host account comes from the persisted
+    // DeviceIdentity), and a stale phone-sent `Disconnected` statement there —
+    // 7-day TTL — is replayed by `createSession.init()` and silently tears the
+    // freshly paired session back out of `SsoSessionsV2`, which is exactly the
+    // "init succeeds but `deploy` says No signer available" failure. See
+    // `sessionReset.ts` for the full mechanism. We destroy the probe adapter
+    // (it loaded the OLD identity) before deleting the identity, then build a
+    // fresh adapter that loads/creates a brand-new one.
+    adapter.destroy().catch(() => {});
+    await resetDeviceIdentityForFreshPairing();
+    adapter = createAdapter();
 
     // Start authenticate — this triggers the pairing flow and QR emission
     const authPromise = adapter.sso.authenticate();
@@ -345,18 +362,16 @@ export async function waitForLogin(
             if (sessions.length > 0) {
                 const addresses = deriveSessionAddresses(newestSession(sessions));
                 address = addresses.productAddress;
-                // Prune stale sessions left behind by earlier pairings.
-                // Best-effort: disconnect tells the phone to drop its side
-                // and filters the local repository, so later commands can
-                // never select a dead channel. A failed disconnect is fine —
-                // newestSession() keeps selection correct regardless.
-                for (const stale of sessions.slice(0, -1)) {
-                    try {
-                        await adapter.sessions.disconnect(stale);
-                    } catch {
-                        // Phone unreachable for the stale session — ignore.
-                    }
-                }
+                // Do NOT prune older sessions here by calling
+                // `adapter.sessions.disconnect`. It submits a `Disconnected`
+                // statement on the (shared) session topic, adding to exactly the
+                // kind of stale-Disconnected litter that poisons re-pairing for
+                // 7 days (see `sessionReset.ts`). Pruning is also unnecessary:
+                // fresh pairings rotate onto a clean topic with a single session,
+                // and `newestSession()` already guarantees correct selection, so
+                // any residual entries are inert. They're cleared by
+                // `playground logout` (clearLocalAppStorage). Regression coverage
+                // in src/utils/auth.connect.test.ts.
                 // Best-effort, never throws: powers the stale-session warning
                 // in deploy's preflight (the SSS allowance has no on-chain
                 // query, so "when did we last pair" is the only signal).
