@@ -54,6 +54,7 @@ import type { ResolvedSigner } from "../../utils/signer.js";
 import { DEFAULT_BUILD_DIR, getNetworkLabel } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
+import { validateDomainLabel } from "../../utils/deploy/dotnsRules.js";
 import { NO_SESSION_NOTICE_TITLE, NO_SESSION_NOTICE_BODY } from "./signerNotice.js";
 
 export interface DeployScreenInputs {
@@ -266,11 +267,11 @@ export function DeployScreen({
                     placeholder="my-app"
                     prefill={domain ?? ""}
                     externalError={domainError}
-                    validate={(v) =>
-                        /^[a-z0-9][a-z0-9-]*(\.dot)?$/i.test(v.trim())
-                            ? null
-                            : "use lowercase letters, digits, and dashes"
-                    }
+                    validate={(v) => {
+                        const label = v.trim().replace(/\.dot$/i, "");
+                        const result = validateDomainLabel(label);
+                        return result.ok ? null : result.reason;
+                    }}
                     onSubmit={(v) => {
                         const trimmed = v.trim();
                         setDomain(trimmed);
