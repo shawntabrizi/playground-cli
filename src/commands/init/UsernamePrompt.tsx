@@ -221,7 +221,10 @@ function SubmitUsername({
                 return;
             }
             try {
-                await setRegistryUsername(session, name);
+                // `setRegistryUsername` takes a `ResolvedSigner`; a session
+                // handle is one once tagged with its source (same shape
+                // `resolveSigner` produces for QR/mobile sessions).
+                await setRegistryUsername({ ...session, source: "session" }, name);
                 if (!cancelled) setPhase({ kind: "complete", username: name });
             } catch (err) {
                 if (cancelled) return;

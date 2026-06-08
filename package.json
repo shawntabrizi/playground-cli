@@ -14,6 +14,7 @@
         "format": "biome format --write .",
         "format:check": "biome format .",
         "lint:license": "./scripts/check-license-headers.sh",
+        "typecheck": "tsc --noEmit",
         "build": "bun build --compile src/index.ts --outfile ./dist/playground",
         "cli:install": "bun build --compile src/index.ts --outfile ~/.polkadot/bin/playground && ln -sf ~/.polkadot/bin/playground ~/.polkadot/bin/pg",
         "test": "vitest run",

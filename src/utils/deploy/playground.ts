@@ -44,6 +44,7 @@ import { getConnection } from "../connection.js";
 import { getChainConfig, type Env } from "../../config.js";
 import { captureWarning, withSpan, errorMessage } from "../../telemetry.js";
 import {
+    asCloudStorageApi,
     getBulletinAllowanceSigner,
     isInvalidPaymentError,
     type AllowancePrompt,
@@ -307,7 +308,7 @@ export async function publishToPlayground(
                 const storeTx = bulletinApi.tx.TransactionStorage.store({ data: metadataBytes });
                 let storageSigner = await getBulletinAllowanceSigner({
                     publishSigner: options.publishSigner,
-                    bulletinApi,
+                    bulletinApi: asCloudStorageApi(bulletinApi),
                     requiredBytes: metadataBytes.length,
                     onPrompt: options.onAllowancePrompt,
                 });
@@ -323,7 +324,7 @@ export async function publishToPlayground(
                     });
                     storageSigner = await getBulletinAllowanceSigner({
                         publishSigner: options.publishSigner,
-                        bulletinApi,
+                        bulletinApi: asCloudStorageApi(bulletinApi),
                         requiredBytes: metadataBytes.length,
                         onPrompt: options.onAllowancePrompt,
                     });

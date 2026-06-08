@@ -23,7 +23,9 @@ const { captureWarningMock, withSpanMock, bulletinStorageSigner, getBulletinAllo
         captureWarningMock: vi.fn(),
         withSpanMock: vi.fn(async (_op: string, _name: string, _attrs: any, fn: any) => fn()),
         bulletinStorageSigner: { __signer: "bulletin-allowance" },
-        getBulletinAllowanceSignerMock: vi.fn(async () => ({ __signer: "bulletin-allowance" })),
+        getBulletinAllowanceSignerMock: vi.fn(async (_options: unknown) => ({
+            __signer: "bulletin-allowance",
+        })),
     }));
 
 // Mock the metadata upload path so we never actually touch the network.
@@ -37,6 +39,7 @@ vi.mock("@parity/product-sdk-tx", () => ({
     withRetry: vi.fn((fn: () => Promise<unknown>) => fn()),
 }));
 vi.mock("../allowances/bulletin.js", () => ({
+    asCloudStorageApi: (api: unknown) => api,
     getBulletinAllowanceSigner: (options: unknown) => getBulletinAllowanceSignerMock(options),
     isInvalidPaymentError: (err: unknown) => String(err).includes("Payment"),
 }));
@@ -106,7 +109,9 @@ beforeEach(() => {
     vi.mocked(submitAndWatch).mockClear();
     vi.mocked(submitAndWatch).mockResolvedValue({
         ok: true,
+        txHash: "0x0",
         block: { hash: "0x0", number: 0, index: 0 },
+        events: [],
     });
 });
 
@@ -647,7 +652,12 @@ describe("publishToPlayground", () => {
     it("re-checks Bulletin allowance once when metadata upload fails with Invalid Payment", async () => {
         vi.mocked(submitAndWatch)
             .mockRejectedValueOnce(new Error('{"type":"Invalid","value":{"type":"Payment"}}'))
-            .mockResolvedValueOnce({ ok: true, block: { hash: "0x1", number: 1, index: 0 } });
+            .mockResolvedValueOnce({
+                ok: true,
+                txHash: "0x1",
+                block: { hash: "0x1", number: 1, index: 0 },
+                events: [],
+            });
 
         await publishToPlayground({
             domain: "my-app.dot",

@@ -26,7 +26,10 @@ import {
     describeResource,
     summarizeOutcomes,
 } from "../../utils/allowances/resources.js";
-import { cachedBulletinSlotAuthorization } from "../../utils/allowances/bulletin.js";
+import {
+    asCloudStorageApi,
+    cachedBulletinSlotAuthorization,
+} from "../../utils/allowances/bulletin.js";
 
 type Status = "pending" | "active" | "ok" | "failed" | "skipped";
 
@@ -157,7 +160,7 @@ export function AccountSetup({
                 );
                 const bulletinAuth = await cachedBulletinSlotAuthorization(
                     adapter,
-                    client.bulletin,
+                    asCloudStorageApi(client.bulletin),
                     1,
                 ).catch(() => null);
 

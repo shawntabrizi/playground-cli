@@ -35,7 +35,6 @@ import {
     getChainPreset,
     getRegistryAddress,
 } from "@parity/cdm-env";
-import type { CloudStorageApi } from "@parity/product-sdk-cloud-storage";
 import { createContractFromClient } from "@parity/product-sdk-contracts";
 import { paseo_asset_hub } from "@parity/product-sdk-descriptors/paseo-asset-hub";
 import { paseo_bulletin } from "@parity/product-sdk-descriptors/paseo-bulletin";
@@ -45,7 +44,7 @@ import { createClient, type HexString, type SS58String } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { runCliCommand } from "../cli-runtime.js";
 import { getChainConfig } from "../config.js";
-import { getBulletinAllowanceSigner } from "../utils/allowances/bulletin.js";
+import { asCloudStorageApi, getBulletinAllowanceSigner } from "../utils/allowances/bulletin.js";
 import { ensureSmartContractAllowance } from "../utils/allowances/smartContracts.js";
 import { BULLETIN_WS_HEARTBEAT_MS } from "../utils/bulletinWs.js";
 import { suppressReviveTraceNoise } from "../utils/contractManifest.js";
@@ -261,10 +260,9 @@ async function runContractDeploy(opts: ContractDeployOpts): Promise<void> {
         client = await createContractChainClient(target);
         const metadataSigner = await getBulletinAllowanceSigner({
             publishSigner: signer,
-            // client.bulletin is the same runtime bulletin API, but it's nominally
-            // typed as @parity/cdm-env's CdmBulletinApi (built against an older
-            // product-sdk-cloud-storage than the CLI's). Bridge the version skew.
-            bulletinApi: client.bulletin as unknown as CloudStorageApi,
+            // client.bulletin is the same runtime bulletin API but nominally a
+            // different descriptor instance; asCloudStorageApi bridges the skew.
+            bulletinApi: asCloudStorageApi(client.bulletin),
         });
 
         const result = await runContractDeployWithUI({

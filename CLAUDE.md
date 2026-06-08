@@ -4,15 +4,16 @@ Refer to the **Contributing** and **Architecture Highlights** sections of [READM
 
 ## Verification before committing
 
-Before claiming a task complete, opening a PR, or merging, run all three. The first two are enforced by CI; the third catches regressions:
+Before claiming a task complete, opening a PR, or merging, run all four. The first three are enforced by CI; `pnpm test` also catches regressions:
 
 ```bash
 pnpm format:check
 pnpm lint:license
+pnpm typecheck
 pnpm test
 ```
 
-`pnpm build` compiles with bun, which STRIPS types without checking them — it is NOT a type signal, and there is no tsc step in CI. The tree carries a known baseline of pre-existing `tsc --noEmit` errors (11 as of June 2026, including the `TypedApi<Paseo_bulletin>` vs `BulletinTypedApi` mismatches in `playground.ts`/`AccountSetup.tsx` and a possibly-null access in `deploy/run.ts`). Before claiming a change complete, run `pnpm exec tsc --noEmit 2>&1 | grep -c "error TS"` and confirm the count did not grow — new errors hide silently otherwise. Burning the baseline down to zero and adding a tsc CI step is an open follow-up. If `lint:license` flags a file you authored, run `./scripts/check-license-headers.sh --fix` to prepend the standard Parity Apache-2.0 header (`SPDX-License-Identifier: Apache-2.0` + `Copyright (C) Parity Technologies (UK) Ltd.`, both lines required). The check script keeps shebangs on line 1 and places the header below them.
+`pnpm build` compiles with bun, which STRIPS types without checking them — it is NOT a type signal. The tsc baseline was burned to zero in June 2026 and `pnpm typecheck` (`tsc --noEmit`) now runs as a CI job, so any new type error fails the build — keep it at zero. The old `TypedApi<Paseo_bulletin>` vs `BulletinTypedApi` skew is bridged through the single `asCloudStorageApi` helper in `src/utils/allowances/bulletin.ts` (see the dependency-pins note on the cdm-builder version skew). If `lint:license` flags a file you authored, run `./scripts/check-license-headers.sh --fix` to prepend the standard Parity Apache-2.0 header (`SPDX-License-Identifier: Apache-2.0` + `Copyright (C) Parity Technologies (UK) Ltd.`, both lines required). The check script keeps shebangs on line 1 and places the header below them.
 
 ## Non-obvious invariants
 

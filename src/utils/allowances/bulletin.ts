@@ -29,6 +29,28 @@ import {
 } from "@parity/product-sdk-terminal/host";
 import type { ResolvedSigner } from "../signer.js";
 
+/**
+ * Bridge the one nominal type skew between our bulletin chain API and
+ * product-sdk's. We build the API from `@parity/product-sdk-descriptors`'
+ * `bulletin` descriptor (`TypedApi<Paseo_bulletin>`); product-sdk's
+ * `CloudStorageApi` is `@parity/bulletin-sdk`'s `BulletinTypedApi`, generated
+ * from a different descriptor instance pinned at a slightly older product-sdk
+ * version (the cdm-builder version skew documented in CLAUDE.md). The two are
+ * structurally identical at runtime but nominally distinct to `tsc`. Cast
+ * through this single seam so the skew lives in one deletable place — drop
+ * this helper and inline its callers once the descriptor versions realign.
+ *
+ * The param is `unknown` on purpose: callers pass mutually-incompatible
+ * nominal types (the descriptor `TypedApi<Paseo_bulletin>` from
+ * `getConnection()`/`getTypedApi`, and cdm-env's `CdmBulletinApi` from the
+ * contract chain client in `commands/contract.ts`). Narrowing the param to one
+ * of them would re-couple the bridge to a single descriptor's structural shape
+ * — the exact skew this seam exists to absorb — so leave it `unknown`.
+ */
+export function asCloudStorageApi(api: unknown): CloudStorageApi {
+    return api as CloudStorageApi;
+}
+
 export const BULLETIN_RESOURCE: AllocatableResource = {
     tag: "BulletInAllowance",
     value: undefined,

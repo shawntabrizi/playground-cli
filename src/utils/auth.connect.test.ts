@@ -72,7 +72,11 @@ function fakeAdapter() {
         destroy: vi.fn().mockResolvedValue(undefined),
         sso: {
             authenticate: vi.fn(() => new Promise(() => {})),
-            pairingStatus: { subscribe: vi.fn(() => () => {}) },
+            pairingStatus: {
+                subscribe: vi.fn(
+                    (_cb: (status: { step: string; payload: string }) => void) => () => {},
+                ),
+            },
         },
     };
 }

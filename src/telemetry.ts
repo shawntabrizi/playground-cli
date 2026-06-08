@@ -128,8 +128,11 @@ export async function initTelemetry(options: TelemetryInitOptions = {}): Promise
         return;
     }
 
+    // Capture a non-null local so the integrations callback below (a closure
+    // over the mutable module-level `Sentry`) type-checks without a null guard.
+    const sentry = Sentry;
     try {
-        Sentry.init({
+        sentry.init({
             dsn: process.env.SENTRY_DSN || PLAYGROUND_SENTRY_DSN,
             release: `playground-cli@${VERSION}`,
             tracesSampleRate: 1,
@@ -154,10 +157,11 @@ export async function initTelemetry(options: TelemetryInitOptions = {}): Promise
                 ...defaultIntegrations.filter(
                     (integration) => integration.name !== "OnUnhandledRejection",
                 ),
-                Sentry.onUnhandledRejectionIntegration({ mode: "none" }),
+                sentry.onUnhandledRejectionIntegration({ mode: "none" }),
             ],
             beforeSend(event) {
-                if (isBenignDestroyedErrorEvent(event)) return null;
+                if (isBenignDestroyedErrorEvent(event as unknown as Record<string, unknown>))
+                    return null;
                 return sanitizeSentryEvent(
                     event as unknown as Record<string, unknown>,
                 ) as unknown as typeof event;
@@ -169,8 +173,8 @@ export async function initTelemetry(options: TelemetryInitOptions = {}): Promise
             },
             transport: options.transport as never,
         });
-        Sentry.setTag("cli.tool_version", VERSION);
-        Sentry.setContext("playground-cli", {
+        sentry.setTag("cli.tool_version", VERSION);
+        sentry.setContext("playground-cli", {
             version: VERSION,
             release: `playground-cli@${VERSION}`,
             node: process.version,
