@@ -61,12 +61,15 @@ describe("session management", () => {
 			["deploy", "--signer", "phone", "--domain", "test", "--playground", "--buildDir", "dist"],
 			{ home: tempHome, timeout: 30_000 },
 		);
-		// Must fail with a signer-resolution error. Match the exact
-		// SignerNotAvailableError text from src/utils/signer.ts so a generic
-		// "session" mention in an unrelated stack trace can't satisfy this.
+		// Must fail with the deliberate no-session notice. `--signer phone`
+		// with no valid session surfaces NO_SESSION_NOTICE_BODY from
+		// src/commands/deploy/signerNotice.ts — match its distinctive text so a
+		// generic "session" mention in an unrelated stack trace can't satisfy
+		// this. (Pre-0.9 this path emitted SignerNotAvailableError's "No signer
+		// available"; the phone path now shows the friendlier guidance.)
 		expect(result.exitCode).not.toBe(0);
 		const output = result.stdout + result.stderr;
-		expect(output).toContain("No signer available");
+		expect(output).toContain("Mobile (phone) signing needs a logged-in session");
 	});
 
 	test("build does not create or modify session files", async () => {
