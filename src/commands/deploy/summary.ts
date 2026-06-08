@@ -26,6 +26,8 @@ export interface SummaryInputs {
     domain: string;
     buildDir: string;
     skipBuild: boolean;
+    /** Whether this deploy will run contract deploy + install before the frontend deploy. */
+    deployContracts?: boolean;
     publishToPlayground: boolean;
     moddable?: boolean;
     repositoryUrl?: string | null;
@@ -75,6 +77,14 @@ export function buildSummaryView(input: SummaryInputs): SummaryView {
         { label: "Signer", value: signerValue },
         { label: "Build", value: input.skipBuild ? "skip (use existing)" : "rebuild first" },
         { label: "Build dir", value: input.buildDir },
+        ...(input.deployContracts === undefined
+            ? []
+            : [
+                  {
+                      label: "Contracts",
+                      value: input.deployContracts ? "deploy + install first" : "skip",
+                  },
+              ]),
         {
             label: "Publish",
             value: input.publishToPlayground ? "Playground + your apps" : "DotNS only",
@@ -104,7 +114,9 @@ export function buildSummaryView(input: SummaryInputs): SummaryView {
         totalApprovals: input.approvals.length,
         approvalHint:
             input.mode === "phone"
-                ? "your phone may also ask to grant or top up the Bulletin storage allowance"
+                ? input.deployContracts
+                    ? "contract deploy and Bulletin allowance requests may add phone approvals"
+                    : "your phone may also ask to grant or top up the Bulletin storage allowance"
                 : null,
     };
 }

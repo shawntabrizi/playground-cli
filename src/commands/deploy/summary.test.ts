@@ -134,6 +134,21 @@ describe("buildSummaryView", () => {
         expect(skip.rows.find((r) => r.label === "Build")?.value).toBe("skip (use existing)");
     });
 
+    it("surfaces the contract pre-step when the deploy flow owns the decision", () => {
+        const view = buildSummaryView({
+            mode: "dev",
+            domain: "my-app.dot",
+            buildDir: "dist",
+            skipBuild: false,
+            deployContracts: true,
+            publishToPlayground: false,
+            approvals: [],
+        });
+        expect(view.rows.find((r) => r.label === "Contracts")?.value).toBe(
+            "deploy + install first",
+        );
+    });
+
     it("rows stay limited to deploy-owned concerns", () => {
         const view = buildSummaryView({
             mode: "dev",

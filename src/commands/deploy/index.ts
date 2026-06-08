@@ -17,6 +17,10 @@ import React from "react";
 import { resolve } from "node:path";
 import { Command, Option } from "commander";
 import { render } from "ink";
+import type {
+    DeployEvent as ContractDeployEvent,
+    InstallEvent as ContractInstallEvent,
+} from "@parity/cdm-builder";
 import { renderSummaryText } from "./summary.js";
 import { captureWarning, errorMessage, withSpan } from "../../telemetry.js";
 import { readLoginStampMs, staleSessionWarning } from "../../utils/loginStamp.js";
@@ -37,6 +41,7 @@ import {
     type AvailabilityResult,
 } from "../../utils/deploy/availability.js";
 import type { DeployOutcome, DeployEvent } from "../../utils/deploy/run.js";
+import type { SigningEvent } from "../../utils/deploy/signingProxy.js";
 import { buildSummaryView } from "./summary.js";
 import { DEFAULT_BUILD_DIR, type Env, resolveLegacyEnv } from "../../config.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
@@ -56,6 +61,8 @@ interface DeployOpts {
      * a `--no-foo` option is declared.
      */
     build?: boolean;
+    /** Run contract deploy + install before the frontend deploy. Tri-state: undefined means prompt in TUI, false skips. */
+    contracts?: boolean;
     /** Publish the source repo so others can `dot mod` it. Commander auto-negates: `--no-moddable` ⇒ false. */
     moddable?: boolean;
     env?: Env;
@@ -74,6 +81,8 @@ export const deployCommand = new Command("deploy")
         `Directory containing build artifacts (default: ${DEFAULT_BUILD_DIR})`,
     )
     .option("--no-build", "Skip the build step and deploy existing artifacts in buildDir")
+    .option("--contracts", "Run `playground contract deploy` and install deployed packages first")
+    .option("--no-contracts", "Skip the contract deploy/install pre-step")
     .option("--playground", "Publish to the playground registry")
     .option(
         "--private",
@@ -302,6 +311,7 @@ async function runHeadless(ctx: {
     const domain = ctx.opts.domain as string;
     const buildDir = ctx.opts.buildDir as string;
     const skipBuild = ctx.opts.build === false;
+    const deployContractsBeforeFrontend = ctx.opts.contracts === true;
 
     // Phone signing needs a paired session. Headless has no TUI to fall back
     // into, so reject an explicit `--signer phone` with no session up front
@@ -375,6 +385,7 @@ async function runHeadless(ctx: {
         domain: availability.fullDomain,
         buildDir,
         skipBuild,
+        deployContracts: deployContractsBeforeFrontend,
         publishToPlayground,
         moddable,
         repositoryUrl,
@@ -393,6 +404,28 @@ async function runHeadless(ctx: {
         claimedOwnerH160: setup.claimedOwnerH160,
     });
     process.stdout.write("\n" + renderSummaryText(view) + "\n");
+
+    if (deployContractsBeforeFrontend) {
+        await withSpan(
+            "cli.deploy.contracts",
+            "contract deploy/install",
+            { "cli.deploy.mode": mode },
+            async () => {
+                process.stdout.write("\n▸ contracts deploy + install…\n");
+                const { runContractsBeforeFrontend } = await import("./contracts.js");
+                await runContractsBeforeFrontend({
+                    projectDir: ctx.projectDir,
+                    mode,
+                    suri: ctx.opts.suri,
+                    userSigner: ctx.userSigner,
+                    onDeployEvent: logHeadlessContractDeployEvent,
+                    onInstallEvent: logHeadlessContractInstallEvent,
+                    onSigningEvent: logHeadlessSigningEvent,
+                });
+                process.stdout.write("✔ contracts deploy + install\n");
+            },
+        );
+    }
 
     const outcome = await withSpan(
         "cli.deploy.orchestrator",
@@ -442,12 +475,15 @@ function runInteractive(ctx: {
                         domain: ctx.opts.domain ?? null,
                         buildDir: ctx.opts.buildDir ?? null,
                         mode: (ctx.opts.signer as SignerMode | undefined) ?? null,
+                        suri: ctx.opts.suri,
                         publishToPlayground:
                             ctx.opts.playground !== undefined ? Boolean(ctx.opts.playground) : null,
                         playgroundPrivate: Boolean(ctx.opts.private),
                         // Only pre-fill when the user explicitly asked to skip via `--no-build`;
                         // otherwise show the prompt so they can hit Enter on the default "yes".
                         skipBuild: ctx.opts.build === false ? true : null,
+                        deployContracts:
+                            ctx.opts.contracts !== undefined ? Boolean(ctx.opts.contracts) : null,
                         moddable:
                             ctx.opts.moddable === true
                                 ? true
@@ -517,6 +553,36 @@ function logHeadlessEvent(event: DeployEvent) {
         );
     } else if (event.kind === "error") {
         process.stderr.write(`  ✖ ${event.phase}: ${event.message}\n`);
+    }
+}
+
+function logHeadlessContractDeployEvent(event: ContractDeployEvent) {
+    if (event.type === "detect") {
+        process.stdout.write(`  contracts detected: ${event.contracts.length}\n`);
+    } else if (event.type === "phase") {
+        process.stdout.write(`  ${event.description}\n`);
+    } else if (event.type === "build-done") {
+        process.stdout.write(`  built ${event.crate}\n`);
+    } else if (event.type === "deploy-register-done") {
+        process.stdout.write(`  registered ${Object.keys(event.addresses).join(", ")}\n`);
+    } else if (event.type === "publish-done") {
+        process.stdout.write(`  published metadata for ${Object.keys(event.cids).join(", ")}\n`);
+    } else if (event.type === "deploy-register-error") {
+        process.stderr.write(`  ✖ ${event.crates.join(", ")}: ${event.error}\n`);
+    }
+}
+
+function logHeadlessContractInstallEvent(event: ContractInstallEvent) {
+    if (event.type === "install-done") {
+        process.stdout.write(`  installed ${event.library} v${event.result.version}\n`);
+    } else if (event.type === "install-error") {
+        process.stderr.write(`  ✖ ${event.library}: ${event.error}\n`);
+    }
+}
+
+function logHeadlessSigningEvent(event: SigningEvent) {
+    if (event.kind === "sign-request") {
+        process.stdout.write(`  approve on your phone (step ${event.step}): ${event.label}\n`);
     }
 }
 
