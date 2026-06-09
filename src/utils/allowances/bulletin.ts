@@ -87,6 +87,12 @@ export interface BulletinAllowanceSignerOptions {
     onPrompt?: AllowancePrompt;
 }
 
+export interface CachedBulletinAllowanceSignerOptions {
+    publishSigner: ResolvedSigner;
+    bulletinApi?: CloudStorageApi;
+    requiredBytes?: number;
+}
+
 function hasUsableAuthorization(status: AuthorizationStatus, requiredBytes = 0): boolean {
     return (
         status.authorized &&
@@ -203,6 +209,40 @@ export async function getBulletinAllowanceSigner({
     }
 
     return slotSigner;
+}
+
+/**
+ * Resolve the cached Bulletin slot signer without issuing any mobile resource
+ * allocation request. Contract deploy uses this path so `playground init`
+ * remains the single place that grants allowances.
+ */
+export async function getCachedBulletinAllowanceSigner({
+    publishSigner,
+    bulletinApi,
+    requiredBytes,
+}: CachedBulletinAllowanceSignerOptions): Promise<PolkadotSigner> {
+    if (publishSigner.source === "dev") return publishSigner.signer;
+
+    const { adapter } = requireSession(publishSigner);
+    const slotSigner = await createSlotAccountSigner(adapter, BULLETIN_RESOURCE);
+    if (!slotSigner) {
+        throw new Error(`No cached Bulletin allowance account available. ${INIT_HINT}`);
+    }
+    if (!bulletinApi) return slotSigner;
+
+    const authorization = await getBulletinSlotAuthorization(
+        bulletinApi,
+        slotSigner,
+        requiredBytes,
+    );
+    if (authorization.usable) return slotSigner;
+
+    const { address, status } = authorization;
+    throw new Error(
+        status.authorized
+            ? `Bulletin allowance for ${address} is live but does not have enough quota. Re-run \`playground init\` and approve on your phone.`
+            : `Bulletin allowance account ${address} is not authorized on-chain yet. Re-run \`playground init\` and approve on your phone.`,
+    );
 }
 
 export function isInvalidPaymentError(err: unknown): boolean {

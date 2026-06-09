@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { shouldResolveUserSigner } from "./index.js";
+import { isFullySpecified, shouldResolveUserSigner } from "./index.js";
 
 describe("shouldResolveUserSigner", () => {
     it("skips signer lookup for pure dev deploys", () => {
@@ -32,5 +32,26 @@ describe("shouldResolveUserSigner", () => {
 
     it("loads a signer when a suri is supplied", () => {
         expect(shouldResolveUserSigner({ mode: "dev", suri: "//Alice" })).toBe(true);
+    });
+});
+
+describe("isFullySpecified", () => {
+    const fullySpecified = {
+        signer: "phone",
+        domain: "my-app",
+        buildDir: "dist",
+        playground: true,
+    } as const;
+
+    it("keeps deploy interactive when the contracts answer is omitted", () => {
+        expect(isFullySpecified(fullySpecified)).toBe(false);
+    });
+
+    it("allows headless deploy when contracts are explicitly enabled", () => {
+        expect(isFullySpecified({ ...fullySpecified, contracts: true })).toBe(true);
+    });
+
+    it("allows headless deploy when contracts are explicitly skipped", () => {
+        expect(isFullySpecified({ ...fullySpecified, contracts: false })).toBe(true);
     });
 });

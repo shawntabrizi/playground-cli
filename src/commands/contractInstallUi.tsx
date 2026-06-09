@@ -33,7 +33,7 @@ const COL_ADDRESS = 14;
 
 type InstallState = "waiting" | "querying" | "fetching" | "done" | "error";
 
-interface InstallStatus {
+export interface InstallStatus {
     library: string;
     state: InstallState;
     error?: string;
@@ -54,10 +54,10 @@ export interface ContractInstallUiResult {
     success: boolean;
 }
 
-class ContractInstallStatusAdapter {
+export class ContractInstallStatusAdapter {
     readonly statuses = new Map<string, InstallStatus>();
 
-    constructor(libraries: string[]) {
+    constructor(libraries: string[] = []) {
         for (const library of libraries) {
             this.statuses.set(library, { library, state: "waiting" });
         }
@@ -148,13 +148,6 @@ function ContractInstallScreen({
     assethubUrl: string;
     ipfsGatewayUrl: string;
 }) {
-    const [tick, setTick] = useState(0);
-
-    useEffect(() => {
-        const timer = setInterval(() => setTick((current) => current + 1), TIMING.spinnerMs);
-        return () => clearInterval(timer);
-    }, []);
-
     return (
         <Box flexDirection="column">
             <Header
@@ -168,13 +161,38 @@ function ContractInstallScreen({
                 <Row label="registry" value={registryAddress} tone="muted" />
                 <Row label="gateway" value={ipfsGatewayUrl} tone="muted" />
             </Section>
-            <InstallTable
-                statuses={adapter.statuses}
+            <ContractInstallStatusView
+                adapter={adapter}
                 libraries={libraries}
                 ipfsGatewayUrl={ipfsGatewayUrl}
-                tick={tick}
             />
         </Box>
+    );
+}
+
+export function ContractInstallStatusView({
+    adapter,
+    libraries,
+    ipfsGatewayUrl,
+}: {
+    adapter: ContractInstallStatusAdapter;
+    libraries: string[];
+    ipfsGatewayUrl: string;
+}) {
+    const [tick, setTick] = useState(0);
+
+    useEffect(() => {
+        const timer = setInterval(() => setTick((current) => current + 1), TIMING.spinnerMs);
+        return () => clearInterval(timer);
+    }, []);
+
+    return (
+        <InstallTable
+            statuses={adapter.statuses}
+            libraries={libraries}
+            ipfsGatewayUrl={ipfsGatewayUrl}
+            tick={tick}
+        />
     );
 }
 
@@ -189,7 +207,11 @@ function InstallTable({
     ipfsGatewayUrl: string;
     tick: number;
 }) {
-    const errors = libraries
+    const rowLibraries = [
+        ...libraries,
+        ...Array.from(statuses.keys()).filter((library) => !libraries.includes(library)),
+    ];
+    const errors = rowLibraries
         .map((library) => statuses.get(library))
         .filter((status): status is InstallStatus & { error: string } =>
             Boolean(status?.state === "error" && status.error),
@@ -198,7 +220,7 @@ function InstallTable({
     return (
         <Box flexDirection="column" marginTop={1}>
             <HeaderRow />
-            {libraries.map((library) => (
+            {rowLibraries.map((library) => (
                 <InstallRow
                     key={library}
                     library={library}

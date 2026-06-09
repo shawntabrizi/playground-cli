@@ -52,13 +52,11 @@ import { createClient, type HexString, type SS58String } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { runCliCommand } from "../cli-runtime.js";
 import { getChainConfig } from "../config.js";
-import { asCloudStorageApi, getBulletinAllowanceSigner } from "../utils/allowances/bulletin.js";
-import { ensureSmartContractAllowance } from "../utils/allowances/smartContracts.js";
+import { getCachedBulletinAllowanceSigner } from "../utils/allowances/bulletin.js";
 import { BULLETIN_WS_HEARTBEAT_MS } from "../utils/bulletinWs.js";
 import { suppressReviveTraceNoise } from "../utils/contractManifest.js";
 import type { SignerMode } from "../utils/deploy/signerMode.js";
 import {
-    createApprovalPrompt,
     createSigningCounter,
     wrapSignerWithEvents,
     type SigningEvent,
@@ -394,9 +392,6 @@ export async function runContractDeploy(
     const features = resolveFeatures(opts.features, rootDir);
     const useUi = runOptions.useUi ?? true;
     const signingCounter = createSigningCounter();
-    const allowancePrompt = runOptions.onSigningEvent
-        ? createApprovalPrompt(signingCounter, runOptions.onSigningEvent)
-        : undefined;
 
     let signer: ResolvedSigner | null = runOptions.resolvedSigner ?? null;
     const ownsSigner = !signer;
@@ -420,22 +415,31 @@ export async function runContractDeploy(
 
     try {
         signer ??= await resolveSigner(resolveContractSignerOptions(opts));
+        runOptions.onDeployEvent?.({
+            type: "log",
+            line: "connecting contract chains",
+        });
         client = await createContractChainClient(target);
+        runOptions.onDeployEvent?.({
+            type: "log",
+            line: "checking cdm registry ownership",
+        });
         await assertCdmPackageOwnership({
             rootDir,
             client,
             registryAddress: target.registryAddress,
             origin: signer.address as SS58String,
         });
-        await ensureSmartContractAllowance({
-            deploySigner: signer,
+        runOptions.onDeployEvent?.({
+            type: "log",
+            line: "cdm registry ownership ok",
         });
-        const metadataSigner = await getBulletinAllowanceSigner({
+        runOptions.onDeployEvent?.({
+            type: "log",
+            line: "checking cached bulletin allowance",
+        });
+        const metadataSigner = await getCachedBulletinAllowanceSigner({
             publishSigner: signer,
-            // client.bulletin is the same runtime bulletin API but nominally a
-            // different descriptor instance; asCloudStorageApi bridges the skew.
-            bulletinApi: asCloudStorageApi(client.bulletin),
-            onPrompt: allowancePrompt,
         });
 
         if (useUi) {

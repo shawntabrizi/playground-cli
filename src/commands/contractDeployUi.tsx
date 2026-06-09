@@ -57,6 +57,11 @@ export interface ContractDeployUiResult {
     success: boolean;
 }
 
+export interface ContractDeployDisplay {
+    crates: string[];
+    displayNames: Map<string, string>;
+}
+
 export async function runContractDeployWithUI(
     opts: ContractDeployUiOptions,
 ): Promise<ContractDeployUiResult> {
@@ -68,7 +73,10 @@ export async function runContractDeployWithUI(
         signerRequiresApproval = false,
         ...deployOpts
     } = opts;
-    const { crates, displayNames } = precomputeDisplay(deployOpts.rootDir, deployOpts.contracts);
+    const { crates, displayNames } = precomputeContractDeployDisplay(
+        deployOpts.rootDir,
+        deployOpts.contracts,
+    );
     const adapter = new ContractPipelineStatusAdapter({
         onCdmPackageDetected: (crate, pkg) => displayNames.set(crate, pkg),
     });
@@ -112,7 +120,10 @@ export async function runContractDeployWithUI(
     };
 }
 
-function precomputeDisplay(rootDir: string, contracts: string[] | undefined) {
+export function precomputeContractDeployDisplay(
+    rootDir: string,
+    contracts: string[] | undefined,
+): ContractDeployDisplay {
     const order = detectBuildOrder(rootDir, contracts);
     const displayNames = new Map<string, string>();
     for (const contract of order.contracts) {
@@ -143,13 +154,6 @@ function ContractDeployScreen({
     bulletinUrl: string;
     ipfsGatewayUrl: string;
 }) {
-    const [tick, setTick] = useState(0);
-
-    useEffect(() => {
-        const timer = setInterval(() => setTick((current) => current + 1), TIMING.spinnerMs);
-        return () => clearInterval(timer);
-    }, []);
-
     return (
         <Box flexDirection="column">
             <Header
@@ -162,28 +166,59 @@ function ContractDeployScreen({
                 <Row label="signer" value={signerAddress} tone="muted" />
                 <Row label="registry" value={registryAddress} tone="muted" />
             </Section>
-            <Box flexDirection="column">
-                {adapter.signingPrompt && (
-                    <PhoneApprovalCallout
-                        step={adapter.signingPrompt.step}
-                        label={adapter.signingPrompt.label}
-                    />
-                )}
-                {adapter.signingError && (
-                    <Callout tone="danger" title="Signing Failed">
-                        <Text>{adapter.signingError}</Text>
-                    </Callout>
-                )}
-                <DeployTable
-                    statuses={adapter.statuses}
-                    displayNames={displayNames}
-                    crates={crates.length > 0 ? crates : adapter.crates}
-                    logLines={adapter.logLines}
-                    assethubUrl={assethubUrl}
-                    ipfsGatewayUrl={ipfsGatewayUrl}
-                    tick={tick}
+            <ContractDeployStatusView
+                adapter={adapter}
+                crates={crates}
+                displayNames={displayNames}
+                assethubUrl={assethubUrl}
+                ipfsGatewayUrl={ipfsGatewayUrl}
+            />
+        </Box>
+    );
+}
+
+export function ContractDeployStatusView({
+    adapter,
+    crates,
+    displayNames,
+    assethubUrl,
+    ipfsGatewayUrl,
+}: {
+    adapter: ContractPipelineStatusAdapter;
+    crates: string[];
+    displayNames: Map<string, string>;
+    assethubUrl: string;
+    ipfsGatewayUrl: string;
+}) {
+    const [tick, setTick] = useState(0);
+
+    useEffect(() => {
+        const timer = setInterval(() => setTick((current) => current + 1), TIMING.spinnerMs);
+        return () => clearInterval(timer);
+    }, []);
+
+    return (
+        <Box flexDirection="column">
+            {adapter.signingPrompt && (
+                <PhoneApprovalCallout
+                    step={adapter.signingPrompt.step}
+                    label={adapter.signingPrompt.label}
                 />
-            </Box>
+            )}
+            {adapter.signingError && (
+                <Callout tone="danger" title="Signing Failed">
+                    <Text>{adapter.signingError}</Text>
+                </Callout>
+            )}
+            <DeployTable
+                statuses={adapter.statuses}
+                displayNames={displayNames}
+                crates={crates.length > 0 ? crates : adapter.crates}
+                logLines={adapter.logLines}
+                assethubUrl={assethubUrl}
+                ipfsGatewayUrl={ipfsGatewayUrl}
+                tick={tick}
+            />
         </Box>
     );
 }

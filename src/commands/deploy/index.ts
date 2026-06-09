@@ -294,12 +294,13 @@ export function shouldResolveUserSigner(opts: {
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
-function isFullySpecified(opts: DeployOpts): boolean {
+export function isFullySpecified(opts: DeployOpts): boolean {
     return (
         typeof opts.signer === "string" &&
         typeof opts.domain === "string" &&
         typeof opts.buildDir === "string" &&
-        typeof opts.playground === "boolean"
+        typeof opts.playground === "boolean" &&
+        typeof opts.contracts === "boolean"
     );
 }
 

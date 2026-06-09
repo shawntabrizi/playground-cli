@@ -46,6 +46,7 @@ vi.mock("@parity/product-sdk-terminal/host", () => ({
 import {
     cachedBulletinSlotAuthorization,
     getBulletinAllowanceSigner,
+    getCachedBulletinAllowanceSigner,
     getBulletinSlotAuthorization,
 } from "./bulletin.js";
 
@@ -353,6 +354,71 @@ describe("getBulletinAllowanceSigner — SDK signer passthrough", () => {
         const checkedAddress = checkAuthorizationMock.mock.calls[0][1] as string;
         const { ss58Encode } = await import("@parity/product-sdk-address");
         expect(checkedAddress).toBe(ss58Encode(PUBLIC_KEY));
+    });
+});
+
+describe("getCachedBulletinAllowanceSigner", () => {
+    it("passes through the local signer for dev/SURI deploys without any SDK calls", async () => {
+        const dev = devSigner();
+
+        const signer = await getCachedBulletinAllowanceSigner({ publishSigner: dev });
+
+        expect(signer).toBe(dev.signer);
+        expect(createSlotAccountSignerMock).not.toHaveBeenCalled();
+        expect(ensureSlotAccountSignerMock).not.toHaveBeenCalled();
+        expect(requestResourceAllocationMock).not.toHaveBeenCalled();
+    });
+
+    it("fails with the init hint on a cache miss without requesting allocation", async () => {
+        createSlotAccountSignerMock.mockResolvedValue(null);
+
+        await expect(
+            getCachedBulletinAllowanceSigner({ publishSigner: sessionSigner() }),
+        ).rejects.toThrow(ENV_HINT);
+
+        expect(ensureSlotAccountSignerMock).not.toHaveBeenCalled();
+        expect(requestResourceAllocationMock).not.toHaveBeenCalled();
+    });
+
+    it("returns the cached slot signer when authorization is usable", async () => {
+        createSlotAccountSignerMock.mockResolvedValue(SLOT_SIGNER);
+        checkAuthorizationMock.mockResolvedValue({
+            authorized: true,
+            remainingTransactions: 1,
+            remainingBytes: 100n,
+            expiration: 1,
+        });
+
+        const signer = await getCachedBulletinAllowanceSigner({
+            publishSigner: sessionSigner(),
+            bulletinApi: {} as any,
+            requiredBytes: 50,
+        });
+
+        expect(signer).toBe(SLOT_SIGNER);
+        expect(ensureSlotAccountSignerMock).not.toHaveBeenCalled();
+        expect(requestResourceAllocationMock).not.toHaveBeenCalled();
+    });
+
+    it("throws the quota error without requesting an Increase", async () => {
+        createSlotAccountSignerMock.mockResolvedValue(SLOT_SIGNER);
+        checkAuthorizationMock.mockResolvedValue({
+            authorized: true,
+            remainingTransactions: 0,
+            remainingBytes: 100n,
+            expiration: 1,
+        });
+
+        await expect(
+            getCachedBulletinAllowanceSigner({
+                publishSigner: sessionSigner(),
+                bulletinApi: {} as any,
+                requiredBytes: 50,
+            }),
+        ).rejects.toThrow(/does not have enough quota/);
+
+        expect(ensureSlotAccountSignerMock).not.toHaveBeenCalled();
+        expect(requestResourceAllocationMock).not.toHaveBeenCalled();
     });
 });
 

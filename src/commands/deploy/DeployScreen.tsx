@@ -55,11 +55,14 @@ import {
     type StepStatus,
 } from "./runningState.js";
 import type { ResolvedSigner } from "../../utils/signer.js";
-import { DEFAULT_BUILD_DIR, getNetworkLabel } from "../../config.js";
+import { DEFAULT_BUILD_DIR, getChainConfig, getNetworkLabel } from "../../config.js";
 import { VERSION_LABEL } from "../../utils/version.js";
 import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/moddable.js";
 import { validateDomainLabel } from "../../utils/deploy/dotnsRules.js";
 import { NO_SESSION_NOTICE_TITLE, NO_SESSION_NOTICE_BODY } from "./signerNotice.js";
+import { ContractPipelineStatusAdapter } from "../contractPipelineStatus.js";
+import { ContractDeployStatusView, precomputeContractDeployDisplay } from "../contractDeployUi.js";
+import { ContractInstallStatusAdapter, ContractInstallStatusView } from "../contractInstallUi.js";
 
 export interface DeployScreenInputs {
     projectDir: string;
@@ -809,21 +812,6 @@ function stepMark(status: StepStatus): MarkKind {
     }
 }
 
-interface ContractSectionState {
-    deployStatus: StepStatus;
-    installStatus: StepStatus;
-    latestLog: string | null;
-    error?: string;
-}
-
-function initialContractState(enabled: boolean): ContractSectionState {
-    return {
-        deployStatus: enabled ? "pending" : "skipped",
-        installStatus: enabled ? "pending" : "skipped",
-        latestLog: null,
-    };
-}
-
 function RunningStage({
     projectDir,
     inputs,
@@ -851,9 +839,27 @@ function RunningStage({
     );
     const frontendState = runningState.frontend;
     const playgroundState = runningState.playground;
-    const [contractState, setContractState] = useState<ContractSectionState>(() =>
-        initialContractState(inputs.deployContracts),
+    const [activeView, setActiveView] = useState<"contracts" | "frontend">(
+        inputs.deployContracts ? "contracts" : "frontend",
     );
+    const chainConfig = useMemo(() => getChainConfig(), []);
+    const contractDeployDisplay = useMemo(() => {
+        if (!inputs.deployContracts) return { crates: [], displayNames: new Map<string, string>() };
+        try {
+            return precomputeContractDeployDisplay(projectDir, undefined);
+        } catch {
+            return { crates: [], displayNames: new Map<string, string>() };
+        }
+    }, [inputs.deployContracts, projectDir]);
+    const [contractDeployAdapter] = useState(
+        () =>
+            new ContractPipelineStatusAdapter({
+                onCdmPackageDetected: (crate, pkg) =>
+                    contractDeployDisplay.displayNames.set(crate, pkg),
+            }),
+    );
+    const [contractInstallAdapter] = useState(() => new ContractInstallStatusAdapter());
+    const [contractInstallLibraries, setContractInstallLibraries] = useState<string[]>([]);
     const [signingPrompt, setSigningPrompt] = useState<SigningEvent | null>(null);
     // Heads-up rendered from the moment the run starts until the first real
     // sign-request arrives — once the PhoneApprovalCallout takes over, the
@@ -871,8 +877,6 @@ function RunningStage({
     const INFO_MAX_LEN = 160;
     const frontendPendingRef = useRef<string | null>(null);
     const frontendTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const contractPendingRef = useRef<string | null>(null);
-    const contractTimerRef = useRef<NodeJS.Timeout | null>(null);
     const queueFrontendLog = (line: string) => {
         const truncated = line.length > INFO_MAX_LEN ? `${line.slice(0, INFO_MAX_LEN - 1)}…` : line;
         frontendPendingRef.current = truncated;
@@ -887,20 +891,6 @@ function RunningStage({
                     }));
                 }
                 frontendTimerRef.current = null;
-            }, INFO_THROTTLE_MS);
-        }
-    };
-    const queueContractLog = (line: string) => {
-        const truncated = line.length > INFO_MAX_LEN ? `${line.slice(0, INFO_MAX_LEN - 1)}…` : line;
-        contractPendingRef.current = truncated;
-        if (contractTimerRef.current === null) {
-            contractTimerRef.current = setTimeout(() => {
-                if (contractPendingRef.current !== null) {
-                    const v = contractPendingRef.current;
-                    contractPendingRef.current = null;
-                    setContractState((s) => ({ ...s, latestLog: v }));
-                }
-                contractTimerRef.current = null;
             }, INFO_THROTTLE_MS);
         }
     };
@@ -920,13 +910,9 @@ function RunningStage({
             try {
                 if (inputs.deployContracts) {
                     runningContracts = true;
-                    setContractState({
-                        deployStatus: "running",
-                        installStatus: "pending",
-                        latestLog: "starting contract deploy",
-                    });
+                    setActiveView("contracts");
                     const { runContractsBeforeFrontend } = await import("./contracts.js");
-                    const result = await runContractsBeforeFrontend({
+                    await runContractsBeforeFrontend({
                         projectDir,
                         mode: inputs.mode,
                         suri,
@@ -937,14 +923,7 @@ function RunningStage({
                     });
                     runningContracts = false;
                     if (cancelled) return;
-                    setContractState({
-                        deployStatus: "complete",
-                        installStatus: "complete",
-                        latestLog:
-                            result.installedLibraries.length > 0
-                                ? `installed ${result.installedLibraries.join(", ")}`
-                                : "installed cdm dependencies",
-                    });
+                    setActiveView("frontend");
                 }
 
                 const { runDeploy } = await import("../../utils/deploy/run.js");
@@ -971,18 +950,7 @@ function RunningStage({
             } catch (err) {
                 if (!cancelled) {
                     const message = err instanceof Error ? err.message : String(err);
-                    if (runningContracts) {
-                        setContractState((s) => {
-                            const installFailed = s.deployStatus === "complete";
-                            return {
-                                ...s,
-                                deployStatus: installFailed ? s.deployStatus : "error",
-                                installStatus: installFailed ? "error" : "skipped",
-                                error: message,
-                                latestLog: message,
-                            };
-                        });
-                    }
+                    if (runningContracts) contractDeployAdapter.signingError ??= message;
                     setShowPhoneNotice(false);
                     onError(message);
                 }
@@ -990,6 +958,11 @@ function RunningStage({
         })();
 
         function handleSigningEvent(event: SigningEvent) {
+            if (runningContracts) {
+                if (event.kind === "sign-request") setShowPhoneNotice(false);
+                contractDeployAdapter.handleSigningEvent(event);
+                return;
+            }
             if (event.kind === "sign-request") {
                 setShowPhoneNotice(false);
                 setSigningPrompt(event);
@@ -1001,88 +974,15 @@ function RunningStage({
         }
 
         function handleContractDeployEvent(event: ContractDeployEvent) {
-            if (event.type === "detect") {
-                setContractState((s) => ({ ...s, deployStatus: "running" }));
-                queueContractLog(
-                    event.contracts.length === 1
-                        ? "1 contract detected"
-                        : `${event.contracts.length} contracts detected`,
-                );
-            } else if (event.type === "log") {
-                queueContractLog(event.line);
-            } else if (event.type === "build-start") {
-                queueContractLog(`building ${event.crate}`);
-            } else if (event.type === "build-done") {
-                queueContractLog(`built ${event.crate}`);
-            } else if (event.type === "phase") {
-                queueContractLog(event.description);
-            } else if (event.type === "deploy-register-start") {
-                queueContractLog(`registering ${event.crates.join(", ")}`);
-            } else if (event.type === "deploy-register-done") {
-                queueContractLog(`registered ${Object.keys(event.addresses).join(", ")}`);
-            } else if (event.type === "publish-done") {
-                queueContractLog(`published metadata for ${Object.keys(event.cids).join(", ")}`);
-            } else if (event.type === "pipeline-done") {
-                const failed = event.summary.contracts.find(
-                    (contract) => contract.status === "error",
-                );
-                if (failed) {
-                    const message = `${failed.cdmPackage ?? failed.crate}: ${failed.error ?? "error"}`;
-                    setContractState((s) => ({
-                        ...s,
-                        deployStatus: "error",
-                        installStatus: "skipped",
-                        error: message,
-                        latestLog: message,
-                    }));
-                } else {
-                    setContractState((s) => ({ ...s, deployStatus: "complete" }));
-                    queueContractLog("contract deploy complete");
-                }
-            } else if (
-                event.type === "build-error" ||
-                event.type === "deploy-register-error" ||
-                event.type === "pipeline-error"
-            ) {
-                const message = event.error;
-                setContractState((s) => ({
-                    ...s,
-                    deployStatus: "error",
-                    installStatus: "skipped",
-                    error: message,
-                    latestLog: message,
-                }));
-            }
+            contractDeployAdapter.handleDeployEvent(event);
         }
 
         function handleContractInstallEvent(event: ContractInstallEvent) {
-            if (event.type === "install-start") {
-                setContractState((s) => ({
-                    ...s,
-                    deployStatus: "complete",
-                    installStatus: "running",
-                }));
-                queueContractLog(`installing ${event.library}`);
-            } else if (event.type === "query-start") {
-                queueContractLog(`querying ${event.library}`);
-            } else if (event.type === "fetch-start") {
-                queueContractLog(`fetching metadata for ${event.library}`);
-            } else if (event.type === "install-done") {
-                queueContractLog(`installed ${event.library} v${event.result.version}`);
-            } else if (event.type === "pipeline-done") {
-                setContractState((s) => ({
-                    ...s,
-                    installStatus: event.summary.success ? "complete" : "error",
-                    error: event.summary.success ? undefined : "contract install failed",
-                }));
-            } else if (event.type === "install-error" || event.type === "pipeline-error") {
-                const message = event.error;
-                setContractState((s) => ({
-                    ...s,
-                    installStatus: "error",
-                    error: message,
-                    latestLog: message,
-                }));
+            contractInstallAdapter.handleEvent(event);
+            if ("library" in event) {
+                setContractInstallLibraries((libraries) =>
+                    libraries.includes(event.library) ? libraries : [...libraries, event.library],
+                );
             }
         }
 
@@ -1126,13 +1026,11 @@ function RunningStage({
                 clearTimeout(frontendTimerRef.current);
                 frontendTimerRef.current = null;
             }
-            if (contractTimerRef.current !== null) {
-                clearTimeout(contractTimerRef.current);
-                contractTimerRef.current = null;
-            }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const showContractView = inputs.deployContracts && activeView === "contracts";
 
     return (
         <Box flexDirection="column">
@@ -1141,42 +1039,52 @@ function RunningStage({
                     <Text>This deploy may ask you to approve transactions in your mobile app.</Text>
                 </Callout>
             )}
-            {inputs.deployContracts && <ContractSectionView state={contractState} />}
-            <FrontendSectionView state={frontendState} />
-            {playgroundState.status !== "skipped" && (
-                <Box marginTop={1}>
-                    <Row
-                        mark={stepMark(playgroundState.status)}
-                        label="publish to playground"
-                        tone={playgroundState.status === "error" ? "danger" : "muted"}
-                    />
+            {showContractView ? (
+                <Box flexDirection="column">
+                    <Section
+                        title="contract deploy"
+                        gapBelow={contractInstallLibraries.length === 0}
+                    >
+                        <ContractDeployStatusView
+                            adapter={contractDeployAdapter}
+                            crates={contractDeployDisplay.crates}
+                            displayNames={contractDeployDisplay.displayNames}
+                            assethubUrl={chainConfig.assetHubRpc}
+                            ipfsGatewayUrl={chainConfig.bulletinGateway}
+                        />
+                    </Section>
+                    {contractInstallLibraries.length > 0 && (
+                        <Section title="contract install" gapBelow={false}>
+                            <ContractInstallStatusView
+                                adapter={contractInstallAdapter}
+                                libraries={contractInstallLibraries}
+                                ipfsGatewayUrl={chainConfig.bulletinGateway}
+                            />
+                        </Section>
+                    )}
                 </Box>
-            )}
+            ) : (
+                <>
+                    <FrontendSectionView state={frontendState} />
+                    {playgroundState.status !== "skipped" && (
+                        <Box marginTop={1}>
+                            <Row
+                                mark={stepMark(playgroundState.status)}
+                                label="publish to playground"
+                                tone={playgroundState.status === "error" ? "danger" : "muted"}
+                            />
+                        </Box>
+                    )}
 
-            {signingPrompt && signingPrompt.kind === "sign-request" && (
-                <PhoneApprovalCallout step={signingPrompt.step} label={signingPrompt.label} />
+                    {signingPrompt && signingPrompt.kind === "sign-request" && (
+                        <PhoneApprovalCallout
+                            step={signingPrompt.step}
+                            label={signingPrompt.label}
+                        />
+                    )}
+                </>
             )}
         </Box>
-    );
-}
-
-function ContractSectionView({ state }: { state: ContractSectionState }) {
-    const running = state.deployStatus === "running" || state.installStatus === "running";
-    return (
-        <Section title="contracts" gapBelow={false}>
-            <Row
-                mark={stepMark(state.deployStatus)}
-                label="deploy"
-                tone={state.deployStatus === "error" ? "danger" : "muted"}
-            />
-            <Row
-                mark={stepMark(state.installStatus)}
-                label="install"
-                tone={state.installStatus === "error" ? "danger" : "muted"}
-            />
-            {running && state.latestLog && <Hint indent={2}>{truncate(state.latestLog, 120)}</Hint>}
-            {!running && state.error && <Hint indent={2}>{truncate(state.error, 120)}</Hint>}
-        </Section>
     );
 }
 
