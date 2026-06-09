@@ -43,6 +43,7 @@ import { withDeployPhase } from "./phase.js";
 import type { ResolvedSigner } from "../signer.js";
 import type { Env } from "../../config.js";
 import type { DeployPlan } from "./availability.js";
+import type { SigningGate } from "./signingGate.js";
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,18 @@ export interface RunDeployOptions {
      * (3 DotNS taps) if absent and auto-corrects at runtime.
      */
     plan?: DeployPlan;
+    /**
+     * Optional mutex that serializes this deploy's on-chain SIGNING phases
+     * (Bulletin upload + DotNS, then the playground publish) against other
+     * concurrent deploys sharing the same signer account. Required for safe
+     * parallel deploys: every extrinsic re-reads the account's on-chain nonce
+     * at submission time, so two concurrent same-account deploys would collide
+     * on the same nonce. The gate ensures at most one is submitting at a time,
+     * while builds (the slow part) still run in parallel. Absent ⇒ the legacy
+     * single-deploy path runs unguarded (no contention to serialize against).
+     * See `signingGate.ts` for the full rationale.
+     */
+    signingGate?: SigningGate;
 }
 
 export interface DeployOutcome {
@@ -134,19 +147,29 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
 
     const buildAbs = options.buildDir;
 
-    const frontendPromise = (async () => {
-        if (!options.skipBuild) {
-            await withDeployPhase("build", "cli.deploy.build", {}, options.onEvent, async () => {
-                const config = detectBuildConfig(loadDetectInput(options.projectDir));
-                options.onEvent({ kind: "build-detected", config });
-                await runBuild({
-                    cwd: options.projectDir,
-                    config,
-                    onData: (line) => options.onEvent({ kind: "build-log", line }),
-                });
+    // Build first, OUTSIDE any signing gate — tsc+vite is the slow part and must
+    // stay parallel across concurrent deploys. Only the on-chain signing phases
+    // below are serialized via `options.signingGate` (when set).
+    if (!options.skipBuild) {
+        await withDeployPhase("build", "cli.deploy.build", {}, options.onEvent, async () => {
+            const config = detectBuildConfig(loadDetectInput(options.projectDir));
+            options.onEvent({ kind: "build-detected", config });
+            await runBuild({
+                cwd: options.projectDir,
+                config,
+                onData: (line) => options.onEvent({ kind: "build-log", line }),
             });
-        }
+        });
+    }
 
+    // Everything from here on signs and submits on-chain extrinsics. Run it
+    // under the signing gate so concurrent same-account deploys never read the
+    // same nonce. `runGated` is a no-op passthrough when no gate is supplied
+    // (the single-deploy path), preserving existing behaviour exactly.
+    const runGated = <T>(fn: () => Promise<T>): Promise<T> =>
+        options.signingGate ? options.signingGate.runExclusive(fn) : fn();
+
+    const { storageResult, metadataCid } = await runGated(async () => {
         const storageAuth = maybeWrapAuthForSigning(
             setup.bulletinDeployAuthOptions,
             options,
@@ -188,7 +211,7 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
         } finally {
             quota?.destroy();
         }
-        return await withDeployPhase(
+        const storage = await withDeployPhase(
             "storage-and-dotns",
             "cli.deploy.storage-dotns",
             { "cli.deploy.domain": label },
@@ -204,13 +227,19 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
                 });
             },
         );
-    })();
 
-    const storageResult = await frontendPromise;
+        // ── Playground publish ───────────────────────────────────────────
+        // Kept inside the same gated section as storage+DotNS so a single
+        // app holds the signing gate for its entire on-chain run — its
+        // nonces advance to completion before the next concurrent deploy
+        // reads the account next-index.
+        const publishedMetadataCid = await runPlaygroundPublish();
+        return { storageResult: storage, metadataCid: publishedMetadataCid };
+    });
 
-    // ── Playground publish ───────────────────────────────────────────────
-    let metadataCid: string | undefined;
-    if (setup.publishSigner) {
+    // ── Playground publish (definition, executed inside the gate above) ────
+    async function runPlaygroundPublish(): Promise<string | undefined> {
+        if (!setup.publishSigner) return undefined;
         // Capture the non-null signer so its narrowing survives into the
         // `publishToPlayground` closure below — TS drops property narrowing
         // across closure boundaries.
@@ -251,7 +280,7 @@ export async function runDeploy(options: RunDeployOptions): Promise<DeployOutcom
                     isDevSigner: publishSigner.source === "dev",
                 }),
         );
-        metadataCid = pub.metadataCid;
+        return pub.metadataCid;
     }
 
     const appUrl = buildAppUrl(fullDomain, options.env);

@@ -409,4 +409,72 @@ describe("runDeploy", () => {
         expect(ops).toContain("cli.deploy.storage-dotns");
         expect(ops).toContain("cli.deploy.playground");
     });
+
+    it("runs the on-chain phases inside the signing gate, but not the build", async () => {
+        // Record gate hold transitions and which phase fired during each, so we
+        // can prove (a) signing happens under the gate and (b) the build does
+        // not — the nonce-safety contract for parallel deploys.
+        let held = false;
+        const buildWhileHeld: boolean[] = [];
+        const storageWhileHeld: boolean[] = [];
+
+        runBuildMock.mockImplementationOnce(async () => {
+            buildWhileHeld.push(held);
+            return { config: {} as any, outputDir: "/tmp/dist" };
+        });
+        runStorageDeploy.mockImplementationOnce(async () => {
+            storageWhileHeld.push(held);
+            return {
+                domainName: "my-app",
+                fullDomain: "my-app.dot",
+                cid: "bafyapp",
+                ipfsCid: "bafyipfs",
+            };
+        });
+
+        const gate = {
+            runExclusive: vi.fn(async <T>(fn: () => Promise<T>): Promise<T> => {
+                held = true;
+                try {
+                    return await fn();
+                } finally {
+                    held = false;
+                }
+            }),
+        };
+
+        const { push } = collectEvents();
+        await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: true,
+            userSigner: fakeUserSigner,
+            onEvent: push,
+            signingGate: gate as any,
+        });
+
+        expect(gate.runExclusive).toHaveBeenCalledTimes(1);
+        // Build ran before/outside the gate; storage (signing) ran inside it.
+        expect(buildWhileHeld).toEqual([false]);
+        expect(storageWhileHeld).toEqual([true]);
+        // The publish (also on-chain) shared the same single gate acquisition.
+        expect(publishToPlaygroundMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("is unchanged when no signing gate is provided (single-deploy path)", async () => {
+        const { push } = collectEvents();
+        const outcome = await runDeploy({
+            projectDir: "/tmp/proj",
+            buildDir: "/tmp/proj/dist",
+            domain: "my-app",
+            mode: "dev",
+            publishToPlayground: false,
+            userSigner: null,
+            onEvent: push,
+        });
+        expect(outcome.fullDomain).toBe("my-app.dot");
+        expect(runStorageDeploy).toHaveBeenCalledTimes(1);
+    });
 });

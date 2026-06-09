@@ -79,6 +79,44 @@ For fully non-interactive (CI) runs, combine `--signer`, `--domain`, `--buildDir
 - `--no-moddable` — explicitly skip source publishing even if `--moddable` would otherwise apply.
 - `--private` — publish to the playground with owner-only visibility.
 
+### `playground deploy-all`
+
+Deploy several `.dot` apps in a single invocation. Builds and Bulletin uploads run in parallel; on-chain signing is serialized **per signer account** so concurrent deploys that share a signer (the common case — everything on `--signer dev`) never collide on a nonce. This is the parallel counterpart to `playground deploy`; the single-app command is unchanged.
+
+The command is non-interactive by design (N concurrent Ink TUIs are unreadable). Apps are listed in a JSON manifest; shared options come from flags and apply to every app.
+
+Manifest (`apps.json`):
+
+```json
+{
+  "apps": [
+    { "name": "arcade",       "dir": "apps/arcade",       "domain": "arcade" },
+    { "name": "arcade-snake", "dir": "apps/arcade-snake", "domain": "arcade-snake" }
+  ]
+}
+```
+
+Each app's `dir` is resolved relative to the manifest file. `buildDir` (relative to `dir`) and `skipBuild` are optional per-app overrides; otherwise the shared `--buildDir` / `--no-build` flags apply.
+
+```bash
+playground deploy-all --manifest apps.json --signer dev --playground --concurrency 3 --json
+```
+
+Flags:
+
+- `--manifest <path>` — required; the JSON manifest above.
+- `--signer <mode>` — `dev` or `phone`, applied to every app.
+- `--concurrency <n>` — max apps building/uploading at once (default 3; clamped to the app count).
+- `--buildDir <path>` / `--no-build` — defaults for apps that don't override them.
+- `--playground` / `--private` / `--suri` / `--env` — same meaning as `playground deploy`, applied to every app.
+- `--json` — emit a machine-readable per-app status summary (`{ name, status, domain, appUrl, appCid, … }`) to stdout on completion.
+
+A single app's failure is isolated — the others still deploy — and the command exits non-zero if any app failed, so CI fails on a partial batch.
+
+#### Why one invocation instead of N concurrent `playground deploy` processes
+
+Every deploy extrinsic (DotNS register/`setContenthash`, Bulletin chunk `store`, the playground `registry.publish`) re-reads the account's on-chain next-index at submission time. Two concurrent deploys signing from the **same** account would read the same nonce and one tx would be rejected ("nonce too low"/replaced). `deploy-all` shares one in-memory signing gate across the batch so at most one same-account deploy is submitting at a time — the simplest correct fix without an on-disk nonce-reservation lock across separate processes.
+
 ### `playground contract`
 
 CDM-backed workflows for contracts:
