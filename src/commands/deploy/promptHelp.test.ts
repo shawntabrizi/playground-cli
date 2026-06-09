@@ -21,6 +21,7 @@ import {
     PUBLISH_HELP,
     MODDABLE_HELP,
     TAGS_HELP,
+    DOMAIN_HELP,
     BUILD_DIR_HINT,
     DOMAIN_HINT,
     type PromptBox,
@@ -33,6 +34,7 @@ const BOXES: Record<string, PromptBox> = {
     PUBLISH_HELP,
     MODDABLE_HELP,
     TAGS_HELP,
+    DOMAIN_HELP,
 };
 
 describe("deploy prompt help boxes", () => {
@@ -67,6 +69,15 @@ describe("plain-language anchors (the prompts the feedback called out)", () => {
         const body = MODDABLE_HELP.body.toLowerCase();
         expect(body).toContain("playground mod");
         expect(body).toContain("github");
+    });
+
+    it("domain help steers users to a no-personhood name (9+ char base)", () => {
+        const body = DOMAIN_HELP.body.toLowerCase();
+        // The actionable threshold for an open-to-all (NoStatus) name.
+        expect(body).toContain("9");
+        expect(body).toContain("personhood");
+        // Per product wording: say "personhood check", never "identity check".
+        expect(body).not.toContain("identity");
     });
 });
 

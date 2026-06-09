@@ -17,6 +17,9 @@ allowBuilds:
   esbuild: false
   node-datachannel: false
 
+minimumReleaseAgeExclude:
+  - bulletin-deploy@0.10.0
+
 overrides:
   # dotns-cli 0.6.1 ships a broken publish manifest (file:.papi/descriptors
   # missing from the tarball); redirect to a local empty stub. See CLAUDE.md.

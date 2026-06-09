@@ -68,6 +68,7 @@ import {
     PUBLISH_HELP,
     MODDABLE_HELP,
     TAGS_HELP,
+    DOMAIN_HELP,
     BUILD_DIR_HINT,
     DOMAIN_HINT,
     type PromptBox,
@@ -382,6 +383,7 @@ export function DeployScreen({
 
             {stage.kind === "prompt-domain" && (
                 <Box flexDirection="column">
+                    <PromptInfo box={DOMAIN_HELP} />
                     <PromptHint text={DOMAIN_HINT} />
                     <Input
                         label="domain"

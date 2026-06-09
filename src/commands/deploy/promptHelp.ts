@@ -83,6 +83,15 @@ export const TAGS_HELP: PromptBox = {
         "This is optional: choose Skip to publish without a tag.",
 };
 
+export const DOMAIN_HELP: PromptBox = {
+    title: "Choosing your .dot name",
+    body:
+        "A name with a 9-character-or-longer base (before any optional 2-digit " +
+        "suffix) is open to everyone, so it deploys with no personhood check. " +
+        "Names of 6 to 8 characters need Proof of Personhood on this network; " +
+        "names of 5 or fewer are reserved.",
+};
+
 /** One-line hints for the trivial text inputs (no bordered box). */
 export const BUILD_DIR_HINT =
     "The folder holding your built site (the files we upload). The default fits most projects.";
