@@ -20,6 +20,13 @@ import { resolve } from "node:path";
 import { StepRunner, type Step } from "../../utils/ui/components/StepRunner.js";
 import { Header, Hint, Row, Section, Callout } from "../../utils/ui/theme/index.js";
 import { COMMUNITY_NOTICE_TITLE, COMMUNITY_NOTICE_BODY } from "./communityNotice.js";
+import {
+    SOURCE_UNAVAILABLE_TITLE,
+    sourceUnavailableBody,
+    SourceUnavailableHalt,
+    BROWSE_OTHER_APPS,
+} from "./sourceUnavailable.js";
+import { assertPublicGitHubRepo, ModdablePreflightError } from "../../utils/deploy/moddable.js";
 import { runCommand } from "../../utils/git.js";
 import { createOptionalGitBaseline } from "../../utils/mod/git-baseline.js";
 import { downloadGitHubTarball, parseGitHubRepoUrl } from "../../utils/mod/source.js";
@@ -55,6 +62,11 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
     // The matching `Hint` is driven off the state setter for re-render.
     const setupRanRef = useRef(false);
     const [setupRanVisible, setSetupRanVisible] = useState(false);
+    // Set when the app's GitHub source is no longer publicly reachable. Swaps
+    // the red "setup failed" row for a gentle yellow notice (see
+    // sourceUnavailable.ts) — the publisher made the repo private/deleted it
+    // after publishing, which we can't undo and the user can't fix.
+    const [unavailable, setUnavailable] = useState(false);
     const setupLogFile = resolve(targetDir, ".dot-mod-setup.log");
     const sourceLogFile = resolve(targetDir, ".dot-mod-source.log");
 
@@ -100,6 +112,22 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                 // fallback handles the rare case of an old deploy that
                 // pre-dates the metadata field — codeload returns 404 for a
                 // wrong branch, which surfaces as a clear download error.
+                // The repository URL is frozen into the app metadata at deploy
+                // time; the publisher may since have made the repo private,
+                // deleted, or renamed it. Probe before the codeload download so
+                // we can present that gently instead of a raw 404 step failure.
+                // (The interactive picker pre-checks too, but a direct
+                // `playground mod <domain>` lands here without that guard.)
+                try {
+                    await assertPublicGitHubRepo(repoUrl);
+                } catch (err) {
+                    if (err instanceof ModdablePreflightError) {
+                        setUnavailable(true);
+                        throw new SourceUnavailableHalt("source no longer publicly available");
+                    }
+                    // Transient/non-404 verification error — fall through and
+                    // let the download below surface the real failure.
+                }
                 const branch = meta.branch ?? "main";
                 log(`downloading github.com/${ref.owner}/${ref.repo} (${branch})…`);
                 await downloadGitHubTarball({
@@ -159,8 +187,14 @@ export function SetupScreen({ domain, metadata: initial, registry, targetDir, on
                 }}
             />
 
-            <Hint>→ {targetDir}</Hint>
+            {!unavailable && <Hint>→ {targetDir}</Hint>}
             {setupRanVisible && <Hint>full setup log: {setupLogFile}</Hint>}
+
+            {unavailable && (
+                <Callout tone="warning" title={SOURCE_UNAVAILABLE_TITLE}>
+                    <Text>{sourceUnavailableBody(domain, BROWSE_OTHER_APPS)}</Text>
+                </Callout>
+            )}
 
             {error && (
                 <Section>

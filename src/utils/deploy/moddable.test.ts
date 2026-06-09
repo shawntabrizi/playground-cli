@@ -56,6 +56,16 @@ describe("assertPublicGitHubRepo", () => {
         ).rejects.toThrow(/must use a public github repository/i);
     });
 
+    it("passes an abort signal so a stalled socket can't hang the probe", async () => {
+        let seenSignal: unknown;
+        const mockFetch: typeof fetch = async (_url, init) => {
+            seenSignal = init?.signal;
+            return new Response(null, { status: 200 });
+        };
+        await assertPublicGitHubRepo("https://github.com/foo/bar", mockFetch);
+        expect(seenSignal).toBeInstanceOf(AbortSignal);
+    });
+
     it("does nothing on network error (fail open — codeload reveals truth later)", async () => {
         const mockFetch: typeof fetch = async () => {
             throw new Error("ECONNREFUSED");

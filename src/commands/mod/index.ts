@@ -25,7 +25,6 @@ import { SetupScreen } from "./SetupScreen.js";
 import { QuestPicker } from "./QuestPicker.js";
 import { defaultRepoName } from "../../utils/git/repoName.js";
 import { runCliCommand } from "../../cli-runtime.js";
-import { assertPublicGitHubRepo, ModdablePreflightError } from "../../utils/deploy/moddable.js";
 import { parseGitHubRepoUrl, type GitHubRepoRef } from "../../utils/mod/source.js";
 import { fetchBulletinJson, getBulletinGateway } from "../../utils/bulletinGateway.js";
 
@@ -75,40 +74,13 @@ async function runModCommand(rawDomain: string | undefined): Promise<void> {
             metadata = picked;
         }
 
-        // Lazy verify that the picked app's source repository is publicly
-        // reachable. The picker filters apps that have NO repository URL, but
-        // a publisher can flip a repo to private after deploying, which would
-        // break the anonymous codeload download a few steps down. Bail here
-        // with a clean message so the user can pick a different app before we
-        // mount SetupScreen and start writing files.
-        //
-        // The direct-domain path (`playground mod some-domain.dot`) has no metadata
-        // at this point and falls through to SetupScreen, where a private or
-        // missing repo surfaces as a `downloadGitHubTarball` 404 step failure.
-        // Slightly less polished UX, but lifting the metadata fetch up here
-        // just for symmetry would be a larger refactor.
-        if (metadata?.repository) {
-            const repoUrl = metadata.repository;
-            try {
-                await withSpan(
-                    "cli.mod.repo-check",
-                    "verify repository is public",
-                    { "cli.mod.repo": repoUrl },
-                    () => assertPublicGitHubRepo(repoUrl),
-                );
-            } catch (err) {
-                if (err instanceof ModdablePreflightError) {
-                    console.error();
-                    console.error(`  ${err.message}.`);
-                    console.error(
-                        `  Pick a different app or ask the publisher to make the repo public.`,
-                    );
-                    process.exitCode = 1;
-                    return;
-                }
-                throw err;
-            }
-        }
+        // Source-repository reachability is verified at the point of use, not
+        // here: the interactive picker probes the picked app inline (and stays
+        // open with a friendly notice if the repo is gone), and SetupScreen
+        // re-checks for the direct `playground mod <domain>` path, surfacing the
+        // same gentle "source unavailable" notice instead of a raw 404. A
+        // publisher can make a repo private/delete it after deploying, so the
+        // frozen metadata URL is never trusted blindly. See sourceUnavailable.ts.
 
         // QuestPicker is a read-only display of `quests.json` from the track
         // repo's main. It runs BEFORE the existing setup flow without

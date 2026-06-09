@@ -19,6 +19,10 @@
  *
  * Errors are passed to onDone for the parent to display below the UI.
  * Warnings (`isWarning = true`) show inline and don't stop execution.
+ * Halting warnings (`haltAsWarning = true`) show inline with the warn mark and
+ * STOP execution, but report `ok: false` with no `error` — for cases the
+ * parent wants to present gently (its own Callout) rather than as a red
+ * failure row, while still skipping any success-only output.
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -117,6 +121,7 @@ export function StepRunner({ title, steps, onDone }: Props) {
 
         (async () => {
             let error: string | undefined;
+            let halted = false;
 
             for (let i = 0; i < steps.length; i++) {
                 if (cancelled) break;
@@ -137,7 +142,18 @@ export function StepRunner({ title, steps, onDone }: Props) {
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     const isWarning = err instanceof Error && (err as any).isWarning === true;
+                    const haltAsWarning =
+                        err instanceof Error && (err as any).haltAsWarning === true;
 
+                    if (haltAsWarning) {
+                        setStates((prev) =>
+                            prev.map((s, j) =>
+                                j === i ? { ...s, status: "warning", message: msg } : s,
+                            ),
+                        );
+                        halted = true;
+                        break;
+                    }
                     if (isWarning) {
                         setStates((prev) =>
                             prev.map((s, j) =>
@@ -154,7 +170,7 @@ export function StepRunner({ title, steps, onDone }: Props) {
                 }
             }
 
-            if (!cancelled) onDone({ ok: !error, error });
+            if (!cancelled) onDone({ ok: !error && !halted, error });
         })();
 
         return () => {

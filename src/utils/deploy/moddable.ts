@@ -30,6 +30,15 @@ import { parseGitHubRepoUrl } from "../mod/source.js";
 
 export class ModdablePreflightError extends Error {}
 
+/**
+ * Upper bound on the public-repo HEAD probe. A *stalled* socket (as opposed to
+ * a fast network error) would otherwise hang the await until the OS-level
+ * socket timeout — minutes — which strands the `playground mod` picker (it
+ * blocks input while a check is in flight). On timeout we abort and fail open,
+ * exactly like any other network error below.
+ */
+const REPO_CHECK_TIMEOUT_MS = 10_000;
+
 export async function ensureGitInstalled(onLog?: (line: string) => void): Promise<void> {
     if (await commandExists("git")) return;
     const step = TOOL_STEPS.find((s) => s.name === "git");
@@ -92,9 +101,12 @@ export async function assertPublicGitHubRepo(url: string, f: typeof fetch = fetc
 
     let res: Response;
     try {
-        res = await f(`https://github.com/${ref.owner}/${ref.repo}`, { method: "HEAD" });
+        res = await f(`https://github.com/${ref.owner}/${ref.repo}`, {
+            method: "HEAD",
+            signal: AbortSignal.timeout(REPO_CHECK_TIMEOUT_MS),
+        });
     } catch {
-        return; // network error — can't verify, let downstream fail
+        return; // network error or timeout — can't verify, let downstream fail
     }
 
     if (res.ok) return;

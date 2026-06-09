@@ -17,8 +17,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
 import { Mark, Hint, Callout, COLOR } from "../../utils/ui/theme/index.js";
 import { fetchBulletinJson, getBulletinGateway } from "../../utils/bulletinGateway.js";
+import { assertPublicGitHubRepo, ModdablePreflightError } from "../../utils/deploy/moddable.js";
 
 import { COMMUNITY_NOTICE_TITLE, COMMUNITY_NOTICE_BODY } from "./communityNotice.js";
+import {
+    SOURCE_UNAVAILABLE_TITLE,
+    sourceUnavailableBody,
+    PICK_ANOTHER_APP,
+} from "./sourceUnavailable.js";
 import { filterModdable, type AppEntry } from "./browserFilter.js";
 export type { AppEntry };
 
@@ -47,6 +53,14 @@ export function AppBrowser({ registry, onSelect, onCancel, moddableOnly }: Props
     const [cursor, setCursor] = useState(0);
     const [scroll, setScroll] = useState(0);
     const [fetching, setFetching] = useState(true);
+    // A source check is in flight (HEAD against the picked app's GitHub repo).
+    const [checking, setChecking] = useState(false);
+    // Domain of the app whose repo turned out to be unreachable, or null. The
+    // picker stays open and shows a yellow notice so the user picks another.
+    const [unavailable, setUnavailable] = useState<string | null>(null);
+    // Set when the user quits mid-check so the in-flight verifyAndSelect promise
+    // no-ops instead of calling onSelect/setState on an unmounted component.
+    const cancelledRef = useRef(false);
     // Offset (in reverse-chronological order) of the next page to request.
     // Contract's `getApps(start, count)` treats `start` as a REVERSE offset —
     // `start=0` returns the newest batch, and the next page resumes at
@@ -152,7 +166,51 @@ export function AppBrowser({ registry, onSelect, onCancel, moddableOnly }: Props
         }
     }, [cursor, filtered.length, fetching, loadBatch]);
 
+    // The picker filters to apps that published a repository URL, but that URL
+    // is frozen at deploy time and never re-checked against live GitHub (see
+    // sourceUnavailable.ts). Probe ONLY the picked app — one HEAD request, same
+    // as the old post-pick check — so a stale/now-private repo is caught before
+    // we mount SetupScreen. A 404 keeps the user in the picker with a friendly
+    // notice; transient errors fall through to SetupScreen's clearer download
+    // failure.
+    const verifyAndSelect = useCallback(
+        async (app: AppEntry) => {
+            if (!app.repository) {
+                onSelect(app);
+                return;
+            }
+            setChecking(true);
+            setUnavailable(null);
+            try {
+                await assertPublicGitHubRepo(app.repository);
+                if (cancelledRef.current) return;
+                onSelect(app);
+            } catch (err) {
+                if (cancelledRef.current) return;
+                if (err instanceof ModdablePreflightError) {
+                    setUnavailable(app.domain);
+                    setChecking(false);
+                } else {
+                    onSelect(app);
+                }
+            }
+        },
+        [onSelect],
+    );
+
     useInput((input, key) => {
+        // `q` quits even while a source check is in flight — set the cancel
+        // flag first so the pending verifyAndSelect promise no-ops instead of
+        // resolving onSelect/setState against an unmounted component.
+        if (input === "q") {
+            cancelledRef.current = true;
+            onCancel?.();
+            return;
+        }
+        // Otherwise ignore keystrokes during the brief HEAD check so navigation
+        // and Enter can't race the in-flight verification.
+        if (checking) return;
+        if (key.upArrow || key.downArrow) setUnavailable(null);
         if (key.upArrow && cursor > 0) {
             const next = cursor - 1;
             setCursor(next);
@@ -163,8 +221,7 @@ export function AppBrowser({ registry, onSelect, onCancel, moddableOnly }: Props
             setCursor(next);
             if (next >= scroll + viewH) setScroll(next - viewH + 1);
         }
-        if (key.return && filtered.length > 0) onSelect(filtered[cursor]);
-        if (input === "q") onCancel?.();
+        if (key.return && filtered.length > 0) void verifyAndSelect(filtered[cursor]);
     });
 
     const visible = filtered.slice(scroll, scroll + viewH);
@@ -224,7 +281,18 @@ export function AppBrowser({ registry, onSelect, onCancel, moddableOnly }: Props
                             : `(${apps.length}/${total})`
                     }`}</Hint>
                 </Box>
+                {checking && (
+                    <Box gap={1} marginTop={1}>
+                        <Mark kind="run" />
+                        <Text dimColor>checking source…</Text>
+                    </Box>
+                )}
             </Box>
+            {unavailable && (
+                <Callout tone="warning" title={SOURCE_UNAVAILABLE_TITLE}>
+                    <Text>{sourceUnavailableBody(unavailable, PICK_ANOTHER_APP)}</Text>
+                </Callout>
+            )}
         </Box>
     );
 }
