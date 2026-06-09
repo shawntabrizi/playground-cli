@@ -73,8 +73,10 @@ describe("plain-language anchors (the prompts the feedback called out)", () => {
 
     it("domain help steers users to a no-personhood name (9+ char base)", () => {
         const body = DOMAIN_HELP.body.toLowerCase();
-        // The actionable threshold for an open-to-all (NoStatus) name.
-        expect(body).toContain("9");
+        // The actionable threshold for an open-to-all (NoStatus) name. Match the
+        // full phrase, not the bare digit "9" (which a stray version/number could
+        // satisfy without actually communicating the threshold).
+        expect(body).toContain("9-character");
         expect(body).toContain("personhood");
         // Per product wording: say "personhood check", never "identity check".
         expect(body).not.toContain("identity");
