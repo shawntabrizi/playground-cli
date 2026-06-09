@@ -208,6 +208,15 @@ export function AccountSetup({
                     const summary = summarizeOutcomes(outcomes, PLAYGROUND_RESOURCES);
 
                     if (summary.rejected.length > 0 || summary.unavailable.length > 0) {
+                        // Telemetry is off by default, so this stderr line is
+                        // the only signal that distinguishes a user decline
+                        // (Rejected) from the account holder being unable to
+                        // provision (NotAvailable — e.g. a full on-chain SSS
+                        // ring). Positional: outcomes[i] ↔ PLAYGROUND_RESOURCES[i].
+                        const detail = PLAYGROUND_RESOURCES.map(
+                            (r, i) => `${r.tag}=${outcomes[i]?.tag ?? "missing"}`,
+                        ).join(" ");
+                        console.error(`[allowances] resource allocation outcomes: ${detail}`);
                         const denied = [...summary.rejected, ...summary.unavailable]
                             .map(describeResource)
                             .join(", ");

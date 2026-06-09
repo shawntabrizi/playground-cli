@@ -28,10 +28,13 @@ const rejected: ApAllocationOutcome = { tag: "Rejected", value: undefined };
 const notAvailable: ApAllocationOutcome = { tag: "NotAvailable", value: undefined };
 
 describe("PLAYGROUND_RESOURCES", () => {
-    test("requests all three resources: Bulletin, StatementStore, SmartContract(0)", () => {
+    test("requests only the resources the CLI consumes: Bulletin, SmartContract(0)", () => {
+        // StatementStoreAllowance is intentionally absent — the CLI never
+        // consumes a product Statement Store slot key (see resources.ts), and
+        // requesting it blocked `playground init` for users whose on-chain SSS
+        // ring was full (phone returns NotAvailable).
         expect(PLAYGROUND_RESOURCES.map((r) => r.tag)).toEqual([
             "BulletInAllowance",
-            "StatementStoreAllowance",
             "SmartContractAllowance",
         ]);
         const sc = PLAYGROUND_RESOURCES.find((r) => r.tag === "SmartContractAllowance");
@@ -41,10 +44,13 @@ describe("PLAYGROUND_RESOURCES", () => {
 
 describe("summarizeOutcomes", () => {
     test("buckets outcomes by tag, order-sensitive", () => {
-        const summary = summarizeOutcomes(
-            [allocated, rejected, notAvailable],
-            PLAYGROUND_RESOURCES,
-        );
+        // Explicit resource list so this stays independent of PLAYGROUND_RESOURCES.
+        const resources: typeof PLAYGROUND_RESOURCES = [
+            { tag: "BulletInAllowance", value: undefined },
+            { tag: "StatementStoreAllowance", value: undefined },
+            { tag: "SmartContractAllowance", value: 0 },
+        ];
+        const summary = summarizeOutcomes([allocated, rejected, notAvailable], resources);
         expect(summary.granted.map((r) => r.tag)).toEqual(["BulletInAllowance"]);
         expect(summary.rejected.map((r) => r.tag)).toEqual(["StatementStoreAllowance"]);
         expect(summary.unavailable.map((r) => r.tag)).toEqual(["SmartContractAllowance"]);

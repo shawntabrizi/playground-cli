@@ -23,15 +23,29 @@
 import type { AllocatableResource, ApAllocationOutcome } from "@parity/product-sdk-terminal/host";
 
 /**
- * The full mobile-granted resource set for the playground product:
- * Bulletin storage, Statement Store, and PGAS sponsoring for Revive
- * contract calls (derivation index 0 = the default playground account).
- * All three are requested in ONE `requestResourceAllocation` call so the
- * user sees a single approval dialog during `playground init`.
+ * The mobile-granted resource set the playground product actually consumes:
+ * Bulletin storage (metadata + chunk uploads) and PGAS sponsoring for Revive
+ * contract calls (derivation index 0 = the default playground account). Both
+ * are requested in ONE `requestResourceAllocation` call so the user sees a
+ * single approval dialog during `playground init`.
+ *
+ * `StatementStoreAllowance` is deliberately NOT requested. The CLI never
+ * consumes a product Statement Store slot key: every phone interaction
+ * (`session.createTransaction` / `signRaw` / `requestResourceAllocation`
+ * itself) rides the SSO channel, whose prover is derived from the QR-login
+ * `ssSecret` (`@novasamatech/host-papp`'s `createSsoStatementProver`), not
+ * from a `StatementStoreAllowance` allocation. The product slot key is only
+ * consumed by `papp.allowance.getStatementStoreProver`, an opt-in API the CLI
+ * never calls; bulletin-deploy's storage path likewise reads only the Bulletin
+ * slot key (we always inject explicit signer/storageSigner). Requesting it was
+ * pure overhead AND a failure source: it is the one resource that needs the
+ * phone to seat a slot in the scarce on-chain SSS ring, so for users whose ring
+ * is full of still-unexpired slots the phone returns `NotAvailable`, which the
+ * old code surfaced as a hard `denied: Statement Store` and aborted account
+ * setup over a grant nothing uses.
  */
 export const PLAYGROUND_RESOURCES: AllocatableResource[] = [
     { tag: "BulletInAllowance", value: undefined },
-    { tag: "StatementStoreAllowance", value: undefined },
     { tag: "SmartContractAllowance", value: 0 },
 ];
 
