@@ -61,6 +61,17 @@ import { ensureGitInstalled, resolveRepositoryUrl } from "../../utils/deploy/mod
 import { PLAYGROUND_TAGS } from "../../utils/deploy/tags.js";
 import { validateDomainLabel } from "../../utils/deploy/dotnsRules.js";
 import { NO_SESSION_NOTICE_TITLE, NO_SESSION_NOTICE_BODY } from "./signerNotice.js";
+import {
+    BUILD_HELP,
+    CONTRACTS_HELP,
+    SIGNER_HELP,
+    PUBLISH_HELP,
+    MODDABLE_HELP,
+    TAGS_HELP,
+    BUILD_DIR_HINT,
+    DOMAIN_HINT,
+    type PromptBox,
+} from "./promptHelp.js";
 import { ContractPipelineStatusAdapter } from "../contractPipelineStatus.js";
 import { ContractDeployStatusView, precomputeContractDeployDisplay } from "../contractDeployUi.js";
 import { ContractInstallStatusAdapter, ContractInstallStatusView } from "../contractInstallUi.js";
@@ -118,6 +129,28 @@ interface Resolved {
     repositoryUrl: string | null;
     /** Resolved playground tag, or `null` for untagged. Only meaningful when `publishToPlayground`. */
     tag: string | null;
+}
+
+/**
+ * Plain-language info box rendered above a conceptual deploy prompt. See
+ * `promptHelp.ts`. The `accent` tone marks it as informational (distinct from
+ * the yellow `warning` notices).
+ */
+function PromptInfo({ box }: { box: PromptBox }) {
+    return (
+        <Callout tone="accent" title={box.title}>
+            <Text>{box.body}</Text>
+        </Callout>
+    );
+}
+
+/** One-line dim hint above a trivial text input (domain, build directory). */
+function PromptHint({ text }: { text: string }) {
+    return (
+        <Box marginLeft={2} marginBottom={1}>
+            <Text dimColor>{text}</Text>
+        </Box>
+    );
 }
 
 export function DeployScreen({
@@ -255,18 +288,21 @@ export function DeployScreen({
             />
 
             {stage.kind === "prompt-build" && (
-                <Select<boolean>
-                    label="build before deploy?"
-                    options={[
-                        { value: false, label: "yes", hint: "rebuild the project" },
-                        { value: true, label: "no", hint: "use existing build in buildDir" },
-                    ]}
-                    initialIndex={0}
-                    onSelect={(skip) => {
-                        setSkipBuild(skip);
-                        advance(skip);
-                    }}
-                />
+                <Box flexDirection="column">
+                    <PromptInfo box={BUILD_HELP} />
+                    <Select<boolean>
+                        label="build before deploy?"
+                        options={[
+                            { value: false, label: "yes", hint: "rebuild with my latest code" },
+                            { value: true, label: "no", hint: "redeploy the existing build" },
+                        ]}
+                        initialIndex={0}
+                        onSelect={(skip) => {
+                            setSkipBuild(skip);
+                            advance(skip);
+                        }}
+                    />
+                </Box>
             )}
 
             {stage.kind === "prompt-signer" && (
@@ -276,13 +312,14 @@ export function DeployScreen({
                             <Text>{NO_SESSION_NOTICE_BODY}</Text>
                         </Callout>
                     )}
+                    <PromptInfo box={SIGNER_HELP} />
                     <Select<SignerMode>
-                        label="signer"
+                        label="who signs the upload?"
                         options={[
                             {
                                 value: "dev" as SignerMode,
                                 label: "dev signer",
-                                hint: "fast, 0 phone taps for upload",
+                                hint: "fast, no phone needed",
                             },
                             // The phone signer is only offered with a paired
                             // session; otherwise the notice above explains how
@@ -292,7 +329,7 @@ export function DeployScreen({
                                       {
                                           value: "phone" as SignerMode,
                                           label: "your phone signer",
-                                          hint: "signed with your logged-in account",
+                                          hint: "signs with your own account",
                                       },
                                   ]
                                 : []),
@@ -306,55 +343,64 @@ export function DeployScreen({
             )}
 
             {stage.kind === "prompt-contracts" && (
-                <Select<boolean>
-                    label="changed contracts?"
-                    options={[
-                        { value: false, label: "no", hint: "frontend deploy only" },
-                        {
-                            value: true,
-                            label: "yes",
-                            hint: "deploy + install, then rebuild frontend",
-                        },
-                    ]}
-                    initialIndex={0}
-                    onSelect={(yes) => {
-                        setDeployContracts(yes);
-                        const nextSkipBuild = yes ? false : skipBuild;
-                        if (yes) setSkipBuild(false);
-                        advance(nextSkipBuild, mode, yes);
-                    }}
-                />
+                <Box flexDirection="column">
+                    <PromptInfo box={CONTRACTS_HELP} />
+                    <Select<boolean>
+                        label="did you change your smart contracts?"
+                        options={[
+                            { value: false, label: "no", hint: "I only changed the website" },
+                            {
+                                value: true,
+                                label: "yes",
+                                hint: "I changed contract code too",
+                            },
+                        ]}
+                        initialIndex={0}
+                        onSelect={(yes) => {
+                            setDeployContracts(yes);
+                            const nextSkipBuild = yes ? false : skipBuild;
+                            if (yes) setSkipBuild(false);
+                            advance(nextSkipBuild, mode, yes);
+                        }}
+                    />
+                </Box>
             )}
 
             {stage.kind === "prompt-buildDir" && (
-                <Input
-                    label="build directory"
-                    initial={DEFAULT_BUILD_DIR}
-                    onSubmit={(v) => {
-                        setBuildDir(v);
-                        advance(skipBuild, mode, deployContracts, v);
-                    }}
-                />
+                <Box flexDirection="column">
+                    <PromptHint text={BUILD_DIR_HINT} />
+                    <Input
+                        label="build directory"
+                        initial={DEFAULT_BUILD_DIR}
+                        onSubmit={(v) => {
+                            setBuildDir(v);
+                            advance(skipBuild, mode, deployContracts, v);
+                        }}
+                    />
+                </Box>
             )}
 
             {stage.kind === "prompt-domain" && (
-                <Input
-                    label="domain"
-                    placeholder="my-app"
-                    prefill={domain ?? ""}
-                    externalError={domainError}
-                    validate={(v) => {
-                        const label = v.trim().replace(/\.dot$/i, "");
-                        const result = validateDomainLabel(label);
-                        return result.ok ? null : result.reason;
-                    }}
-                    onSubmit={(v) => {
-                        const trimmed = v.trim();
-                        setDomain(trimmed);
-                        setDomainError(null);
-                        setStage({ kind: "validate-domain", domain: trimmed });
-                    }}
-                />
+                <Box flexDirection="column">
+                    <PromptHint text={DOMAIN_HINT} />
+                    <Input
+                        label="domain"
+                        placeholder="my-app"
+                        prefill={domain ?? ""}
+                        externalError={domainError}
+                        validate={(v) => {
+                            const label = v.trim().replace(/\.dot$/i, "");
+                            const result = validateDomainLabel(label);
+                            return result.ok ? null : result.reason;
+                        }}
+                        onSubmit={(v) => {
+                            const trimmed = v.trim();
+                            setDomain(trimmed);
+                            setDomainError(null);
+                            setStage({ kind: "validate-domain", domain: trimmed });
+                        }}
+                    />
+                </Box>
             )}
 
             {stage.kind === "validate-domain" && (
@@ -380,58 +426,68 @@ export function DeployScreen({
             )}
 
             {stage.kind === "prompt-publish" && (
-                <Select<boolean>
-                    label="publish to the playground?"
-                    options={[
-                        { value: false, label: "no", hint: "DotNS only" },
-                        { value: true, label: "yes", hint: "publish to the playground registry" },
-                    ]}
-                    initialIndex={0}
-                    onSelect={(yes) => {
-                        setPublishToPlayground(yes);
-                        if (!yes) setModdable(false);
-                        advance(
-                            skipBuild,
-                            mode,
-                            deployContracts,
-                            buildDir,
-                            domain,
-                            yes,
-                            yes ? moddable : false,
-                        );
-                    }}
-                />
-            )}
-
-            {stage.kind === "prompt-moddable" && (
-                <Select<boolean>
-                    label="make this app moddable? (anyone in the playground can playground mod it)"
-                    options={[
-                        {
-                            value: false,
-                            label: "no",
-                            hint: "metadata will not include a source repo",
-                        },
-                        { value: true, label: "yes", hint: "publishes your source repo URL" },
-                    ]}
-                    initialIndex={1}
-                    onSelect={(yes) => {
-                        setModdable(yes);
-                        if (yes) {
-                            setStage({ kind: "moddable-preflight" });
-                        } else {
+                <Box flexDirection="column">
+                    <PromptInfo box={PUBLISH_HELP} />
+                    <Select<boolean>
+                        label="publish to the playground?"
+                        options={[
+                            { value: false, label: "no", hint: "deploy to my .dot address only" },
+                            { value: true, label: "yes", hint: "list it in the public playground" },
+                        ]}
+                        initialIndex={0}
+                        onSelect={(yes) => {
+                            setPublishToPlayground(yes);
+                            if (!yes) setModdable(false);
                             advance(
                                 skipBuild,
                                 mode,
                                 deployContracts,
                                 buildDir,
                                 domain,
-                                publishToPlayground,
-                                false,
+                                yes,
+                                yes ? moddable : false,
                             );
-                        }
-                    }}
-                />
+                        }}
+                    />
+                </Box>
+            )}
+
+            {stage.kind === "prompt-moddable" && (
+                <Box flexDirection="column">
+                    <PromptInfo box={MODDABLE_HELP} />
+                    <Select<boolean>
+                        label="let others remix (mod) this app?"
+                        options={[
+                            {
+                                value: false,
+                                label: "no",
+                                hint: "keep my source private",
+                            },
+                            {
+                                value: true,
+                                label: "yes",
+                                hint: "share my source so others can remix",
+                            },
+                        ]}
+                        initialIndex={1}
+                        onSelect={(yes) => {
+                            setModdable(yes);
+                            if (yes) {
+                                setStage({ kind: "moddable-preflight" });
+                            } else {
+                                advance(
+                                    skipBuild,
+                                    mode,
+                                    deployContracts,
+                                    buildDir,
+                                    domain,
+                                    publishToPlayground,
+                                    false,
+                                );
+                            }
+                        }}
+                    />
+                </Box>
             )}
 
             {stage.kind === "moddable-preflight" && (
@@ -461,27 +517,33 @@ export function DeployScreen({
             )}
 
             {stage.kind === "prompt-tags" && (
-                <Select<string | null>
-                    label="tag this app? (helps people find it in the playground)"
-                    options={[
-                        ...PLAYGROUND_TAGS.map((t) => ({ value: t as string | null, label: t })),
-                        { value: null, label: "skip", hint: "publish without a tag" },
-                    ]}
-                    onSelect={(t) => {
-                        setTag(t);
-                        advance(
-                            skipBuild,
-                            mode,
-                            deployContracts,
-                            buildDir,
-                            domain,
-                            publishToPlayground,
-                            moddable,
-                            repositoryUrl,
-                            t,
-                        );
-                    }}
-                />
+                <Box flexDirection="column">
+                    <PromptInfo box={TAGS_HELP} />
+                    <Select<string | null>
+                        label="tag this app?"
+                        options={[
+                            ...PLAYGROUND_TAGS.map((t) => ({
+                                value: t as string | null,
+                                label: t,
+                            })),
+                            { value: null, label: "skip", hint: "publish without a tag" },
+                        ]}
+                        onSelect={(t) => {
+                            setTag(t);
+                            advance(
+                                skipBuild,
+                                mode,
+                                deployContracts,
+                                buildDir,
+                                domain,
+                                publishToPlayground,
+                                moddable,
+                                repositoryUrl,
+                                t,
+                            );
+                        }}
+                    />
+                </Box>
             )}
 
             {stage.kind === "confirm" && resolved && (
