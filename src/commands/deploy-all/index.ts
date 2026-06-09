@@ -28,15 +28,16 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { Command, Option } from "commander";
-import { errorMessage, withSpan } from "../../telemetry.js";
+import { captureWarning, errorMessage, withSpan } from "../../telemetry.js";
 import { resolveSigner, SignerNotAvailableError, type ResolvedSigner } from "../../utils/signer.js";
 import { getConnection, destroyConnection } from "../../utils/connection.js";
 import { checkMapping } from "../../utils/account/mapping.js";
+import { readLoginStampMs, staleSessionWarning } from "../../utils/loginStamp.js";
 import { onProcessShutdown } from "../../utils/process-guard.js";
 import { runCliCommand } from "../../cli-runtime.js";
 import {
     resolveSignerSetup,
-    DEV_PUBLISH_ADDRESS,
+    resolveDotnsOwnerAddress,
     type SignerMode,
 } from "../../utils/deploy/signerMode.js";
 import { checkDomainAvailability, formatAvailability } from "../../utils/deploy/availability.js";
@@ -107,7 +108,7 @@ export const deployAllCommand = new Command("deploy-all")
             .default("paseo-next-v2"),
     )
     .action(async (opts: DeployAllOpts) =>
-        runCliCommand("deploy", { watchdog: true, hardExit: true }, async () => {
+        runCliCommand("deploy-all", { watchdog: true, hardExit: true }, async () => {
             await runDeployAll(opts);
         }),
     );
@@ -229,12 +230,7 @@ async function buildRunOptions(
 ): Promise<Omit<RunDeployOptions, "signingGate" | "onEvent">> {
     // Per-app availability check, mirroring `deploy`'s headless preflight: fail
     // an individual app fast on a Reserved/taken name without wasting its upload.
-    const dotnsOwnerSs58Address =
-        ctx.mode === "phone"
-            ? ctx.userSigner?.address
-            : ctx.userSigner?.source === "dev"
-              ? ctx.userSigner.address
-              : DEV_PUBLISH_ADDRESS;
+    const dotnsOwnerSs58Address = resolveDotnsOwnerAddress(ctx.mode, ctx.userSigner);
     const availability = await checkDomainAvailability(app.domain, {
         env: ctx.env,
         ownerSs58Address: dotnsOwnerSs58Address,
@@ -269,11 +265,11 @@ async function buildRunOptions(
 /**
  * The key that decides which apps share a signing gate. deploy-all always uses
  * one batch signer, so this returns one stable string ⇒ all signing serialized.
+ * (`?? "phone"` only guards phone mode with no resolved session address, which
+ * the preflight already rejects — it keeps the return type a plain string.)
  */
 function batchSignerKey(mode: SignerMode, userSigner: ResolvedSigner | null): string {
-    if (mode === "phone") return userSigner?.address ?? "phone";
-    if (userSigner?.source === "dev") return userSigner.address;
-    return DEV_PUBLISH_ADDRESS;
+    return resolveDotnsOwnerAddress(mode, userSigner) ?? "phone";
 }
 
 // ── Signer preflight (batch-level, mirrors deploy/index.ts) ─────────────────
@@ -291,7 +287,21 @@ async function preflightSigner(opts: {
     try {
         signer = await resolveSigner({ suri: opts.suri });
     } catch (err) {
-        if (err instanceof SignerNotAvailableError) return null;
+        if (err instanceof SignerNotAvailableError) {
+            // Mirror `deploy`'s footgun warning: dev + --playground with no
+            // session publishes every app under the dev account, not the user.
+            if (opts.mode === "dev" && opts.publishToPlayground) {
+                process.stderr.write(
+                    "warning: --signer dev --playground with no session and no --suri — " +
+                        "publishing under the dev account. Run `playground init` first if you " +
+                        "want the apps to appear in your MyApps view.\n",
+                );
+                captureWarning("dev mode playground publish with no user identity", {
+                    attempted: "pure-dev-publish",
+                });
+            }
+            return null;
+        }
         throw err;
     }
     if (signer.source !== "session") return signer;
@@ -306,6 +316,14 @@ async function preflightSigner(opts: {
     }
     // Release the idle client — runDeploy / publish reopen their own.
     destroyConnection();
+
+    // Warn-only staleness heuristic for the statement-store allowance (the
+    // channel every phone tap rides). Mirrors `deploy`'s preflight — a batch of
+    // N phone-signed apps multiplies the cost of a silently-expired session.
+    if (opts.mode !== "dev") {
+        const warning = staleSessionWarning(await readLoginStampMs(), Date.now());
+        if (warning) process.stderr.write(`${warning}\n`);
+    }
     return signer;
 }
 

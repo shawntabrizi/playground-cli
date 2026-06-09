@@ -101,6 +101,27 @@ export function createDevPublishSigner(): ResolvedSigner {
 
 export type SignerMode = "dev" | "phone";
 
+/**
+ * The SS58 address that will own and sign a deploy's DotNS name, by mode:
+ *   - phone: the user's session account (the caller IS the user)
+ *   - dev with an explicit `--suri` signer: that local account
+ *   - dev otherwise: bulletin-deploy's `DEFAULT_MNEMONIC` bare-root
+ *     (`DEV_PUBLISH_ADDRESS`), the identity it falls back to internally.
+ *
+ * Centralised here so the dev/phone owner rules live in one place. Consumed by
+ * the availability preflight (the expected DotNS owner) and by `deploy-all`'s
+ * signing-gate key (apps that resolve to the same address share a gate).
+ * Returns `undefined` only for phone mode with no resolved session.
+ */
+export function resolveDotnsOwnerAddress(
+    mode: SignerMode,
+    userSigner: ResolvedSigner | null,
+): string | undefined {
+    if (mode === "phone") return userSigner?.address;
+    if (userSigner?.source === "dev") return userSigner.address;
+    return DEV_PUBLISH_ADDRESS;
+}
+
 export interface DeploySignerSetup {
     /**
      * Options to pass to bulletin-deploy's `deploy()`. For dev mode this is

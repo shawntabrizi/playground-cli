@@ -81,7 +81,7 @@ For fully non-interactive (CI) runs, combine `--signer`, `--domain`, `--buildDir
 
 ### `playground deploy-all`
 
-Deploy several `.dot` apps in a single invocation. Builds and Bulletin uploads run in parallel; on-chain signing is serialized **per signer account** so concurrent deploys that share a signer (the common case — everything on `--signer dev`) never collide on a nonce. This is the parallel counterpart to `playground deploy`; the single-app command is unchanged.
+Deploy several `.dot` apps in a single invocation. Builds run in parallel; **all on-chain work (Bulletin upload, DotNS, and the playground publish) is serialized per signer account** so concurrent deploys that share a signer never collide on a nonce. Because every app uses one shared signer (typically `--signer dev`), the on-chain phases run strictly one app at a time and only the builds overlap. This is the batch counterpart to `playground deploy`; the single-app command is unchanged.
 
 The command is non-interactive by design (N concurrent Ink TUIs are unreadable). Apps are listed in a JSON manifest; shared options come from flags and apply to every app.
 
@@ -106,7 +106,7 @@ Flags:
 
 - `--manifest <path>` — required; the JSON manifest above.
 - `--signer <mode>` — `dev` or `phone`, applied to every app.
-- `--concurrency <n>` — max apps building/uploading at once (default 3; clamped to the app count).
+- `--concurrency <n>` — max apps in flight at once (default 3; clamped to the app count). Bounds parallel builds; on-chain work still serializes per signer.
 - `--buildDir <path>` / `--no-build` — defaults for apps that don't override them.
 - `--playground` / `--private` / `--suri` / `--env` — same meaning as `playground deploy`, applied to every app.
 - `--json` — emit a machine-readable per-app status summary (`{ name, status, domain, appUrl, appCid, … }`) to stdout on completion.

@@ -27,7 +27,7 @@ import { onProcessShutdown } from "../../utils/process-guard.js";
 import { runCliCommand } from "../../cli-runtime.js";
 import {
     resolveSignerSetup,
-    DEV_PUBLISH_ADDRESS,
+    resolveDotnsOwnerAddress,
     type SignerMode,
     type DeployApproval,
 } from "../../utils/deploy/signerMode.js";
@@ -321,12 +321,7 @@ async function runHeadless(ctx: {
     // session) falls back to bulletin-deploy's DEFAULT_MNEMONIC bare-root,
     // which is `DEV_PUBLISH_ADDRESS`.
     process.stdout.write(`\nChecking availability of ${domain.replace(/\.dot$/, "") + ".dot"}…\n`);
-    const dotnsOwnerSs58Address =
-        mode === "phone"
-            ? ctx.userSigner?.address
-            : ctx.userSigner?.source === "dev"
-              ? ctx.userSigner.address
-              : DEV_PUBLISH_ADDRESS;
+    const dotnsOwnerSs58Address = resolveDotnsOwnerAddress(mode, ctx.userSigner);
     const availability = await withSpan(
         "cli.deploy.availability",
         "check domain availability",

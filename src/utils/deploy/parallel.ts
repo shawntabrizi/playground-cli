@@ -52,8 +52,6 @@ export interface ParallelDeployApp {
     domain: string;
     /** Per-app override: skip this app's build. Defaults to the shared value. */
     skipBuild?: boolean;
-    /** Per-app override: record this repo URL when `moddable`. */
-    repositoryUrl?: string | null;
 }
 
 /**
