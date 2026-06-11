@@ -7,6 +7,8 @@ CLI tooling for Polkadot Playground. Installed as the `playground` command, with
 
 ## Quick Start
 
+On **Windows**, use [WSL](https://learn.microsoft.com/windows/wsl/install) — the installer and CLI support Linux and macOS only — and follow the Debian/Ubuntu steps inside it.
+
 On a fresh **Debian/Ubuntu** system, install the base prerequisites first (macOS needs no preparation — curl ships with the OS and the Xcode Command Line Tools cover the rest):
 
 ```bash
