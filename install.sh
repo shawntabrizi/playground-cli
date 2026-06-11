@@ -11,8 +11,9 @@ ALIAS="pg"
 # saved locally under $CMD, so the old `dot` command name is gone.
 ASSET_PREFIX="dot"
 
-# 1) Detect platform
-OS=$(uname -s); case "$OS" in Linux) OS=linux;; Darwin) OS=darwin;; *) echo "Unsupported OS: $OS"; exit 1;; esac
+# 1) Detect platform. Git Bash / MSYS / Cygwin report MINGW*/MSYS*/CYGWIN* —
+# point Windows users at WSL instead of a bare "Unsupported OS".
+OS=$(uname -s); case "$OS" in Linux) OS=linux;; Darwin) OS=darwin;; MINGW*|MSYS*|CYGWIN*) echo "Windows is not supported natively. Install WSL (https://learn.microsoft.com/windows/wsl/install) and re-run this command inside it."; exit 1;; *) echo "Unsupported OS: $OS"; exit 1;; esac
 ARCH=$(uname -m); case "$ARCH" in x86_64|amd64) ARCH=x64;; arm64|aarch64) ARCH=arm64;; *) echo "Unsupported arch: $ARCH"; exit 1;; esac
 ASSET="$ASSET_PREFIX-$OS-$ARCH"
 
